@@ -1,15 +1,15 @@
+// ============================================================================
+// FILE: src/controllers/authController.js
+// ============================================================================
+
 const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 const Teacher = require('../models/Teacher');
 
-// Token yaratish
 const generateToken = (payload) => {
-  return jwt.sign(payload, process.env.JWT_SECRET_KEY, { expiresIn: '24h' });
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '24h' });
 };
 
-// ================================
-// ADMIN LOGIN
-// ================================
 exports.adminLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -18,7 +18,8 @@ exports.adminLogin = async (req, res) => {
       return res.status(400).json({ error: 'Email va parol majburiy' });
     }
 
-    const admin = await Admin.findOne({ email });
+    const admin = await Admin.findOne({ email: email.toLowerCase() }).select('+password');
+
     if (!admin) {
       return res.status(401).json({ error: 'Email yoki parol noto\'g\'ri' });
     }
@@ -28,20 +29,25 @@ exports.adminLogin = async (req, res) => {
       return res.status(401).json({ error: 'Email yoki parol noto\'g\'ri' });
     }
 
+    await admin.updateLastLogin();
+
     const token = generateToken({ id: admin._id, email: admin.email, role: 'admin' });
 
     res.json({
+      message: 'Muvaffaqiyatli kirish',
       token,
-      user: { id: admin._id, name: admin.name, email: admin.email, role: 'admin' },
+      user: {
+        id: admin._id,
+        name: admin.name,
+        email: admin.email,
+        role: 'admin',
+      },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// ================================
-// TEACHER LOGIN
-// ================================
 exports.teacherLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -50,7 +56,8 @@ exports.teacherLogin = async (req, res) => {
       return res.status(400).json({ error: 'Email va parol majburiy' });
     }
 
-    const teacher = await Teacher.findOne({ email });
+    const teacher = await Teacher.findOne({ email: email.toLowerCase() }).select('+password');
+
     if (!teacher) {
       return res.status(401).json({ error: 'Email yoki parol noto\'g\'ri' });
     }
@@ -64,7 +71,6 @@ exports.teacherLogin = async (req, res) => {
       return res.status(401).json({ error: 'Email yoki parol noto\'g\'ri' });
     }
 
-    // Teacher o'z sinfining subscription holatini tekshirish
     const Class = require('../models/Class');
     const Subscription = require('../models/Subscription');
 
@@ -88,20 +94,25 @@ exports.teacherLogin = async (req, res) => {
       }
     }
 
+    await teacher.updateLastLogin();
+
     const token = generateToken({ id: teacher._id, email: teacher.email, role: 'teacher' });
 
     res.json({
+      message: 'Muvaffaqiyatli kirish',
       token,
-      user: { id: teacher._id, name: teacher.name, email: teacher.email, role: 'teacher' },
+      user: {
+        id: teacher._id,
+        name: teacher.name,
+        email: teacher.email,
+        role: 'teacher',
+      },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// ================================
-// TOKENNI TEKSHIRISH (me)
-// ================================
 exports.getMe = async (req, res) => {
   try {
     const { id, role } = req.user;
@@ -113,9 +124,18 @@ exports.getMe = async (req, res) => {
       user = await Teacher.findById(id).select('-password');
     }
 
-    if (!user) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+    if (!user) {
+      return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+    }
 
-    res.json({ user: { ...user.toObject(), role } });
+    res.json({
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role,
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

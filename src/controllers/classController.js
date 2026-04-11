@@ -1,31 +1,28 @@
+// ============================================================================
+// FILE: src/controllers/classController.js
+// ============================================================================
+
 const Class = require('../models/Class');
 const Student = require('../models/Student');
 const MonthlyPayment = require('../models/MonthlyPayment');
 const Subscription = require('../models/Subscription');
 
-// Plan limitleri
 const PLAN_LIMITS = {
-  free:  { classes: 1,         students: 30  },
-  plus:  { classes: 3,         students: 100 },
-  pro:   { classes: Infinity,  students: Infinity },
+  free: { classes: 1, students: 30 },
+  plus: { classes: 3, students: 100 },
+  pro: { classes: Infinity, students: Infinity },
 };
 
-// ================================
-// BARCHA SINFLAR (admin — hammasi, teacher — faqat o'ziniki)
-// ================================
 exports.getAllClasses = async (req, res) => {
   try {
     const filter = req.user.role === 'admin' ? {} : { teacher: req.user.id };
-    const classes = await Class.find(filter).populate('teacher', 'name email');
+    const classes = await Class.find(filter).populate('teacher', 'name email').sort({ createdAt: -1 });
     res.json(classes);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// ================================
-// SINF YARATISH (admin yaratadi, teacherga biriktiradi)
-// ================================
 exports.createClass = async (req, res) => {
   try {
     const { name, description, teacherId, plan = 'free' } = req.body;
@@ -34,17 +31,24 @@ exports.createClass = async (req, res) => {
       return res.status(400).json({ error: 'Sinf nomi va teacher majburiy' });
     }
 
-    // Plan limitini tekshirish
     const teacherClassCount = await Class.countDocuments({ teacher: teacherId });
     const limit = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+
     if (teacherClassCount >= limit.classes) {
       return res.status(400).json({
         error: `${plan} rejimda maksimal ${limit.classes} ta sinf bo'lishi mumkin`,
       });
     }
 
-    const newClass = new Class({ name, description, teacher: teacherId, plan });
+    const newClass = new Class({
+      name: name.trim(),
+      description,
+      teacher: teacherId,
+      plan,
+    });
+
     await newClass.save();
+    await newClass.populate('teacher', 'name email');
 
     res.status(201).json(newClass);
   } catch (err) {
@@ -52,20 +56,24 @@ exports.createClass = async (req, res) => {
   }
 };
 
-// ================================
-// SINF TAHRIRLASH
-// ================================
 exports.updateClass = async (req, res) => {
   try {
     const { classId } = req.params;
     const { name, description } = req.body;
 
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ error: 'Sinf nomi majburiy' });
+    }
+
     const cls = await Class.findByIdAndUpdate(
       classId,
-      { name, description },
+      { name: name.trim(), description },
       { new: true }
-    );
-    if (!cls) return res.status(404).json({ error: 'Sinf topilmadi' });
+    ).populate('teacher', 'name email');
+
+    if (!cls) {
+      return res.status(404).json({ error: 'Sinf topilmadi' });
+    }
 
     res.json(cls);
   } catch (err) {
@@ -73,9 +81,6 @@ exports.updateClass = async (req, res) => {
   }
 };
 
-// ================================
-// SINF O'CHIRISH (admin)
-// ================================
 exports.deleteClass = async (req, res) => {
   try {
     const { classId } = req.params;
@@ -91,9 +96,6 @@ exports.deleteClass = async (req, res) => {
   }
 };
 
-// ================================
-// SINF HISOBOTI — oylik to'lov holati
-// ================================
 exports.getClassReport = async (req, res) => {
   try {
     const { classId } = req.params;
@@ -102,12 +104,12 @@ exports.getClassReport = async (req, res) => {
     const currentMonth = parseInt(month) || new Date().getMonth() + 1;
     const currentYear = parseInt(year) || new Date().getFullYear();
 
-    const students = await Student.find({ class: classId });
+    const students = await Student.find({ class: classId, isActive: true });
     const payments = await MonthlyPayment.find({
       class: classId,
       month: currentMonth,
       year: currentYear,
-    }).populate('student');
+    }).populate('student', 'name parentPhone');
 
     const report = students.map((student) => {
       const payment = payments.find(

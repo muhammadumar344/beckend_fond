@@ -1,3 +1,7 @@
+// ============================================================================
+// FILE: src/routes/expenses.js
+// ============================================================================
+
 const express = require('express');
 const router = express.Router();
 const expenseController = require('../controllers/expenseController');
@@ -6,16 +10,12 @@ const subscriptionMiddleware = require('../middleware/subscriptionMiddleware');
 
 router.use(authMiddleware);
 
-// Xarajat qo'shish (plus va pro rejim)
 router.post('/', subscriptionMiddleware, expenseController.createExpense);
 
-// Oy bo'yicha xarajatlar
-router.get('/:classId', subscriptionMiddleware, expenseController.getExpensesByMonth);
-
-// Yillik summary
-router.get('/:classId/yearly', subscriptionMiddleware, expenseController.getYearlySummary);
-
-// Xarajat o'chirish
 router.delete('/:expenseId', expenseController.deleteExpense);
+
+router.get('/monthly/:classId', subscriptionMiddleware, expenseController.getExpensesByMonth);
+
+router.get('/yearly/:classId', subscriptionMiddleware, expenseController.getYearlySummary);
 
 module.exports = router;

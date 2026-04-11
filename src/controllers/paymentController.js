@@ -1,15 +1,20 @@
+// ============================================================================
+// FILE: src/controllers/paymentController.js
+// ============================================================================
+
 const MonthlyPayment = require('../models/MonthlyPayment');
 const Student = require('../models/Student');
 
-// ================================
-// OYLIK TO'LOVLARNI YARATISH (hamma not_paid bilan boshlanadi)
-// ================================
 exports.createMonthlyPayments = async (req, res) => {
   try {
     const { classId, month, year, amount } = req.body;
 
-    if (!classId || !month || !year || !amount) {
-      return res.status(400).json({ error: 'classId, month, year, amount majburiy' });
+    if (!classId || !month || !year) {
+      return res.status(400).json({ error: 'classId, month, year majburiy' });
+    }
+
+    if (!amount || amount < 0) {
+      return res.status(400).json({ error: 'Summa majburiy va musbat bo\'lishi kerak' });
     }
 
     const students = await Student.find({ class: classId, isActive: true });
@@ -17,11 +22,19 @@ exports.createMonthlyPayments = async (req, res) => {
       return res.status(400).json({ error: 'Bu sinfda o\'quvchi yo\'q' });
     }
 
-    // Allaqachon yaratilganlarni o'tkazib yuborish (unique index tufayli)
     const operations = students.map((student) => ({
       updateOne: {
-        filter: { student: student._id, class: classId, month, year },
-        update: { $setOnInsert: { student: student._id, class: classId, month, year, amount, status: 'not_paid' } },
+        filter: { student: student._id, class: classId, month: parseInt(month), year: parseInt(year) },
+        update: {
+          $setOnInsert: {
+            student: student._id,
+            class: classId,
+            month: parseInt(month),
+            year: parseInt(year),
+            amount: amount || 0,
+            status: 'not_paid',
+          },
+        },
         upsert: true,
       },
     }));
@@ -32,15 +45,14 @@ exports.createMonthlyPayments = async (req, res) => {
       message: 'Oylik to\'lovlar yaratildi',
       created: result.upsertedCount,
       alreadyExisted: students.length - result.upsertedCount,
+      month: parseInt(month),
+      year: parseInt(year),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// ================================
-// TO'LOV STATUSINI O'ZGARTIRISH (paid / not_paid)
-// ================================
 exports.updatePaymentStatus = async (req, res) => {
   try {
     const { paymentId } = req.params;
@@ -59,7 +71,9 @@ exports.updatePaymentStatus = async (req, res) => {
       { new: true }
     ).populate('student', 'name');
 
-    if (!payment) return res.status(404).json({ error: 'To\'lov topilmadi' });
+    if (!payment) {
+      return res.status(404).json({ error: 'To\'lov topilmadi' });
+    }
 
     res.json(payment);
   } catch (err) {
@@ -67,23 +81,19 @@ exports.updatePaymentStatus = async (req, res) => {
   }
 };
 
-// ================================
-// BIR TALABANING TO'LOV TARIXINI KO'RISH
-// ================================
 exports.getStudentPaymentHistory = async (req, res) => {
   try {
     const { studentId } = req.params;
+
     const payments = await MonthlyPayment.find({ student: studentId })
       .sort({ year: -1, month: -1 });
+
     res.json(payments);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// ================================
-// TO'LANMAGANLAR RO'YHATI (filtr: classId + month + year)
-// ================================
 exports.getUnpaidPayments = async (req, res) => {
   try {
     const { classId } = req.params;
@@ -116,9 +126,6 @@ exports.getUnpaidPayments = async (req, res) => {
   }
 };
 
-// ================================
-// SINF UCHUN TO'LOV SUMMARY (oy bo'yicha jami)
-// ================================
 exports.getPaymentSummary = async (req, res) => {
   try {
     const { classId } = req.params;
@@ -127,7 +134,11 @@ exports.getPaymentSummary = async (req, res) => {
     const currentMonth = parseInt(month) || new Date().getMonth() + 1;
     const currentYear = parseInt(year) || new Date().getFullYear();
 
-    const all = await MonthlyPayment.find({ class: classId, month: currentMonth, year: currentYear });
+    const all = await MonthlyPayment.find({
+      class: classId,
+      month: currentMonth,
+      year: currentYear,
+    });
 
     const paid = all.filter((p) => p.status === 'paid');
     const unpaid = all.filter((p) => p.status === 'not_paid');

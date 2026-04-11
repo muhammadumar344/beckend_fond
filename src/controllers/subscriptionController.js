@@ -1,13 +1,13 @@
+// ============================================================================
+// FILE: src/controllers/subscriptionController.js
+// ============================================================================
+
 const Subscription = require('../models/Subscription');
 const Class = require('../models/Class');
 const Student = require('../models/Student');
 const MonthlyPayment = require('../models/MonthlyPayment');
 const Expense = require('../models/Expense');
 
-// ================================
-// SUBSCRIPTION HOLATINI TEKSHIRISH
-// Frontend har login da shu endpoint ni chaqiradi
-// ================================
 exports.checkSubscription = async (req, res) => {
   try {
     const { classId } = req.params;
@@ -28,7 +28,6 @@ exports.checkSubscription = async (req, res) => {
       plan: subscription.plan,
       expiryDate: subscription.expiryDate,
       daysLeft,
-      // Frontend bu flagga qarab modal chiqaradi
       showWarning: daysLeft <= 3 && !isExpired,
       warningMessage: daysLeft <= 3 && !isExpired
         ? `Obunangiz ${daysLeft} kundan so'ng tugaydi. To'lov qiling!`
@@ -39,23 +38,19 @@ exports.checkSubscription = async (req, res) => {
   }
 };
 
-// ================================
-// SINF O'ZI RAD ETDI — "Saytdan foydalanmaymiz" button
-// Sinf va barcha ma'lumotlari o'chiriladi
-// ================================
 exports.selfDeactivate = async (req, res) => {
   try {
     const { classId } = req.params;
 
-    // Faqat o'sha sinfning teacheri o'chira oladi
     const cls = await Class.findById(classId);
-    if (!cls) return res.status(404).json({ error: 'Sinf topilmadi' });
+    if (!cls) {
+      return res.status(404).json({ error: 'Sinf topilmadi' });
+    }
 
     if (req.user.role === 'teacher' && cls.teacher.toString() !== req.user.id) {
       return res.status(403).json({ error: 'Ruxsat yo\'q' });
     }
 
-    // Cascade o'chirish
     const students = await Student.find({ class: classId });
     const studentIds = students.map((s) => s._id);
 
@@ -63,13 +58,11 @@ exports.selfDeactivate = async (req, res) => {
     await Expense.deleteMany({ class: classId });
     await Student.deleteMany({ class: classId });
 
-    // Subscription ni deactivate qilish
     await Subscription.findOneAndUpdate(
       { class: classId },
       { isActive: false, selfDeactivated: true }
     );
 
-    // Sinfni o'chirish
     await Class.findByIdAndDelete(classId);
 
     res.json({ message: 'Sinf va barcha ma\'lumotlar o\'chirildi' });
@@ -78,22 +71,17 @@ exports.selfDeactivate = async (req, res) => {
   }
 };
 
-// ================================
-// TO'LOV QILISH NIYATI — "To'lov qilamiz" button
-// Sinfni ochmaydi, faqat admin kutadi
-// ================================
 exports.requestPayment = async (req, res) => {
   try {
     const { classId } = req.params;
 
     const subscription = await Subscription.findOne({ class: classId });
-    if (!subscription) return res.status(404).json({ error: 'Subscription topilmadi' });
-
-    // Frontend login sahifasiga yo'naltiradi, admin to'lovni qabul qilib
-    // setSubscription endpoint ni chaqiradi
+    if (!subscription) {
+      return res.status(404).json({ error: 'Subscription topilmadi' });
+    }
 
     res.json({
-      message: 'To\'lov so\'rovi qabul qilindi. Login sahifasiga o\'ting.',
+      message: 'To\'lov so\'rovi qabul qilindi. Admin kutayapti.',
       redirectToLogin: true,
     });
   } catch (err) {
@@ -101,9 +89,6 @@ exports.requestPayment = async (req, res) => {
   }
 };
 
-// ================================
-// OY OHIRI ESLATMA — to'lamaganlar ro'yxati
-// ================================
 exports.getMonthlyReminder = async (req, res) => {
   try {
     const { classId } = req.params;
@@ -124,9 +109,14 @@ exports.getMonthlyReminder = async (req, res) => {
       status: 'paid',
       month: currentMonth,
       year: currentYear,
-    }).populate('student', 'name');
+    });
 
-    const totalExpected = await MonthlyPayment.find({ class: classId, month: currentMonth, year: currentYear });
+    const totalExpected = await MonthlyPayment.find({
+      class: classId,
+      month: currentMonth,
+      year: currentYear,
+    });
+
     const totalAmount = totalExpected.reduce((s, p) => s + p.amount, 0);
     const paidAmount = paidPayments.reduce((s, p) => s + p.amount, 0);
 

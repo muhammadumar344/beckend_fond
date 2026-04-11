@@ -1,16 +1,15 @@
+// ============================================================================
+// FILE: src/controllers/expenseController.js
+// ============================================================================
+
 const Expense = require('../models/Expense');
 const Class = require('../models/Class');
 const MonthlyPayment = require('../models/MonthlyPayment');
 
-// ─── YORDAMCHI: teacher o'z sinfini topish ─────────────────────────────────
 const getTeacherClass = async (teacherId) => {
   return await Class.findOne({ teacher: teacherId });
 };
 
-// ================================
-// XARAJAT QO'SHISH — FAQAT TEACHER
-// Teacher faqat o'z sinfiga xarajat qo'sha oladi
-// ================================
 exports.createExpense = async (req, res) => {
   try {
     if (req.user.role !== 'teacher') {
@@ -28,34 +27,30 @@ exports.createExpense = async (req, res) => {
     }
 
     const cls = await getTeacherClass(req.user.id);
-    if (!cls) return res.status(404).json({ error: 'Sizga tegishli sinf topilmadi' });
+    if (!cls) {
+      return res.status(404).json({ error: 'Sizga tegishli sinf topilmadi' });
+    }
 
     const expense = new Expense({
       class: cls._id,
-      reason,
+      reason: reason.trim(),
       amount,
       month: parseInt(month),
       year: parseInt(year),
-      description,
+      description: description || '',
     });
+
     await expense.save();
 
-    // Yangi balansni hisoblash
-    const allPaid = await MonthlyPayment.find({ class: cls._id, status: 'paid' });
-    const allExpenses = await Expense.find({ class: cls._id });
-    const balance =
-      allPaid.reduce((s, p) => s + p.amount, 0) -
-      allExpenses.reduce((s, e) => s + e.amount, 0);
-
-    res.status(201).json({ expense, updatedBalance: balance });
+    res.status(201).json({
+      message: 'Xarajat qo\'shildi',
+      expense,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// ================================
-// OY BO'YICHA XARAJATLAR — faqat o'z sinfi
-// ================================
 exports.getExpensesByMonth = async (req, res) => {
   try {
     const { month, year } = req.query;
@@ -67,7 +62,9 @@ exports.getExpensesByMonth = async (req, res) => {
       classId = req.params.classId;
     } else {
       const cls = await getTeacherClass(req.user.id);
-      if (!cls) return res.status(404).json({ error: 'Sinf topilmadi' });
+      if (!cls) {
+        return res.status(404).json({ error: 'Sinf topilmadi' });
+      }
       classId = cls._id;
     }
 
@@ -78,15 +75,18 @@ exports.getExpensesByMonth = async (req, res) => {
     }).sort({ createdAt: -1 });
 
     const totalAmount = expenses.reduce((s, e) => s + e.amount, 0);
-    res.json({ month: currentMonth, year: currentYear, expenses, totalAmount });
+
+    res.json({
+      month: currentMonth,
+      year: currentYear,
+      expenses,
+      totalAmount,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// ================================
-// YILLIK SUMMARY
-// ================================
 exports.getYearlySummary = async (req, res) => {
   try {
     const { year } = req.query;
@@ -97,29 +97,39 @@ exports.getYearlySummary = async (req, res) => {
       classId = req.params.classId;
     } else {
       const cls = await getTeacherClass(req.user.id);
-      if (!cls) return res.status(404).json({ error: 'Sinf topilmadi' });
+      if (!cls) {
+        return res.status(404).json({ error: 'Sinf topilmadi' });
+      }
       classId = cls._id;
     }
 
     const expenses = await Expense.find({ class: classId, year: currentYear });
+
     const byMonth = Array.from({ length: 12 }, (_, i) => {
       const me = expenses.filter((e) => e.month === i + 1);
-      return { month: i + 1, total: me.reduce((s, e) => s + e.amount, 0), count: me.length };
+      return {
+        month: i + 1,
+        total: me.reduce((s, e) => s + e.amount, 0),
+        count: me.length,
+      };
     });
 
-    res.json({ year: currentYear, yearlyTotal: expenses.reduce((s, e) => s + e.amount, 0), byMonth });
+    res.json({
+      year: currentYear,
+      yearlyTotal: expenses.reduce((s, e) => s + e.amount, 0),
+      byMonth,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// ================================
-// XARAJAT O'CHIRISH — faqat o'z sinfi
-// ================================
 exports.deleteExpense = async (req, res) => {
   try {
     const expense = await Expense.findById(req.params.expenseId);
-    if (!expense) return res.status(404).json({ error: 'Xarajat topilmadi' });
+    if (!expense) {
+      return res.status(404).json({ error: 'Xarajat topilmadi' });
+    }
 
     if (req.user.role === 'teacher') {
       const cls = await getTeacherClass(req.user.id);
@@ -130,13 +140,7 @@ exports.deleteExpense = async (req, res) => {
 
     await expense.deleteOne();
 
-    // Yangilangan balans
-    const allPaid = await MonthlyPayment.find({ class: expense.class, status: 'paid' });
-    const allExp = await Expense.find({ class: expense.class });
-    const balance =
-      allPaid.reduce((s, p) => s + p.amount, 0) - allExp.reduce((s, e) => s + e.amount, 0);
-
-    res.json({ message: 'Xarajat o\'chirildi', updatedBalance: balance });
+    res.json({ message: 'Xarajat o\'chirildi' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

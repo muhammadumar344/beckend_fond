@@ -1,19 +1,18 @@
+// ============================================================================
+// FILE: src/controllers/teacherController.js
+// ============================================================================
+
 const Class = require('../models/Class');
 const Student = require('../models/Student');
 const MonthlyPayment = require('../models/MonthlyPayment');
 const Expense = require('../models/Expense');
 const Subscription = require('../models/Subscription');
 
-// ─── YORDAMCHI: teacher o'z sinfiga egaligini tekshirish ──────────────────
 const checkClassOwnership = async (teacherId, classId) => {
   const cls = await Class.findOne({ _id: classId, teacher: teacherId });
   return cls;
 };
 
-// ================================
-// DEFAULT FONT PULINI O'RNATISH
-// Teacher birinchi login da yoki keyinchalik o'zgartirishi mumkin
-// ================================
 exports.setDefaultAmount = async (req, res) => {
   try {
     const { amount } = req.body;
@@ -22,7 +21,6 @@ exports.setDefaultAmount = async (req, res) => {
       return res.status(400).json({ error: 'Summa 0 dan katta bo\'lishi kerak' });
     }
 
-    // Teacher ning sinfi
     const cls = await Class.findOne({ teacher: req.user.id });
     if (!cls) {
       return res.status(404).json({ error: 'Sizga tegishli sinf topilmadi' });
@@ -43,11 +41,6 @@ exports.setDefaultAmount = async (req, res) => {
   }
 };
 
-// ================================
-// DEFAULT SUMMA O'RNATILGANMI TEKSHIRISH
-// Frontend login dan keyin shu endpoint ni chaqiradi
-// Agar isAmountConfigured = false bo'lsa, modal chiqaradi
-// ================================
 exports.checkAmountConfigured = async (req, res) => {
   try {
     const cls = await Class.findOne({ teacher: req.user.id });
@@ -66,10 +59,6 @@ exports.checkAmountConfigured = async (req, res) => {
   }
 };
 
-// ================================
-// TEACHER DASHBOARD
-// Faqat o'z sinfi — boshqa sinflar ko'rinmaydi
-// ================================
 exports.getTeacherDashboard = async (req, res) => {
   try {
     const teacherId = req.user.id;
@@ -77,7 +66,6 @@ exports.getTeacherDashboard = async (req, res) => {
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    // Faqat o'z sinfi
     const cls = await Class.findOne({ teacher: teacherId });
     if (!cls) {
       return res.status(404).json({ error: 'Sizga tegishli sinf topilmadi' });
@@ -85,33 +73,27 @@ exports.getTeacherDashboard = async (req, res) => {
 
     const classId = cls._id;
 
-    // Subscription holati
     const subscription = await Subscription.findOne({ class: classId });
 
-    // O'quvchilar soni
     const totalStudents = await Student.countDocuments({ class: classId, isActive: true });
 
-    // ── BARCHA DAVRLAR UCHUN JAMI TUSHUMLAR ──────────────────
-    // Paid bo'lgan barcha to'lovlar yig'indisi (hech qanday oy filtri yo'q)
     const allPaidPayments = await MonthlyPayment.find({
       class: classId,
       status: 'paid',
     });
     const totalCollectedAllTime = allPaidPayments.reduce((s, p) => s + p.amount, 0);
 
-    // ── BARCHA DAVRLAR UCHUN JAMI XARAJATLAR ─────────────────
     const allExpenses = await Expense.find({ class: classId });
     const totalExpensesAllTime = allExpenses.reduce((s, e) => s + e.amount, 0);
 
-    // ── BALANS (fond) ─────────────────────────────────────────
     const balance = totalCollectedAllTime - totalExpensesAllTime;
 
-    // ── JORIY OY MA'LUMOTLARI ────────────────────────────────
     const currentMonthPayments = await MonthlyPayment.find({
       class: classId,
       month: currentMonth,
       year: currentYear,
     });
+
     const currentMonthPaid = currentMonthPayments.filter(p => p.status === 'paid');
     const currentMonthUnpaid = currentMonthPayments.filter(p => p.status === 'not_paid');
 
@@ -120,7 +102,6 @@ exports.getTeacherDashboard = async (req, res) => {
       .filter(e => e.month === currentMonth && e.year === currentYear)
       .reduce((s, e) => s + e.amount, 0);
 
-    // ── SO'NGGI 5 XARAJAT ─────────────────────────────────────
     const recentExpenses = await Expense.find({ class: classId })
       .sort({ createdAt: -1 })
       .limit(5);
@@ -144,12 +125,9 @@ exports.getTeacherDashboard = async (req, res) => {
         total: totalStudents,
       },
       finance: {
-        // Barcha davrlar uchun jami
         totalCollectedAllTime,
         totalExpensesAllTime,
-        balance,                         // fond puli = tushumlar - xarajatlar
-
-        // Joriy oy
+        balance,
         currentMonth: {
           month: currentMonth,
           year: currentYear,
@@ -167,18 +145,16 @@ exports.getTeacherDashboard = async (req, res) => {
   }
 };
 
-// ================================
-// TEACHER O'Z SINFINING OY HISOBOTINI OLISH
-// ================================
 exports.getMyClassReport = async (req, res) => {
   try {
     const { month, year } = req.query;
     const currentMonth = parseInt(month) || new Date().getMonth() + 1;
     const currentYear = parseInt(year) || new Date().getFullYear();
 
-    // Faqat o'z sinfi
     const cls = await Class.findOne({ teacher: req.user.id });
-    if (!cls) return res.status(404).json({ error: 'Sinf topilmadi' });
+    if (!cls) {
+      return res.status(404).json({ error: 'Sinf topilmadi' });
+    }
 
     const classId = cls._id;
 
@@ -236,10 +212,6 @@ exports.getMyClassReport = async (req, res) => {
   }
 };
 
-// ================================
-// OY BOSHLANGANDA BARCHA O'QUVCHILAR UCHUN TO'LOV YARATISH
-// Default summa avtomatik qo'llaniladi
-// ================================
 exports.createMonthlyPaymentsForMyClass = async (req, res) => {
   try {
     const { month, year } = req.body;
@@ -247,7 +219,9 @@ exports.createMonthlyPaymentsForMyClass = async (req, res) => {
     const currentYear = parseInt(year) || new Date().getFullYear();
 
     const cls = await Class.findOne({ teacher: req.user.id });
-    if (!cls) return res.status(404).json({ error: 'Sinf topilmadi' });
+    if (!cls) {
+      return res.status(404).json({ error: 'Sinf topilmadi' });
+    }
 
     if (!cls.isAmountConfigured || cls.defaultPaymentAmount <= 0) {
       return res.status(400).json({
@@ -299,10 +273,6 @@ exports.createMonthlyPaymentsForMyClass = async (req, res) => {
   }
 };
 
-// ================================
-// TO'LOV STATUSINI O'ZGARTIRISH
-// Teacher faqat o'z sinfidagi to'lovni o'zgartira oladi
-// ================================
 exports.updateMyPaymentStatus = async (req, res) => {
   try {
     const { paymentId } = req.params;
@@ -312,13 +282,14 @@ exports.updateMyPaymentStatus = async (req, res) => {
       return res.status(400).json({ error: 'Status: paid yoki not_paid bo\'lishi kerak' });
     }
 
-    // Teacher o'z sinfiga egaligini tekshirish
     const cls = await Class.findOne({ teacher: req.user.id });
-    if (!cls) return res.status(404).json({ error: 'Sinf topilmadi' });
+    if (!cls) {
+      return res.status(404).json({ error: 'Sinf topilmadi' });
+    }
 
     const payment = await MonthlyPayment.findOne({
       _id: paymentId,
-      class: cls._id,  // faqat o'z sinfi
+      class: cls._id,
     });
 
     if (!payment) {
@@ -329,7 +300,6 @@ exports.updateMyPaymentStatus = async (req, res) => {
     payment.paidDate = status === 'paid' ? new Date() : null;
     await payment.save();
 
-    // Joriy balansni qaytarish
     const allPaid = await MonthlyPayment.find({ class: cls._id, status: 'paid' });
     const allExpenses = await Expense.find({ class: cls._id });
     const balance = allPaid.reduce((s, p) => s + p.amount, 0) -

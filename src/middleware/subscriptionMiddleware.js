@@ -1,14 +1,20 @@
-const Subscription = require('../models/Subscription');
-const Class = require('../models/Class');
+// ============================================================================
+// FILE: src/middleware/subscriptionMiddleware.js
+// ============================================================================
 
-// classId req.params yoki req.body dan olinadi
+const Subscription = require('../models/Subscription');
+
 const subscriptionMiddleware = async (req, res, next) => {
   try {
-    // Admin bo'lsa tekshirmasdan o'tkazib yuborish
-    if (req.user && req.user.role === 'admin') return next();
+    if (req.user && req.user.role === 'admin') {
+      return next();
+    }
 
-    const classId = req.params.classId || req.body.classId || req.body.class;
-    if (!classId) return next(); // classId yo'q bo'lsa tekshirma
+    const classId = req.params.classId || req.body.classId;
+
+    if (!classId) {
+      return res.status(400).json({ error: 'classId majburiy' });
+    }
 
     const subscription = await Subscription.findOne({ class: classId });
 
@@ -34,7 +40,6 @@ const subscriptionMiddleware = async (req, res, next) => {
       });
     }
 
-    // Ogohlantirish: 3 kun va undan kam qolsa
     const daysLeft = subscription.daysLeft();
     if (daysLeft <= 3) {
       req.subscriptionWarning = {
