@@ -1,20 +1,19 @@
-// ============================================================================
-// FILE: src/controllers/paymentController.js
-// ============================================================================
-
+// src/controllers/paymentController.js
 const MonthlyPayment = require('../models/MonthlyPayment');
 const Student = require('../models/Student');
+const Class = require('../models/Class');
 
 exports.createMonthlyPayments = async (req, res) => {
   try {
     const { classId, month, year, amount } = req.body;
 
-    if (!classId || !month || !year) {
-      return res.status(400).json({ error: 'classId, month, year majburiy' });
+    if (!classId || !month || !year || !amount) {
+      return res.status(400).json({ error: 'classId, month, year, amount majburiy' });
     }
 
-    if (!amount || amount < 0) {
-      return res.status(400).json({ error: 'Summa majburiy va musbat bo\'lishi kerak' });
+    const cls = await Class.findById(classId);
+    if (!cls) {
+      return res.status(404).json({ error: 'Sinf topilmadi' });
     }
 
     const students = await Student.find({ class: classId, isActive: true });
@@ -24,14 +23,14 @@ exports.createMonthlyPayments = async (req, res) => {
 
     const operations = students.map((student) => ({
       updateOne: {
-        filter: { student: student._id, class: classId, month: parseInt(month), year: parseInt(year) },
+        filter: { student: student._id, class: classId, month, year },
         update: {
           $setOnInsert: {
             student: student._id,
             class: classId,
-            month: parseInt(month),
-            year: parseInt(year),
-            amount: amount || 0,
+            month,
+            year,
+            amount,
             status: 'not_paid',
           },
         },
@@ -45,8 +44,6 @@ exports.createMonthlyPayments = async (req, res) => {
       message: 'Oylik to\'lovlar yaratildi',
       created: result.upsertedCount,
       alreadyExisted: students.length - result.upsertedCount,
-      month: parseInt(month),
-      year: parseInt(year),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -76,19 +73,6 @@ exports.updatePaymentStatus = async (req, res) => {
     }
 
     res.json(payment);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-exports.getStudentPaymentHistory = async (req, res) => {
-  try {
-    const { studentId } = req.params;
-
-    const payments = await MonthlyPayment.find({ student: studentId })
-      .sort({ year: -1, month: -1 });
-
-    res.json(payments);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -151,6 +135,11 @@ exports.getPaymentSummary = async (req, res) => {
       unpaidCount: unpaid.length,
       collectedAmount: paid.reduce((s, p) => s + p.amount, 0),
       remainingAmount: unpaid.reduce((s, p) => s + p.amount, 0),
+      summary: {
+        totalCollected: paid.reduce((s, p) => s + p.amount, 0),
+        unpaidCount: unpaid.length,
+        totalExpenses: 0, // Keling expenselardan hisoblab olish
+      },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

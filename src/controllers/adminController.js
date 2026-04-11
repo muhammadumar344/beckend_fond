@@ -20,6 +20,7 @@ exports.createAdmin = async (req, res) => {
 
     const { name, email, password } = req.body;
 
+    // ✅ Validation qilish (trim qo'shish)
     if (!name || name.trim() === '') {
       return res.status(400).json({ error: 'Ism majburiy' });
     }
@@ -32,11 +33,13 @@ exports.createAdmin = async (req, res) => {
       return res.status(400).json({ error: 'Parol kamita 6 belgidan iborat bo\'lishi kerak' });
     }
 
+    // ✅ Email formatini tekshirish
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ error: 'Email to\'g\'ri formatda emas' });
     }
 
+    // ✅ Admin yaratish
     const admin = new Admin({
       name: name.trim(),
       email: email.toLowerCase(),
@@ -62,12 +65,14 @@ exports.createAdmin = async (req, res) => {
       },
     });
   } catch (err) {
+    console.error('CreateAdmin Error:', err);
+    
     if (err.code === 11000) {
       return res.status(400).json({ error: 'Bu email allaqachon ro\'yxatdan o\'tgan' });
     }
+    
     res.status(500).json({ error: err.message });
-  }
-};
+  }}
 
 exports.changeAdminPassword = async (req, res) => {
   try {

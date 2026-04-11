@@ -1,35 +1,29 @@
-// ============================================================================
-// FILE: src/routes/teacher.js
-// ============================================================================
-
+// src/routes/teacher.js
 const express = require('express');
 const router = express.Router();
 const teacherController = require('../controllers/teacherController');
-const expenseController = require('../controllers/expenseController');
-const paymentController = require('../controllers/paymentController');
 const authMiddleware = require('../middleware/authMiddleware');
 const subscriptionMiddleware = require('../middleware/subscriptionMiddleware');
 
 router.use(authMiddleware);
 
+// Setup
 router.get('/amount-check', teacherController.checkAmountConfigured);
-
 router.post('/set-amount', teacherController.setDefaultAmount);
 
+// Dashboard
 router.get('/dashboard', subscriptionMiddleware, teacherController.getTeacherDashboard);
 
+// Report
 router.get('/report', subscriptionMiddleware, teacherController.getMyClassReport);
 
+// Payments
 router.post('/payments/create', subscriptionMiddleware, teacherController.createMonthlyPaymentsForMyClass);
-
 router.put('/payments/:paymentId/status', subscriptionMiddleware, teacherController.updateMyPaymentStatus);
 
-router.post('/expenses', subscriptionMiddleware, expenseController.createExpense);
-
-router.get('/expenses/monthly', subscriptionMiddleware, expenseController.getExpensesByMonth);
-
-router.get('/expenses/yearly', subscriptionMiddleware, expenseController.getYearlySummary);
-
-router.delete('/expenses/:expenseId', subscriptionMiddleware, expenseController.deleteExpense);
+// Expenses
+router.post('/expenses', subscriptionMiddleware, teacherController.createExpenseForTeacher);
+router.get('/expenses', subscriptionMiddleware, teacherController.getTeacherExpenses);
+router.delete('/expenses/:expenseId', subscriptionMiddleware, teacherController.deleteTeacherExpense);
 
 module.exports = router;
