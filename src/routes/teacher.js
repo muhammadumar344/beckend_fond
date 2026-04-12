@@ -1,37 +1,35 @@
-// src/routes/teacher.js
+// backend/src/routes/teacher.js
 const express = require('express');
-const router = express.Router();
 const teacherController = require('../controllers/teacherController');
-const authMiddleware = require('../middleware/authMiddleware');
+const auth = require('../middleware/auth');
+const teacherRole = require('../middleware/roles');
 
-router.use(authMiddleware);
+const router = express.Router();
+
+router.use(auth, teacherRole('teacher'));
 
 // Classes
 router.post('/classes', teacherController.createClass);
 router.get('/classes', teacherController.getMyClasses);
-router.put('/classes/:classId', teacherController.updateMyClass);
-router.delete('/classes/:classId', teacherController.deleteMyClass);
-router.post('/classes/:classId/set-amount', teacherController.setDefaultAmount);
+router.put('/classes/:classId/amount', teacherController.updateClassDefaultAmount);
+router.delete('/classes/:classId', teacherController.deleteClass);
 
-// Dashboard
-router.get('/dashboard', teacherController.getTeacherDashboard);
-
-// Plan
-router.post('/select-plan', teacherController.selectPlan);
-
-// Expenses - YANGI
-router.get('/expenses', teacherController.getExpenses);
-router.post('/expenses', teacherController.addExpense);
-router.delete('/expenses/:expenseId', teacherController.deleteExpense);
-
-// Students - YANGI
-router.get('/students', teacherController.getStudents);
-router.post('/students', teacherController.addStudent);
+// Students
+router.post('/classes/:classId/students', teacherController.addStudent);
+router.get('/classes/:classId/students', teacherController.getClassStudents);
 router.delete('/students/:studentId', teacherController.deleteStudent);
 
-// Payments - YANGI
-router.get('/payments', teacherController.getPayments);
+// Payments
 router.post('/payments/create-monthly', teacherController.createMonthlyPayments);
+router.get('/payments', teacherController.getMonthlyPayments);
 router.put('/payments/:paymentId/status', teacherController.updatePaymentStatus);
+
+// Expenses
+router.post('/expenses', teacherController.addExpense);
+router.get('/expenses', teacherController.getExpenses);
+router.delete('/expenses/:expenseId', teacherController.deleteExpense);
+
+// Dashboard
+router.get('/dashboard', teacherController.getDashboard);
 
 module.exports = router;

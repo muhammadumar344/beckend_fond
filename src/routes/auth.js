@@ -1,11 +1,10 @@
-// src/routes/auth.js
+// backend/src/routes/auth.js
 const express = require('express');
-const router = express.Router();
 const authController = require('../controllers/authController');
-const authMiddleware = require('../middleware/authMiddleware');
+const router = express.Router();
 
 router.post('/admin/login', authController.adminLogin);
 router.post('/teacher/login', authController.teacherLogin);
-router.get('/me', authMiddleware, authController.getMe);
+router.post('/admin/register-teacher', authController.adminRegisterTeacher);
 
 module.exports = router;

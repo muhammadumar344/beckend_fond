@@ -1,12 +1,12 @@
-// src/controllers/authController.js
+// backend/src/controllers/authController.js
 const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 const Teacher = require('../models/Teacher');
 
-const generateToken = (payload) => {
+const generateToken = (id, role) => {
   return jwt.sign(
-    payload,
-    process.env.JWT_SECRET_KEY || 'your-secret-key-123',
+    { id, role },
+    process.env.JWT_SECRET || 'secret123',
     { expiresIn: '30d' }
   );
 };
@@ -14,128 +14,67 @@ const generateToken = (payload) => {
 exports.adminLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
-
     if (!email || !password) {
       return res.status(400).json({ error: 'Email va parol majburiy' });
     }
 
-    const admin = await Admin.findOne({ email: email.toLowerCase() }).select('+password');
-    if (!admin) {
+    const admin = await Admin.findOne({ email }).select('+password');
+    if (!admin || !(await admin.comparePassword(password))) {
       return res.status(401).json({ error: 'Email yoki parol noto\'g\'ri' });
     }
 
-    const isValid = await admin.comparePassword(password);
-    if (!isValid) {
-      return res.status(401).json({ error: 'Email yoki parol noto\'g\'ri' });
-    }
-
-    const token = generateToken({
-      id: admin._id,
-      email: admin.email,
-      role: 'admin'
-    });
-
+    const token = generateToken(admin._id, 'admin');
     res.json({
-      message: 'Muvaffaqiyatli kirish',
       token,
-      user: {
-        id: admin._id,
-        name: admin.name,
-        email: admin.email,
-        role: 'admin'
-      }
+      user: { id: admin._id, name: admin.name, email: admin.email, role: 'admin' }
     });
   } catch (err) {
-    console.error('Admin login xatosi:', err);
-    res.status(500).json({ error: 'Server xatosi: ' + err.message });
+    res.status(500).json({ error: err.message });
   }
 };
 
 exports.teacherLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
-
     if (!email || !password) {
       return res.status(400).json({ error: 'Email va parol majburiy' });
     }
 
-    const teacher = await Teacher.findOne({ email: email.toLowerCase() }).select('+password');
-    if (!teacher) {
-      return res.status(401).json({ error: 'Email yoki parol noto\'g\'ri' });
-    }
-
-    const isValid = await teacher.comparePassword(password);
-    if (!isValid) {
+    const teacher = await Teacher.findOne({ email }).select('+password');
+    if (!teacher || !(await teacher.comparePassword(password))) {
       return res.status(401).json({ error: 'Email yoki parol noto\'g\'ri' });
     }
 
     if (!teacher.isActive) {
-      return res.status(403).json({ error: 'Akkauntingiz bloklangan' });
+      return res.status(403).json({ error: 'Akkaunt bloklangan' });
     }
 
-    const now = new Date();
-
-    if (teacher.subscriptionExpiryDate && teacher.subscriptionExpiryDate < now) {
-      return res.status(403).json({
-        error: 'subscription_expired',
-        message: 'Saytdan foydalanish vaqtingiz tugadi. Iltimos to\'lov qiling'
-      });
-    }
-
-    if (teacher.selfDeactivated) {
-      return res.status(403).json({
-        error: 'self_deactivated',
-        message: 'Sizning akkauntingiz o\'chirilgan'
-      });
-    }
-
-    const token = generateToken({
-      id: teacher._id,
-      email: teacher.email,
-      role: 'teacher'
-    });
-
+    const token = generateToken(teacher._id, 'teacher');
     res.json({
-      message: 'Muvaffaqiyatli kirish',
       token,
-      user: {
-        id: teacher._id,
-        name: teacher.name,
-        email: teacher.email,
-        role: 'teacher'
-      }
+      user: { id: teacher._id, name: teacher.name, email: teacher.email, role: 'teacher' }
     });
   } catch (err) {
-    console.error('Teacher login xatosi:', err);
-    res.status(500).json({ error: 'Server xatosi: ' + err.message });
+    res.status(500).json({ error: err.message });
   }
 };
 
-exports.getMe = async (req, res) => {
+exports.adminRegisterTeacher = async (req, res) => {
   try {
-    const { id, role } = req.user;
-    let user;
+    const { name, email, password, phone } = req.body;
 
-    if (role === 'admin') {
-      user = await Admin.findById(id).select('-password');
-    } else if (role === 'teacher') {
-      user = await Teacher.findById(id).select('-password');
+    if (await Teacher.findOne({ email })) {
+      return res.status(400).json({ error: 'Email allaqachon ro\'yxatdan o\'tgan' });
     }
 
-    if (!user) {
-      return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
-    }
+    const teacher = new Teacher({ name, email, password, phone, registeredDate: new Date() });
+    await teacher.save();
 
-    res.json({
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: role
-      }
+    res.status(201).json({
+      message: 'Teacher muvaffaqiyatli qo\'shildi',
+      teacher: { id: teacher._id, name, email, phone, plan: teacher.plan }
     });
   } catch (err) {
-    console.error('Get me xatosi:', err);
-    res.status(500).json({ error: 'Server xatosi: ' + err.message });
+    res.status(500).json({ error: err.message });
   }
 };

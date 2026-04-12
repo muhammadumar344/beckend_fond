@@ -1,19 +1,16 @@
-// src/routes/admin.js
+// backend/src/routes/admin.js
 const express = require('express');
-const router = express.Router();
 const adminController = require('../controllers/adminController');
-const authMiddleware = require('../middleware/authMiddleware');
-const adminMiddleware = require('../middleware/adminMiddleware');
+const auth = require('../middleware/auth');
+const adminRole = require('../middleware/roles');
 
-router.post('/setup', adminController.createAdmin);
+const router = express.Router();
 
-router.use(authMiddleware, adminMiddleware);
+router.use(auth, adminRole('admin'));
 
-router.post('/teachers', adminController.createTeacher);
-router.get('/teachers', adminController.getAllTeachers);
-router.delete('/teachers/:teacherId', adminController.deleteTeacher);
-router.put('/teachers/:teacherId/reset-password', adminController.resetTeacherPassword);
-router.post('/teachers/:teacherId/subscription', adminController.setTeacherSubscription);
 router.get('/dashboard', adminController.getDashboard);
+router.put('/teachers/:teacherId/password', adminController.updateTeacherPassword);
+router.put('/teachers/:teacherId/plan', adminController.updateTeacherPlan);
+router.put('/teachers/:teacherId/deactivate', adminController.deactivateTeacher);
 
 module.exports = router;
