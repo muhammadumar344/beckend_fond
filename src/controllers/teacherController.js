@@ -5,7 +5,7 @@ const MonthlyPayment = require('../models/MonthlyPayment')
 const Expense = require('../models/Expense')
 const Teacher = require('../models/Teacher')
 const XLSX = require('xlsx')
-const { Document, Packer, Table, TableRow, TableCell, Paragraph } = require('docx')
+const { Document, Packer, Table, TableRow, TableCell, Paragraph, TextRun, WidthType, AlignmentType, BorderStyle, HeadingLevel } = require('docx')
 const { PLAN_LIMITS, hasFeature, canOpenNewClass, canAddStudent } = require('../utils/planHelper')
 const smsService = require('../services/smsService')
 
@@ -13,46 +13,27 @@ const smsService = require('../services/smsService')
 //  CLASSES
 // ============================================================
 
-/**
- * @desc    Create new class
- * @route   POST /api/teacher/classes
- * @access  Private
- */
 exports.createClass = async (req, res) => {
   try {
     const { name, defaultAmount } = req.body
     const teacherId = req.user.id
 
-    // Validation
     if (!name || !defaultAmount) {
-      return res.status(400).json({
-        success: false,
-        error: 'Sinf nomi va default summa majburiy',
-      })
+      return res.status(400).json({ success: false, error: 'Sinf nomi va default summa majburiy' })
     }
-
     if (defaultAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Summa 0 dan katta bo\'lishi kerak',
-      })
+      return res.status(400).json({ success: false, error: "Summa 0 dan katta bo'lishi kerak" })
     }
 
-    // Teacher tekshirish
     const teacher = await Teacher.findById(teacherId)
     if (!teacher) {
-      return res.status(404).json({
-        success: false,
-        error: 'Teacher topilmadi',
-      })
+      return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
     }
 
-    // Plan limits tekshirish
     const currentClassCount = await Class.countDocuments({ teacher: teacherId })
     if (!canOpenNewClass(teacher, currentClassCount)) {
       const activePlan = teacher.isPlanActive() ? teacher.plan : 'free'
       const limit = PLAN_LIMITS[activePlan]
-
       return res.status(403).json({
         success: false,
         error: teacher.isPlanActive()
@@ -62,7 +43,6 @@ exports.createClass = async (req, res) => {
       })
     }
 
-    // Sinf yaratish
     const activePlan = teacher.isPlanActive() ? teacher.plan : 'free'
     const newClass = new Class({
       name: name.trim(),
@@ -70,68 +50,36 @@ exports.createClass = async (req, res) => {
       defaultAmount: Number(defaultAmount),
       plan: activePlan,
     })
-
     await newClass.save()
 
-    res.status(201).json({
-      success: true,
-      message: 'Sinf muvaffaqiyatli yaratildi',
-      class: newClass,
-    })
+    res.status(201).json({ success: true, message: 'Sinf muvaffaqiyatli yaratildi', class: newClass })
   } catch (err) {
     console.error('createClass error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
-/**
- * @desc    Get all classes for teacher
- * @route   GET /api/teacher/classes
- * @access  Private
- */
 exports.getMyClasses = async (req, res) => {
   try {
     const teacherId = req.user.id
-
     const classes = await Class.find({ teacher: teacherId }).sort({ createdAt: -1 })
 
-    // Stats qo'shish
     const classesWithStats = await Promise.all(
       classes.map(async (cls) => {
         const studentCount = await Student.countDocuments({ class: cls._id })
         const payments = await MonthlyPayment.find({ class: cls._id })
         const paidCount = payments.filter((p) => p.status === 'paid').length
-
-        return {
-          ...cls.toObject(),
-          studentCount,
-          paidCount,
-          unpaidCount: payments.length - paidCount,
-        }
+        return { ...cls.toObject(), studentCount, paidCount, unpaidCount: payments.length - paidCount }
       })
     )
 
-    res.json({
-      success: true,
-      classes: classesWithStats,
-    })
+    res.json({ success: true, classes: classesWithStats })
   } catch (err) {
     console.error('getMyClasses error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
-/**
- * @desc    Update class default amount
- * @route   PATCH /api/teacher/classes/:classId
- * @access  Private
- */
 exports.updateClassDefaultAmount = async (req, res) => {
   try {
     const { classId } = req.params
@@ -139,42 +87,24 @@ exports.updateClassDefaultAmount = async (req, res) => {
     const teacherId = req.user.id
 
     if (!defaultAmount || defaultAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Summa 0 dan katta bo\'lishi kerak',
-      })
+      return res.status(400).json({ success: false, error: "Summa 0 dan katta bo'lishi kerak" })
     }
 
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
     if (!cls) {
-      return res.status(404).json({
-        success: false,
-        error: 'Sinf topilmadi yoki ruxsat yo\'q',
-      })
+      return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
     }
 
     cls.defaultAmount = Number(defaultAmount)
     await cls.save()
 
-    res.json({
-      success: true,
-      message: 'Default summa yangilandi',
-      class: cls,
-    })
+    res.json({ success: true, message: 'Default summa yangilandi', class: cls })
   } catch (err) {
     console.error('updateClassDefaultAmount error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
-/**
- * @desc    Delete class and related data
- * @route   DELETE /api/teacher/classes/:classId
- * @access  Private
- */
 exports.deleteClass = async (req, res) => {
   try {
     const { classId } = req.params
@@ -182,28 +112,18 @@ exports.deleteClass = async (req, res) => {
 
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
     if (!cls) {
-      return res.status(404).json({
-        success: false,
-        error: 'Sinf topilmadi yoki ruxsat yo\'q',
-      })
+      return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
     }
 
-    // Barcha bog'liq ma'lumotlarni o'chirish
     await Student.deleteMany({ class: classId })
     await MonthlyPayment.deleteMany({ class: classId })
     await Expense.deleteMany({ class: classId })
     await Class.findByIdAndDelete(classId)
 
-    res.json({
-      success: true,
-      message: 'Sinf va barcha bog\'liq ma\'lumotlar o\'chirildi',
-    })
+    res.json({ success: true, message: "Sinf va barcha bog'liq ma'lumotlar o'chirildi" })
   } catch (err) {
     console.error('deleteClass error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
@@ -211,39 +131,24 @@ exports.deleteClass = async (req, res) => {
 //  STUDENTS
 // ============================================================
 
-/**
- * @desc    Add student to class
- * @route   POST /api/teacher/classes/:classId/students
- * @access  Private
- */
 exports.addStudent = async (req, res) => {
   try {
     const { classId } = req.params
     const { name, parentPhone } = req.body
     const teacherId = req.user.id
 
-    // Validation
     if (!name || !name.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: "O'quvchi ismi majburiy",
-      })
+      return res.status(400).json({ success: false, error: "O'quvchi ismi majburiy" })
     }
 
-    // Class tekshirish
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
     if (!cls) {
-      return res.status(404).json({
-        success: false,
-        error: 'Sinf topilmadi yoki ruxsat yo\'q',
-      })
+      return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
     }
 
-    // Plan limits
     const studentCount = await Student.countDocuments({ class: classId })
     if (!canAddStudent(cls.plan, studentCount)) {
       const limit = PLAN_LIMITS[cls.plan] || PLAN_LIMITS.free
-
       return res.status(403).json({
         success: false,
         error: `Bu sinfga maksimal ${limit.students} ta o'quvchi qo'shish mumkin`,
@@ -251,69 +156,39 @@ exports.addStudent = async (req, res) => {
       })
     }
 
-    // O'quvchi yaratish
     const student = new Student({
       name: name.trim(),
       class: classId,
       parentPhone: (parentPhone || '').trim(),
       rollNumber: studentCount + 1,
     })
-
     await student.save()
 
-    res.status(201).json({
-      success: true,
-      message: "O'quvchi qo'shildi",
-      student,
-    })
+    res.status(201).json({ success: true, message: "O'quvchi qo'shildi", student })
   } catch (err) {
     console.error('addStudent error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
-/**
- * @desc    Get students in class
- * @route   GET /api/teacher/classes/:classId/students
- * @access  Private
- */
 exports.getClassStudents = async (req, res) => {
   try {
     const { classId } = req.params
     const teacherId = req.user.id
 
-    // Class tekshirish
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
     if (!cls) {
-      return res.status(404).json({
-        success: false,
-        error: 'Sinf topilmadi yoki ruxsat yo\'q',
-      })
+      return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
     }
 
     const students = await Student.find({ class: classId }).sort({ rollNumber: 1 })
-
-    res.json({
-      success: true,
-      students,
-    })
+    res.json({ success: true, students })
   } catch (err) {
     console.error('getClassStudents error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
-/**
- * @desc    Delete student
- * @route   DELETE /api/teacher/students/:studentId
- * @access  Private
- */
 exports.deleteStudent = async (req, res) => {
   try {
     const { studentId } = req.params
@@ -321,35 +196,21 @@ exports.deleteStudent = async (req, res) => {
 
     const student = await Student.findById(studentId)
     if (!student) {
-      return res.status(404).json({
-        success: false,
-        error: "O'quvchi topilmadi",
-      })
+      return res.status(404).json({ success: false, error: "O'quvchi topilmadi" })
     }
 
-    // Authorization
     const cls = await Class.findOne({ _id: student.class, teacher: teacherId })
     if (!cls) {
-      return res.status(403).json({
-        success: false,
-        error: 'Ruxsat yo\'q',
-      })
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" })
     }
 
-    // Delete related payments
     await MonthlyPayment.deleteMany({ student: studentId })
     await Student.findByIdAndDelete(studentId)
 
-    res.json({
-      success: true,
-      message: "O'quvchi o'chirildi",
-    })
+    res.json({ success: true, message: "O'quvchi o'chirildi" })
   } catch (err) {
     console.error('deleteStudent error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
@@ -357,53 +218,31 @@ exports.deleteStudent = async (req, res) => {
 //  PAYMENTS
 // ============================================================
 
-/**
- * @desc    Create monthly payments for class
- * @route   POST /api/teacher/payments/create
- * @access  Private
- */
 exports.createMonthlyPayments = async (req, res) => {
   try {
     const { classId, month, year } = req.body
     const teacherId = req.user.id
 
-    // Validation
     if (!classId || !month || !year) {
-      return res.status(400).json({
-        success: false,
-        error: 'classId, month, year majburiy',
-      })
+      return res.status(400).json({ success: false, error: 'classId, month, year majburiy' })
     }
-
     if (month < 1 || month > 12 || year < 2020) {
-      return res.status(400).json({
-        success: false,
-        error: 'Oy va yil noto\'g\'ri',
-      })
+      return res.status(400).json({ success: false, error: "Oy va yil noto'g'ri" })
     }
 
-    // Class tekshirish
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
     if (!cls) {
-      return res.status(404).json({
-        success: false,
-        error: 'Sinf topilmadi yoki ruxsat yo\'q',
-      })
+      return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
     }
 
-    // Students tekshirish
     const students = await Student.find({ class: classId })
     if (students.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Bu sinfda o'quvchi yo'q",
-      })
+      return res.status(400).json({ success: false, error: "Bu sinfda o'quvchi yo'q" })
     }
 
     let createdCount = 0
     let alreadyExisted = 0
 
-    // Har bir student uchun to'lov yaratish
     for (const student of students) {
       try {
         const existing = await MonthlyPayment.findOne({
@@ -412,7 +251,6 @@ exports.createMonthlyPayments = async (req, res) => {
           month: Number(month),
           year: Number(year),
         })
-
         if (!existing) {
           await MonthlyPayment.create({
             student: student._id,
@@ -435,48 +273,31 @@ exports.createMonthlyPayments = async (req, res) => {
     res.json({
       success: true,
       message: `${createdCount} ta to'lov yaratildi`,
-      summary: {
-        created: createdCount,
-        alreadyExisted,
-        total: students.length,
-        expectedTotal: students.length * cls.defaultAmount,
-      },
+      summary: { created: createdCount, alreadyExisted, total: students.length, expectedTotal: students.length * cls.defaultAmount },
     })
   } catch (err) {
     console.error('createMonthlyPayments error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
-/**
- * @desc    Get all payments
- * @route   GET /api/teacher/payments
- * @access  Private
- */
 exports.getMonthlyPayments = async (req, res) => {
   try {
     const teacherId = req.user.id
     const { month, year } = req.query
 
-    // Classes olish
     const classes = await Class.find({ teacher: teacherId })
     const classIds = classes.map((c) => c._id)
 
-    // Query tuzish
     const query = { class: { $in: classIds } }
     if (month) query.month = Number(month)
     if (year) query.year = Number(year)
 
-    // Payments olish
     const payments = await MonthlyPayment.find(query)
       .populate('student', 'name parentPhone rollNumber')
       .populate('class', 'name defaultAmount')
       .sort({ class: 1, createdAt: -1 })
 
-    // Class stats
     const classStats = {}
     for (const cls of classes) {
       const studentCount = await Student.countDocuments({ class: cls._id })
@@ -488,13 +309,9 @@ exports.getMonthlyPayments = async (req, res) => {
       }
     }
 
-    // Summary
     const paidPayments = payments.filter((p) => p.status === 'paid')
     const collectedTotal = paidPayments.reduce((sum, p) => sum + p.amount, 0)
-    const expectedTotal = Object.values(classStats).reduce(
-      (sum, c) => sum + c.expectedTotal,
-      0
-    )
+    const expectedTotal = Object.values(classStats).reduce((sum, c) => sum + c.expectedTotal, 0)
 
     res.json({
       success: true,
@@ -510,59 +327,37 @@ exports.getMonthlyPayments = async (req, res) => {
     })
   } catch (err) {
     console.error('getMonthlyPayments error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
-/**
- * @desc    Get payments for specific class
- * @route   GET /api/teacher/classes/:classId/payments
- * @access  Private
- */
 exports.getClassPayments = async (req, res) => {
   try {
     const { classId } = req.params
     const { month, year } = req.query
     const teacherId = req.user.id
 
-    // Class tekshirish
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
     if (!cls) {
-      return res.status(404).json({
-        success: false,
-        error: 'Sinf topilmadi',
-      })
+      return res.status(404).json({ success: false, error: 'Sinf topilmadi' })
     }
 
-    // Students
     const students = await Student.find({ class: classId })
-
-    // Query
     const query = { class: classId }
     if (month) query.month = Number(month)
     if (year) query.year = Number(year)
 
-    // Payments
     const payments = await MonthlyPayment.find(query)
       .populate('student', 'name parentPhone rollNumber')
       .sort({ 'student.rollNumber': 1 })
 
-    // Summary
     const paidPayments = payments.filter((p) => p.status === 'paid')
     const collectedTotal = paidPayments.reduce((sum, p) => sum + p.amount, 0)
     const expectedTotal = students.length * cls.defaultAmount
 
     res.json({
       success: true,
-      class: {
-        id: cls._id,
-        name: cls.name,
-        defaultAmount: cls.defaultAmount,
-        studentCount: students.length,
-      },
+      class: { id: cls._id, name: cls.name, defaultAmount: cls.defaultAmount, studentCount: students.length },
       payments,
       summary: {
         studentCount: students.length,
@@ -575,67 +370,38 @@ exports.getClassPayments = async (req, res) => {
     })
   } catch (err) {
     console.error('getClassPayments error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
-/**
- * @desc    Update payment status
- * @route   PATCH /api/teacher/payments/:paymentId
- * @access  Private
- */
 exports.updatePaymentStatus = async (req, res) => {
   try {
     const { paymentId } = req.params
     const { status } = req.body
     const teacherId = req.user.id
 
-    // Status validation
     if (!['paid', 'not_paid'].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        error: "Status 'paid' yoki 'not_paid' bo'lishi kerak",
-      })
+      return res.status(400).json({ success: false, error: "Status 'paid' yoki 'not_paid' bo'lishi kerak" })
     }
 
-    // Payment olish
     const payment = await MonthlyPayment.findById(paymentId).populate('class')
     if (!payment) {
-      return res.status(404).json({
-        success: false,
-        error: "To'lov topilmadi",
-      })
+      return res.status(404).json({ success: false, error: "To'lov topilmadi" })
     }
 
-    // Authorization
     if (payment.class.teacher.toString() !== teacherId) {
-      return res.status(403).json({
-        success: false,
-        error: 'Ruxsat yo\'q',
-      })
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" })
     }
 
-    // Update
     payment.status = status
     payment.paidDate = status === 'paid' ? new Date() : null
     await payment.save()
-
     await payment.populate('student', 'name parentPhone rollNumber')
 
-    res.json({
-      success: true,
-      message: 'Status yangilandi',
-      payment,
-    })
+    res.json({ success: true, message: 'Status yangilandi', payment })
   } catch (err) {
     console.error('updatePaymentStatus error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
@@ -643,43 +409,27 @@ exports.updatePaymentStatus = async (req, res) => {
 //  MONTHLY REMINDER (Pro/Premium)
 // ============================================================
 
-/**
- * @desc    Get monthly reminder data
- * @route   GET /api/teacher/reminders/monthly
- * @access  Private
- */
 exports.getMonthlyReminder = async (req, res) => {
   try {
     const teacherId = req.user.id
     const { month, year } = req.query
 
-    // Teacher tekshirish
     const teacher = await Teacher.findById(teacherId)
     if (!teacher) {
-      return res.status(404).json({
-        success: false,
-        error: 'Teacher topilmadi',
-      })
+      return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
     }
 
-    // Feature tekshirish
     if (!hasFeature(teacher, 'monthly_reminder')) {
-      return res.status(403).json({
-        success: false,
-        error: 'Bu funksiya Pro va Premium tarifda',
-        requiresUpgrade: true,
-      })
+      return res.status(403).json({ success: false, error: 'Bu funksiya Pro va Premium tarifda', requiresUpgrade: true })
     }
 
     const now = new Date()
     const m = Number(month) || now.getMonth() + 1
     const y = Number(year) || now.getFullYear()
 
-    // Classes
     const classes = await Class.find({ teacher: teacherId })
     const classIds = classes.map((c) => c._id)
 
-    // Unpaid payments
     const unpaidPayments = await MonthlyPayment.find({
       class: { $in: classIds },
       month: m,
@@ -689,18 +439,11 @@ exports.getMonthlyReminder = async (req, res) => {
       .populate('student', 'name parentPhone rollNumber')
       .populate('class', 'name defaultAmount')
 
-    // Grouping
     const grouped = {}
     for (const p of unpaidPayments) {
       const cid = p.class._id.toString()
       if (!grouped[cid]) {
-        grouped[cid] = {
-          classId: cid,
-          className: p.class.name,
-          defaultAmount: p.class.defaultAmount,
-          unpaidStudents: [],
-          totalUnpaid: 0,
-        }
+        grouped[cid] = { classId: cid, className: p.class.name, defaultAmount: p.class.defaultAmount, unpaidStudents: [], totalUnpaid: 0 }
       }
       grouped[cid].unpaidStudents.push({
         rollNumber: p.student.rollNumber,
@@ -711,23 +454,13 @@ exports.getMonthlyReminder = async (req, res) => {
       grouped[cid].totalUnpaid += p.amount
     }
 
-    // Extra data agar export feature bo'lsa
     let extraData = {}
     if (hasFeature(teacher, 'export')) {
-      const allPaid = await MonthlyPayment.find({
-        class: { $in: classIds },
-        status: 'paid',
-      })
+      const allPaid = await MonthlyPayment.find({ class: { $in: classIds }, status: 'paid' })
       const allExpenses = await Expense.find({ teacher: teacherId })
-
       const totalIncome = allPaid.reduce((s, p) => s + p.amount, 0)
       const totalExpenses = allExpenses.reduce((s, e) => s + e.amount, 0)
-
-      extraData.overallBalance = {
-        totalIncome,
-        totalExpenses,
-        balance: totalIncome - totalExpenses,
-      }
+      extraData.overallBalance = { totalIncome, totalExpenses, balance: totalIncome - totalExpenses }
     }
 
     res.json({
@@ -740,10 +473,7 @@ exports.getMonthlyReminder = async (req, res) => {
     })
   } catch (err) {
     console.error('getMonthlyReminder error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
@@ -751,44 +481,25 @@ exports.getMonthlyReminder = async (req, res) => {
 //  SMS REMINDER (Premium)
 // ============================================================
 
-/**
- * @desc    Send SMS reminders to parents
- * @route   POST /api/teacher/sms-reminder/send
- * @access  Private
- */
 exports.sendSmsReminders = async (req, res) => {
   try {
     const { classId, month, year } = req.body
     const teacherId = req.user.id
 
-    // Teacher tekshirish
     const teacher = await Teacher.findById(teacherId)
     if (!teacher) {
-      return res.status(404).json({
-        success: false,
-        error: 'Teacher topilmadi',
-      })
+      return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
     }
 
-    // Feature tekshirish
     if (!hasFeature(teacher, 'sms_reminder')) {
-      return res.status(403).json({
-        success: false,
-        error: 'SMS reminder funksiyasi faqat Premium uchun',
-        requiresUpgrade: true,
-      })
+      return res.status(403).json({ success: false, error: 'SMS reminder funksiyasi faqat Premium uchun', requiresUpgrade: true })
     }
 
-    // Class tekshirish
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
     if (!cls) {
-      return res.status(404).json({
-        success: false,
-        error: 'Sinf topilmadi',
-      })
+      return res.status(404).json({ success: false, error: 'Sinf topilmadi' })
     }
 
-    // Unpaid payments
     const payments = await MonthlyPayment.find({
       class: classId,
       month: Number(month),
@@ -797,18 +508,9 @@ exports.sendSmsReminders = async (req, res) => {
     }).populate('student', 'name parentPhone rollNumber')
 
     if (payments.length === 0) {
-      return res.json({
-        success: true,
-        message: 'SMS yuborilmaydigan o\'quvchi yo\'q',
-        summary: {
-          total: 0,
-          sent: 0,
-          failed: 0,
-        },
-      })
+      return res.json({ success: true, message: "SMS yuborilmaydigan o'quvchi yo'q", summary: { total: 0, sent: 0, failed: 0 } })
     }
 
-    // Prepare data
     const studentsToNotify = payments.map((p) => ({
       _id: p.student._id,
       name: p.student.name,
@@ -816,94 +518,73 @@ exports.sendSmsReminders = async (req, res) => {
       amount: p.amount,
     }))
 
-    // Send SMS
-    const results = await smsService.sendBulkReminders(
-      studentsToNotify,
-      cls.name,
-      month,
-      year
-    )
-
+    const results = await smsService.sendBulkReminders(studentsToNotify, cls.name, month, year)
     const successCount = results.filter((r) => r.status === 'sent').length
     const failedCount = results.filter((r) => r.status === 'failed').length
 
     res.json({
       success: true,
       message: 'SMS reminder yuborildi',
-      summary: {
-        total: results.length,
-        sent: successCount,
-        failed: failedCount,
-      },
+      summary: { total: results.length, sent: successCount, failed: failedCount },
       details: results,
     })
   } catch (err) {
     console.error('sendSmsReminders error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
 // ============================================================
 //  EXPORT (Premium)
+//  ✅ TO'G'IRLANDI: arraybuffer, to'g'ri headers, korrekt Excel/Word
 // ============================================================
 
-/**
- * @desc    Export payments data
- * @route   GET /api/teacher/classes/:classId/export
- * @access  Private
- */
 exports.exportPayments = async (req, res) => {
   try {
     const { classId } = req.params
     const { month, year, format = 'json' } = req.query
     const teacherId = req.user.id
 
-    // Teacher tekshirish
+    // Teacher va feature tekshirish
     const teacher = await Teacher.findById(teacherId)
+    if (!teacher) {
+      return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
+    }
     if (!hasFeature(teacher, 'export')) {
-      return res.status(403).json({
-        success: false,
-        error: 'Export funksiyasi faqat Premium uchun',
-        requiresUpgrade: true,
-      })
+      return res.status(403).json({ success: false, error: 'Export funksiyasi faqat Premium uchun', requiresUpgrade: true })
     }
 
     // Class tekshirish
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
     if (!cls) {
-      return res.status(404).json({
-        success: false,
-        error: 'Sinf topilmadi',
-      })
+      return res.status(404).json({ success: false, error: 'Sinf topilmadi' })
     }
 
     // Students
     const students = await Student.find({ class: classId }).sort({ rollNumber: 1 })
+    if (students.length === 0) {
+      return res.status(400).json({ success: false, error: "Bu sinfda o'quvchi yo'q" })
+    }
 
     // Payments
     const query = { class: classId }
     if (month) query.month = Number(month)
     if (year) query.year = Number(year)
 
-    const payments = await MonthlyPayment.find(query).populate(
-      'student',
-      'name parentPhone rollNumber'
-    )
+    const payments = await MonthlyPayment.find(query).populate('student', 'name parentPhone rollNumber')
+
+    // Oy nomi
+    const monthNames = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr']
+    const monthName = month ? (monthNames[Number(month) - 1] || '') : ''
 
     // Export data
     const exportData = students.map((student) => {
-      const payment = payments.find(
-        (p) => p.student._id.toString() === student._id.toString()
-      )
-
+      const payment = payments.find((p) => p.student._id.toString() === student._id.toString())
       return {
         '№': student.rollNumber,
         "O'quvchi ismi": student.name,
         'Ota-ona telefoni': student.parentPhone || '—',
-        'Summa (so\'m)': payment ? payment.amount : cls.defaultAmount,
+        "Summa (so'm)": payment ? payment.amount : cls.defaultAmount,
         Holati: payment?.status === 'paid' ? "To'lagan" : "To'lamagan",
         "To'lagan sanasi": payment?.paidDate
           ? new Date(payment.paidDate).toLocaleDateString('uz-UZ')
@@ -911,10 +592,8 @@ exports.exportPayments = async (req, res) => {
       }
     })
 
-    const paidCount = exportData.filter((r) => r.Holati === "To'lagan").length
-    const collected = payments
-      .filter((p) => p.status === 'paid')
-      .reduce((s, p) => s + p.amount, 0)
+    const paidCount = exportData.filter((r) => r['Holati'] === "To'lagan").length
+    const collected = payments.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0)
     const expectedTotal = students.length * cls.defaultAmount
 
     const meta = {
@@ -922,224 +601,227 @@ exports.exportPayments = async (req, res) => {
       expectedTotal,
       collectedTotal: collected,
       remaining: expectedTotal - collected,
-      month: Number(month),
-      year: Number(year),
+      month: Number(month) || 0,
+      year: Number(year) || new Date().getFullYear(),
+      monthName,
     }
 
-    // Format
-    if (format === 'excel') {
-      return exportToExcel(res, cls, exportData, meta)
-    } else if (format === 'word') {
-      return exportToWord(res, cls, exportData, meta)
-    } else {
-      return res.json({
-        success: true,
-        data: exportData,
-        meta: {
-          className: cls.name,
-          ...meta,
-          studentCount: students.length,
-          unpaidCount: students.length - paidCount,
-        },
-      })
-    }
+    if (format === 'excel') return exportToExcel(res, cls, exportData, meta)
+    if (format === 'word')  return exportToWord(res, cls, exportData, meta)
+
+    // JSON format
+    return res.json({
+      success: true,
+      data: exportData,
+      meta: { className: cls.name, ...meta, studentCount: students.length, unpaidCount: students.length - paidCount },
+    })
   } catch (err) {
     console.error('exportPayments error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
-/**
- * Export to Excel
- */
+// ============================================================
+//  ✅ EXCEL EXPORT — TO'G'IRLANDI
+// ============================================================
+
 const exportToExcel = (res, cls, data, meta) => {
   try {
-    const workbook = XLSX.utils.book_new()
+    const wb = XLSX.utils.book_new()
 
-    // Data sheet
-    const dataSheet = XLSX.utils.json_to_sheet(data)
-    dataSheet['!cols'] = [
+    // ── 1. To'lovlar jadvali ──────────────────────────────────
+    // Header qatori
+    const headerRow = [
+      '№',
+      "O'quvchi ismi",
+      'Ota-ona telefoni',
+      "Summa (so'm)",
+      'Holati',
+      "To'lagan sanasi",
+    ]
+
+    // Data qatorlari
+    const dataRows = data.map((d) => [
+      d['№'],
+      d["O'quvchi ismi"],
+      d['Ota-ona telefoni'],
+      d["Summa (so'm)"],
+      d['Holati'],
+      d["To'lagan sanasi"],
+    ])
+
+    const wsData = [headerRow, ...dataRows]
+    const ws = XLSX.utils.aoa_to_sheet(wsData)
+
+    // Ustun kengliklari
+    ws['!cols'] = [
       { wch: 5 },   // №
-      { wch: 20 },  // O'quvchi ismi
-      { wch: 18 },  // Ota-ona telefoni
-      { wch: 14 },  // Summa
-      { wch: 12 },  // Holati
-      { wch: 16 },  // To'lagan sanasi
-    ]
-    XLSX.utils.book_append_sheet(workbook, dataSheet, "To'lovlar")
-
-    // Summary sheet
-    const summaryData = [
-      ['Sinf nomi:', cls.name],
-      ['Oy:', meta.month],
-      ['Yil:', meta.year],
-      [''],
-      ['Jami o\'quvchilar:', data.length],
-      ['To\'lagan:', meta.paidCount],
-      ["To'lamagan:", data.length - meta.paidCount],
-      [''],
-      ['Jami kutilayotgan (so\'m):', meta.expectedTotal],
-      ["Yig'ilgan (so'm):", meta.collectedTotal],
-      ['Qolgan (so\'m):', meta.remaining],
+      { wch: 25 },  // Ism
+      { wch: 18 },  // Telefon
+      { wch: 15 },  // Summa
+      { wch: 14 },  // Holati
+      { wch: 18 },  // Sana
     ]
 
-    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData)
-    summarySheet['!cols'] = [{ wch: 25 }, { wch: 18 }]
-    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Hisobot')
+    XLSX.utils.book_append_sheet(wb, ws, "To'lovlar")
 
-    const fileName = `${cls.name}_${meta.month}_${meta.year}.xlsx`
-    const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' })
+    // ── 2. Hisobot jadvali ───────────────────────────────────
+    const summaryRows = [
+      [`${cls.name} - ${meta.monthName} ${meta.year}`],
+      [],
+      ['Ko\'rsatkich', 'Qiymat'],
+      ["Jami o'quvchilar", data.length],
+      ["To'lagan", meta.paidCount],
+      ["To'lamagan", data.length - meta.paidCount],
+      [],
+      ["Kutilayotgan summa (so'm)", meta.expectedTotal],
+      ["Yig'ilgan summa (so'm)", meta.collectedTotal],
+      ["Qolgan summa (so'm)", meta.remaining],
+    ]
 
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(fileName)}"`
-    )
-    res.setHeader(
-      'Content-Type',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-    res.send(buffer)
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows)
+    wsSummary['!cols'] = [{ wch: 28 }, { wch: 18 }]
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Hisobot')
+
+    // ✅ Buffer — 'buffer' type ishlatiladi (Node.js Buffer)
+    const buf = XLSX.write(wb, {
+      bookType: 'xlsx',
+      type: 'buffer',        // ← 'buffer' ishlatamiz, 'binary' emas
+      compression: true,     // ← fayl hajmini kamaytiradi
+    })
+
+    const fileName = encodeURIComponent(`${cls.name}_${meta.month}_${meta.year}.xlsx`)
+
+    // ✅ To'g'ri Content-Type va headers
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"; filename*=UTF-8''${fileName}`)
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Length', buf.length)
+    res.setHeader('Cache-Control', 'no-cache')
+
+    return res.end(buf)  // ← res.send() o'rniga res.end() — binary uchun xavfsizroq
   } catch (err) {
     console.error('exportToExcel error:', err)
-    res.status(500).json({
-      success: false,
-      error: 'Excel export xatosi',
-    })
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: 'Excel export xatosi: ' + err.message })
+    }
   }
 }
 
-/**
- * Export to Word
- */
-const exportToWord = (res, cls, data, meta) => {
-  try {
-    const tableRows = [
-      new TableRow({
-        children: [
-          new TableCell({ children: [new Paragraph({ text: '№', bold: true })] }),
-          new TableCell({
-            children: [new Paragraph({ text: "O'quvchi ismi", bold: true })],
-          }),
-          new TableCell({
-            children: [new Paragraph({ text: 'Ota-ona telefoni', bold: true })],
-          }),
-          new TableCell({
-            children: [new Paragraph({ text: 'Summa (so\'m)', bold: true })],
-          }),
-          new TableCell({ children: [new Paragraph({ text: 'Holati', bold: true })] }),
-          new TableCell({
-            children: [new Paragraph({ text: "To'lagan sanasi", bold: true })],
-          }),
-        ],
-      }),
-    ]
+// ============================================================
+//  ✅ WORD EXPORT — TO'G'IRLANDI
+// ============================================================
 
-    data.forEach((row) => {
-      tableRows.push(
-        new TableRow({
-          children: [
-            new TableCell({
-              children: [new Paragraph(row['№']?.toString() || '')],
-            }),
-            new TableCell({
-              children: [new Paragraph(row["O'quvchi ismi"] || '')],
-            }),
-            new TableCell({
-              children: [new Paragraph(row['Ota-ona telefoni'] || '')],
-            }),
-            new TableCell({
-              children: [new Paragraph(row['Summa (so\'m)']?.toString() || '')],
-            }),
-            new TableCell({ children: [new Paragraph(row.Holati || '')] }),
-            new TableCell({
-              children: [new Paragraph(row["To'lagan sanasi"] || '')],
-            }),
-          ],
-        })
-      )
+const exportToWord = async (res, cls, data, meta) => {
+  try {
+    const monthNames = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr']
+
+    // Jadval header
+    const tableHeaderCells = [
+      '№',
+      "O'quvchi ismi",
+      'Ota-ona telefoni',
+      "Summa (so'm)",
+      'Holati',
+      "To'lagan sanasi",
+    ].map((text) =>
+      new TableCell({
+        children: [new Paragraph({
+          children: [new TextRun({ text, bold: true, size: 20 })],
+          alignment: AlignmentType.CENTER,
+        })],
+        shading: { fill: '2B6CB0' },
+      })
+    )
+
+    // Jadval data qatorlari
+    const tableDataRows = data.map((row, idx) => {
+      const isPaid = row['Holati'] === "To'lagan"
+      return new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: String(row['№'] || idx + 1), size: 18 })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: row["O'quvchi ismi"] || '', size: 18 })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: row['Ota-ona telefoni'] || '—', size: 18 })] })] }),
+          new TableCell({ children: [new Paragraph({
+            alignment: AlignmentType.RIGHT,
+            children: [new TextRun({ text: String(row["Summa (so'm)"] || 0), size: 18 })],
+          })] }),
+          new TableCell({
+            children: [new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [new TextRun({ text: row['Holati'] || '', size: 18, color: isPaid ? '276749' : 'C05621', bold: true })],
+            })],
+            shading: isPaid ? { fill: 'F0FFF4' } : { fill: 'FFFAF0' },
+          }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: row["To'lagan sanasi"] || '—', size: 18 })] })] }),
+        ],
+      })
     })
 
     const doc = new Document({
-      sections: [
-        {
-          children: [
-            new Paragraph({
-              text: `${cls.name} - To'lovlar Hisobati`,
-              bold: true,
-              size: 28,
-            }),
-            new Paragraph({ text: '' }),
-            new Paragraph({
-              text: `Oy: ${meta.month}, Yil: ${meta.year}`,
-              size: 20,
-            }),
-            new Paragraph({
-              text: `Jami o'quvchilar: ${data.length}`,
-              size: 20,
-            }),
-            new Paragraph({
-              text: `To'lagan: ${meta.paidCount}`,
-              size: 20,
-            }),
-            new Paragraph({
-              text: `To'lamagan: ${data.length - meta.paidCount}`,
-              size: 20,
-            }),
-            new Paragraph({ text: '' }),
-            new Paragraph({
-              text: `Jami kutilayotgan: ${meta.expectedTotal} so'm`,
-              size: 20,
-              bold: true,
-            }),
-            new Paragraph({
-              text: `Yig'ilgan: ${meta.collectedTotal} so'm`,
-              size: 20,
-              bold: true,
-            }),
-            new Paragraph({
-              text: `Qolgan: ${meta.remaining} so'm`,
-              size: 20,
-              bold: true,
-            }),
-            new Paragraph({ text: '' }),
-            new Table({
-              rows: tableRows,
-              width: { size: 100, type: 'auto' },
-            }),
-          ],
-        },
-      ],
+      sections: [{
+        properties: {},
+        children: [
+          // Sarlavha
+          new Paragraph({
+            children: [new TextRun({ text: `${cls.name} — To'lovlar Hisoboti`, bold: true, size: 32, color: '1A365D' })],
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 200 },
+          }),
+
+          // Meta ma'lumot
+          new Paragraph({
+            children: [new TextRun({ text: `${meta.monthName} ${meta.year}`, size: 24, color: '4A5568' })],
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 400 },
+          }),
+
+          // Statistika
+          new Paragraph({ children: [new TextRun({ text: '📊 Umumiy statistika', bold: true, size: 24 })], spacing: { after: 200 } }),
+          new Paragraph({ children: [new TextRun({ text: `Jami o'quvchilar: ${data.length}`, size: 20 })] }),
+          new Paragraph({ children: [new TextRun({ text: `To'lagan: ${meta.paidCount}`, size: 20, color: '276749' })] }),
+          new Paragraph({ children: [new TextRun({ text: `To'lamagan: ${data.length - meta.paidCount}`, size: 20, color: 'C05621' })] }),
+          new Paragraph({ children: [new TextRun({ text: `Kutilayotgan: ${meta.expectedTotal.toLocaleString('uz-UZ')} so'm`, size: 20 })] }),
+          new Paragraph({ children: [new TextRun({ text: `Yig'ilgan: ${meta.collectedTotal.toLocaleString('uz-UZ')} so'm`, size: 20, bold: true, color: '276749' })] }),
+          new Paragraph({ children: [new TextRun({ text: `Qolgan: ${meta.remaining.toLocaleString('uz-UZ')} so'm`, size: 20, bold: true, color: 'C05621' })], spacing: { after: 400 } }),
+
+          // Jadval sarlavhasi
+          new Paragraph({ children: [new TextRun({ text: "📋 O'quvchilar ro'yxati", bold: true, size: 24 })], spacing: { after: 200 } }),
+
+          // Jadval
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+              new TableRow({ children: tableHeaderCells, tableHeader: true }),
+              ...tableDataRows,
+            ],
+          }),
+
+          // Footer
+          new Paragraph({
+            children: [new TextRun({ text: `Chiqarilgan sana: ${new Date().toLocaleDateString('uz-UZ')}`, size: 16, color: '718096', italics: true })],
+            alignment: AlignmentType.RIGHT,
+            spacing: { before: 400 },
+          }),
+        ],
+      }],
     })
 
-    Packer.toBuffer(doc)
-      .then((buffer) => {
-        const fileName = `${cls.name}_${meta.month}_${meta.year}.docx`
-        res.setHeader(
-          'Content-Disposition',
-          `attachment; filename="${encodeURIComponent(fileName)}"`
-        )
-        res.setHeader(
-          'Content-Type',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        )
-        res.send(buffer)
-      })
-      .catch((err) => {
-        console.error('Word Packer error:', err)
-        res.status(500).json({
-          success: false,
-          error: 'Word export xatosi',
-        })
-      })
+    // ✅ Buffer yaratish
+    const buf = await Packer.toBuffer(doc)
+
+    const fileName = encodeURIComponent(`${cls.name}_${meta.month}_${meta.year}.docx`)
+
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"; filename*=UTF-8''${fileName}`)
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    res.setHeader('Content-Length', buf.length)
+    res.setHeader('Cache-Control', 'no-cache')
+
+    return res.end(buf)
   } catch (err) {
     console.error('exportToWord error:', err)
-    res.status(500).json({
-      success: false,
-      error: 'Word export xatosi',
-    })
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: 'Word export xatosi: ' + err.message })
+    }
   }
 }
 
@@ -1147,41 +829,23 @@ const exportToWord = (res, cls, data, meta) => {
 //  EXPENSES
 // ============================================================
 
-/**
- * @desc    Add expense
- * @route   POST /api/teacher/expenses
- * @access  Private
- */
 exports.addExpense = async (req, res) => {
   try {
     const { classId, reason, amount, month, year, description } = req.body
     const teacherId = req.user.id
 
-    // Validation
     if (!classId || !reason || !amount || !month || !year) {
-      return res.status(400).json({
-        success: false,
-        error: 'Barcha majburiy maydonlarni to\'ldiring',
-      })
+      return res.status(400).json({ success: false, error: "Barcha majburiy maydonlarni to'ldiring" })
     }
-
     if (amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Summa 0 dan katta bo\'lishi kerak',
-      })
+      return res.status(400).json({ success: false, error: "Summa 0 dan katta bo'lishi kerak" })
     }
 
-    // Class tekshirish
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
     if (!cls) {
-      return res.status(404).json({
-        success: false,
-        error: 'Sinf topilmadi',
-      })
+      return res.status(404).json({ success: false, error: 'Sinf topilmadi' })
     }
 
-    // Xarajat yaratish
     const expense = new Expense({
       class: classId,
       teacher: teacherId,
@@ -1191,28 +855,15 @@ exports.addExpense = async (req, res) => {
       year: Number(year),
       description: (description || '').trim(),
     })
-
     await expense.save()
 
-    res.status(201).json({
-      success: true,
-      message: 'Xarajat qo\'shildi',
-      expense,
-    })
+    res.status(201).json({ success: true, message: "Xarajat qo'shildi", expense })
   } catch (err) {
     console.error('addExpense error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
-/**
- * @desc    Get expenses
- * @route   GET /api/teacher/expenses
- * @access  Private
- */
 exports.getExpenses = async (req, res) => {
   try {
     const teacherId = req.user.id
@@ -1222,31 +873,16 @@ exports.getExpenses = async (req, res) => {
     if (month) query.month = Number(month)
     if (year) query.year = Number(year)
 
-    const expenses = await Expense.find(query)
-      .populate('class', 'name')
-      .sort({ createdAt: -1 })
-
+    const expenses = await Expense.find(query).populate('class', 'name').sort({ createdAt: -1 })
     const total = expenses.reduce((sum, e) => sum + e.amount, 0)
 
-    res.json({
-      success: true,
-      expenses,
-      total,
-    })
+    res.json({ success: true, expenses, total })
   } catch (err) {
     console.error('getExpenses error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
-/**
- * @desc    Delete expense
- * @route   DELETE /api/teacher/expenses/:expenseId
- * @access  Private
- */
 exports.deleteExpense = async (req, res) => {
   try {
     const { expenseId } = req.params
@@ -1254,24 +890,14 @@ exports.deleteExpense = async (req, res) => {
 
     const expense = await Expense.findOne({ _id: expenseId, teacher: teacherId })
     if (!expense) {
-      return res.status(404).json({
-        success: false,
-        error: 'Xarajat topilmadi yoki ruxsat yo\'q',
-      })
+      return res.status(404).json({ success: false, error: "Xarajat topilmadi yoki ruxsat yo'q" })
     }
 
     await Expense.findByIdAndDelete(expenseId)
-
-    res.json({
-      success: true,
-      message: 'Xarajat o\'chirildi',
-    })
+    res.json({ success: true, message: "Xarajat o'chirildi" })
   } catch (err) {
     console.error('deleteExpense error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
@@ -1279,11 +905,6 @@ exports.deleteExpense = async (req, res) => {
 //  DASHBOARD
 // ============================================================
 
-/**
- * @desc    Get teacher dashboard
- * @route   GET /api/teacher/dashboard
- * @access  Private
- */
 exports.getDashboard = async (req, res) => {
   try {
     const teacherId = req.user.id
@@ -1291,24 +912,17 @@ exports.getDashboard = async (req, res) => {
     const currentMonth = now.getMonth() + 1
     const currentYear = now.getFullYear()
 
-    // Teacher
     const teacher = await Teacher.findById(teacherId)
     if (!teacher) {
-      return res.status(404).json({
-        success: false,
-        error: 'Teacher topilmadi',
-      })
+      return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
     }
 
-    // Classes
     const classes = await Class.find({ teacher: teacherId })
     const classIds = classes.map((c) => c._id)
 
-    // Students
     const allStudents = await Student.find({ class: { $in: classIds } })
     const totalStudents = allStudents.length
 
-    // Payments
     const monthlyPayments = await MonthlyPayment.find({
       class: { $in: classIds },
       month: currentMonth,
@@ -1318,32 +932,19 @@ exports.getDashboard = async (req, res) => {
     const paidPayments = monthlyPayments.filter((p) => p.status === 'paid')
     const collectedThisMonth = paidPayments.reduce((sum, p) => sum + p.amount, 0)
 
-    // Expected total
     let expectedThisMonth = 0
     for (const cls of classes) {
-      const classStudents = allStudents.filter(
-        (s) => s.class.toString() === cls._id.toString()
-      )
+      const classStudents = allStudents.filter((s) => s.class.toString() === cls._id.toString())
       expectedThisMonth += classStudents.length * cls.defaultAmount
     }
 
-    // Expenses
-    const monthlyExpenses = await Expense.find({
-      teacher: teacherId,
-      month: currentMonth,
-      year: currentYear,
-    })
+    const monthlyExpenses = await Expense.find({ teacher: teacherId, month: currentMonth, year: currentYear })
     const expensesTotal = monthlyExpenses.reduce((sum, e) => sum + e.amount, 0)
 
-    // Class details
     const classDetails = await Promise.all(
       classes.map(async (cls) => {
-        const classStudents = allStudents.filter(
-          (s) => s.class.toString() === cls._id.toString()
-        )
-        const classPayments = monthlyPayments.filter(
-          (p) => p.class.toString() === cls._id.toString()
-        )
+        const classStudents = allStudents.filter((s) => s.class.toString() === cls._id.toString())
+        const classPayments = monthlyPayments.filter((p) => p.class.toString() === cls._id.toString())
         const classPaid = classPayments.filter((p) => p.status === 'paid')
         const classExpensesTotal = monthlyExpenses
           .filter((e) => e.class?.toString() === cls._id.toString())
@@ -1363,7 +964,6 @@ exports.getDashboard = async (req, res) => {
       })
     )
 
-    // Response
     res.json({
       success: true,
       teacher: {
@@ -1399,10 +999,7 @@ exports.getDashboard = async (req, res) => {
     })
   } catch (err) {
     console.error('getDashboard error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
@@ -1410,19 +1007,11 @@ exports.getDashboard = async (req, res) => {
 //  SUBSCRIPTION
 // ============================================================
 
-/**
- * @desc    Get subscription info
- * @route   GET /api/teacher/subscription
- * @access  Private
- */
 exports.getSubscriptionInfo = async (req, res) => {
   try {
     const teacher = await Teacher.findById(req.user.id)
     if (!teacher) {
-      return res.status(404).json({
-        success: false,
-        error: 'Teacher topilmadi',
-      })
+      return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
     }
 
     res.json({
@@ -1441,10 +1030,7 @@ exports.getSubscriptionInfo = async (req, res) => {
     })
   } catch (err) {
     console.error('getSubscriptionInfo error:', err)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 }
 
