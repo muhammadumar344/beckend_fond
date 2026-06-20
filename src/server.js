@@ -7,8 +7,22 @@ const cors = require('cors')
 const app = express()
 
 // ── Middleware ─────────────────────────────────────────────────
+const allowedOrigins = [
+  process.env.FRONTEND_URL,        // production frontend (Netlify)
+  'http://localhost:3000',         // local dev
+  'http://localhost:5173',         // Vite default port (kerak bo'lsa)
+].filter(Boolean)
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: function (origin, callback) {
+    // origin bo'lmagan so'rovlar (Postman, server-to-server) ham ruxsat etiladi
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true)
+    } else {
+      console.warn('❌ CORS tomonidan bloklandi:', origin)
+      callback(new Error('CORS tomonidan bloklandi: ' + origin))
+    }
+  },
   credentials: true,
 }))
 app.use(express.json({ limit: '5mb' }))   // ✅ screenshot uchun limit oshirildi
