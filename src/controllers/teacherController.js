@@ -71,6 +71,76 @@ exports.createClass = async (req, res) => {
     res.status(500).json({ success: false, error: err.message })
   }
 }
+// ============================================================
+//  ONBOARDING — birinchi marta kirgan teacher uchun
+// ============================================================
+exports.completeOnboarding = async (req, res) => {
+  try {
+    const teacherId = req.user.id
+    const {
+      institutionType,
+      institutionName,
+      city,
+      studentCountRange,
+    } = req.body
+ 
+    // ── Validatsiya — Teacher modelidagi enum larga mos ──────
+    if (!institutionType || !['school', 'learning_center'].includes(institutionType)) {
+      return res.status(400).json({
+        success: false,
+        error: "institutionType: 'school' yoki 'learning_center' bo'lishi kerak",
+      })
+    }
+    if (!institutionName || !institutionName.trim()) {
+      return res.status(400).json({ success: false, error: 'Muassasa nomi majburiy' })
+    }
+    if (!city || !city.trim()) {
+      return res.status(400).json({ success: false, error: 'Shahar/tuman majburiy' })
+    }
+    if (!studentCountRange || !['1-50', '51-150', '151-300', '300+'].includes(studentCountRange)) {
+      return res.status(400).json({ success: false, error: "O'quvchilar soni diapazoni noto'g'ri" })
+    }
+ 
+    const teacher = await Teacher.findByIdAndUpdate(
+      teacherId,
+      {
+        onboardingCompleted: true,
+        institutionType,
+        institutionName: institutionName.trim(),
+        city: city.trim(),
+        studentCountRange,
+      },
+      { new: true }
+    )
+ 
+    if (!teacher) {
+      return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
+    }
+ 
+    res.json({
+      success: true,
+      message: 'Onboarding muvaffaqiyatli yakunlandi',
+      user: {
+        id: teacher._id,
+        name: teacher.name,
+        email: teacher.email,
+        role: 'teacher',
+        plan: teacher.plan,
+        planActive: teacher.isPlanActive(),
+        daysLeft: teacher.daysLeft(),
+        onboardingCompleted: true,
+        institutionType: teacher.institutionType,
+        institutionName: teacher.institutionName,
+        city: teacher.city,
+        studentCountRange: teacher.studentCountRange,
+        referralCode: teacher.referralCode,
+      },
+    })
+  } catch (err) {
+    console.error('completeOnboarding error:', err)
+    res.status(500).json({ success: false, error: err.message })
+  }
+}
 
 exports.getMyClasses = async (req, res) => {
   try {
