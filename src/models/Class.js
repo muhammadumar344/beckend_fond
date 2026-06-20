@@ -1,5 +1,5 @@
 // backend/src/models/Class.js
-const mongoose = require('mongoose')
+const mongoose = require("mongoose");
 
 const classSchema = new mongoose.Schema({
   name: {
@@ -9,7 +9,7 @@ const classSchema = new mongoose.Schema({
   },
   teacher: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Teacher',
+    ref: "Teacher",
     required: true,
   },
   defaultAmount: {
@@ -19,8 +19,8 @@ const classSchema = new mongoose.Schema({
   },
   plan: {
     type: String,
-    enum: ['free', 'pro', 'premium'],
-    default: 'free',
+    enum: ["free", "pro", "premium"],
+    default: "free",
   },
 
   // ✅ YANGI: Saytdan foydalanishdan OLDIN yig'ilgan pul
@@ -35,14 +35,19 @@ const classSchema = new mongoose.Schema({
   // ✅ YANGI: Boshlang'ich balans kiritilgan sana (qaysi oy uchun ekanligi)
   initialBalanceNote: {
     type: String,
-    default: '',
+    default: "",
     trim: true,
   },
 
+  branch: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Branch",
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
   },
-})
+});
 
-module.exports = mongoose.model('Class', classSchema)
+module.exports = mongoose.model("Class", classSchema);

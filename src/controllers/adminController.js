@@ -3,9 +3,19 @@ const Teacher = require('../models/Teacher')
 const Class = require('../models/Class')
 const Student = require('../models/Student')
 const Admin = require('../models/Admin')
-const MonthlyPayment = require('../models/MonthlyPayment')   // ✅ Tepaga ko'chirildi
+const MonthlyPayment = require('../models/MonthlyPayment')
 const TelegramParent = require('../models/TelegramParent')
 const { PLAN_LIMITS, PLAN_PRICES } = require('../utils/planHelper')
+const crypto = require('crypto')
+// ✅ XATO TUZATILDI: 'referalController' import o'chirildi
+// (fayl nomi noto'g'ri yozilgan edi, va bu yerda ishlatilmaydi —
+//  applyReferralBonus faqat paymentRequestController.js da kerak)
+
+const generateReferralCode = (name) => {
+  const base   = name.trim().toLowerCase().replace(/\s+/g, '').slice(0, 6)
+  const suffix = crypto.randomBytes(3).toString('hex').toUpperCase()
+  return `${base}-${suffix}`
+}
 
 // ✅ createAdmin bu yerda YO'Q — u authController.js da (POST /api/auth/setup)
 
@@ -56,52 +66,52 @@ exports.getDashboard = async (req, res) => {
   }
 }
 
-// Teacher yaratish
 exports.createTeacher = async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body
+    const { name, email, password, phone, referralCode } = req.body
 
-    if (!name || !email || !password) {
+    if (!name || !email || !password)
       return res.status(400).json({ error: 'Ism, email va parol majburiy' })
-    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return res.status(400).json({ error: 'Email noto\'g\'ri formatda' })
+    if (password.length < 6)
+      return res.status(400).json({ error: 'Parol kamida 6 belgi' })
+    if (await Teacher.findOne({ email: email.toLowerCase() }))
+      return res.status(400).json({ error: 'Bu email allaqachon band' })
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ error: "Email to'g'ri formatda emas" })
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Parol kamita 6 belgidan iborat' })
-    }
-
-    if (await Teacher.findOne({ email: email.toLowerCase() })) {
-      return res.status(400).json({ error: "Bu email allaqachon ro'yxatdan o'tgan" })
+    // ✅ Referral kod tekshirish
+    let referredBy = null
+    if (referralCode) {
+      const referrer = await Teacher.findOne({ referralCode: referralCode.toUpperCase() })
+      if (referrer) referredBy = referrer._id
     }
 
     const teacher = new Teacher({
-      name: name.trim(),
-      email: email.toLowerCase(),
+      name:          name.trim(),
+      email:         email.toLowerCase(),
       password,
-      phone: phone || '',
+      phone:         phone || '',
       registeredDate: new Date(),
+      referredBy,
+      referralCode:  generateReferralCode(name),
     })
     await teacher.save()
 
     res.status(201).json({
-      message: "Teacher muvaffaqiyatli qo'shildi",
+      message: 'Teacher muvaffaqiyatli qo\'shildi',
       teacher: {
-        id: teacher._id,
-        name: teacher.name,
-        email: teacher.email,
-        phone: teacher.phone,
-        plan: teacher.plan,
+        id:           teacher._id,
+        name:         teacher.name,
+        email:        teacher.email,
+        phone:        teacher.phone,
+        plan:         teacher.plan,
+        referralCode: teacher.referralCode,
+        referredBy:   referredBy ? 'Ha' : 'Yo\'q',
         registeredDate: teacher.registeredDate,
       },
     })
   } catch (err) {
-    if (err.code === 11000) {
-      return res.status(400).json({ error: "Bu email allaqachon ro'yxatdan o'tgan" })
-    }
+    if (err.code === 11000) return res.status(400).json({ error: 'Bu email allaqachon band' })
     res.status(500).json({ error: err.message })
   }
 }
@@ -145,7 +155,6 @@ exports.updateTeacherPlan = async (req, res) => {
       teacher.plan = 'free'
       teacher.planExpiresAt = null
     } else {
-      // Agar shu plan hozir aktiv bo'lsa — ustiga qo'shiladi
       const base = teacher.isPlanActive() && teacher.plan === plan
         ? teacher.planExpiresAt
         : new Date()
@@ -157,15 +166,12 @@ exports.updateTeacherPlan = async (req, res) => {
       teacher.planExpiresAt = newExpiry
     }
 
-    // Eng yuqori plan ni eslab qolish
     const planRank = { free: 0, pro: 1, premium: 2 }
     if (planRank[plan] > planRank[teacher.highestPlanEver || 'free']) {
       teacher.highestPlanEver = plan
     }
 
     await teacher.save()
-
-    // Sinflar planini yangilash
     await Class.updateMany({ teacher: teacherId }, { plan })
 
     res.json({
@@ -225,37 +231,20 @@ exports.getPlanPrices = async (req, res) => {
   res.json({
     plans: [
       {
-        id: 'free',
-        name: 'Free',
-        price: 0,
-        classes: 1,
-        students: 30,
+        id: 'free', name: 'Free', price: 0, classes: 1, students: 30,
         features: ['1 ta sinf', "30 ta o'quvchi", 'Asosiy funksiyalar'],
         notIncluded: ['Oylik eslatma', 'Export', "Ko'p til", 'Telegram bot'],
       },
       {
-        id: 'pro',
-        name: 'Pro',
-        price: PLAN_PRICES?.pro?.monthly || 29000,
-        classes: 3,
-        students: 60,
+        id: 'pro', name: 'Pro', price: PLAN_PRICES?.pro?.monthly || 29000, classes: 3, students: 60,
         features: ['3 ta sinf', "60 ta o'quvchi", 'Oylik eslatma modali', 'Telegram bot'],
         notIncluded: ['Export (Excel/Word)', 'SMS eslatma', "Ko'p til"],
       },
       {
-        id: 'premium',
-        name: 'Premium',
-        price: PLAN_PRICES?.premium?.monthly || 59000,
-        classes: 10,
-        students: 999,
+        id: 'premium', name: 'Premium', price: PLAN_PRICES?.premium?.monthly || 59000, classes: 10, students: 999,
         features: [
-          '10 ta sinf',
-          "Cheksiz o'quvchi",
-          'Oylik eslatma modali',
-          'Export (Excel/Word)',
-          'SMS eslatma',
-          "Ko'p til (uz/ru/en)",
-          'Telegram bot',
+          '10 ta sinf', "Cheksiz o'quvchi", 'Oylik eslatma modali',
+          'Export (Excel/Word)', 'SMS eslatma', "Ko'p til (uz/ru/en)", 'Telegram bot',
         ],
         notIncluded: [],
       },

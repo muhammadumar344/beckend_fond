@@ -421,7 +421,9 @@ exports.getClassPayments = async (req, res) => {
 
     const payments = await MonthlyPayment.find(query)
       .populate('student', 'name parentPhone rollNumber')
-      .sort({ 'student.rollNumber': 1 })
+
+    // ✅ rollNumber bo'yicha tartiblash (populate dan keyin, JS da)
+    payments.sort((a, b) => (a.student?.rollNumber || 0) - (b.student?.rollNumber || 0))
 
     const paidPayments = payments.filter((p) => p.status === 'paid')
     const collectedOnSite = paidPayments.reduce((sum, p) => sum + p.amount, 0)

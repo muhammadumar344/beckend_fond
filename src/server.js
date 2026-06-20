@@ -11,26 +11,31 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || '*',
   credentials: true,
 }))
-app.use(express.json())
+app.use(express.json({ limit: '5mb' }))   // ✅ screenshot uchun limit oshirildi
 app.use(express.urlencoded({ extended: true }))
 
 // ── Health check ───────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ status: 'ok', app: 'Fond School API' }))
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }))
 
+// ── PUBLIC routes (auth siz) ───────────────────────────────────
+// ✅ Referral kod tekshirish — auth middleware DAN OLDIN
+const refCtrl = require('./controllers/referralController')
+app.get('/api/ref/:code', refCtrl.checkCode)
+
 // ── MongoDB ulanish ────────────────────────────────────────────
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/fond-school')
   .then(async () => {
     console.log('✅ MongoDB ulandi')
 
-    // ✅ 1-qadam: Botni ishga tushirish (routes dan OLDIN)
-    const { initBot } = require('./src/bot/bot')
-    initBot(app)   // app — webhook uchun kerak
+    // ✅ 1-qadam: Botni ishga tushirish
+    const { initBot } = require('./bot/bot')
+    initBot(app)
 
     // ✅ 2-qadam: Routelarni ulash
-    app.use('/api/auth',    require('./src/routes/auth'))
-    app.use('/api/admin',   require('./src/routes/admin'))
-    app.use('/api/teacher', require('./src/routes/teacher'))
+    app.use('/api/auth',    require('./routes/auth'))
+    app.use('/api/admin',   require('./routes/admin'))
+    app.use('/api/teacher', require('./routes/teacher'))
 
     // 404 handler
     app.use((req, res) => {
@@ -43,8 +48,8 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/fond-scho
       res.status(500).json({ error: 'Ichki server xatosi' })
     })
 
-    // ✅ 3-qadam: Cron job (eslatmalar)
-    const { startReminderCron } = require('./src/cron/reminderCron')
+    // ✅ 3-qadam: Cron job
+    const { startReminderCron } = require('./cron/reminderCron')
     startReminderCron()
 
     // ✅ 4-qadam: Serverni ishga tushirish
@@ -59,4 +64,4 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/fond-scho
     process.exit(1)
   })
 
-module.exports = app
+module.exports = app;
