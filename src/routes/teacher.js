@@ -21,8 +21,8 @@ router.use(auth, roles("teacher")); // ← Auth middleware HAMMAGA qo'llaniladi
 // ══ DASHBOARD ═══════════════════════════════════════════════
 router.get("/dashboard", ctrl.getDashboard);
 router.get("/subscription", ctrl.getSubscriptionInfo);
-// src/routes/teacher.js — 23-qatorni TUZATING
-router.put("/onboarding", ctrl.onboarding);
+// ✅ FIXED: ctrl.onboarding → ctrl.completeOnboarding
+router.put("/onboarding", ctrl.completeOnboarding);
 router.get("/profile", ctrl.getProfile);
 
 // ══ FREEZE ══════════════════════════════════════════════════

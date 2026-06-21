@@ -73,7 +73,7 @@ const createClass = async (req, res) => {
 // ============================================================
 //  ONBOARDING — birinchi marta kirgan teacher uchun
 // ============================================================
-const onboarding = async (req, res) => {
+const completeOnboarding = async (req, res) => {
   try {
     const user = req.user || null
     if (!user) return res.status(401).json({ error: 'Token topilmadi' })
@@ -1078,7 +1078,7 @@ const getSubscriptionInfo = async (req, res) => {
 // ============================================================
 module.exports = {
   createClass,
-  onboarding,
+  completeOnboarding,
   getProfile,
   getMyClasses,
   updateInitialBalance,
