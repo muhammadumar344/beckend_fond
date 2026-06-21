@@ -22,9 +22,8 @@ router.use(auth, roles('teacher'))
 // ══ DASHBOARD ═══════════════════════════════════════════════
 router.get('/dashboard',                         ctrl.getDashboard)
 router.get('/subscription',                      ctrl.getSubscriptionInfo)
-router.get('/profile', auth, teacherCtrl.getProfile);
-
-// router.put('/onboarding', auth, );
+router.put('/onboarding', auth, ctrl.onboarding);
+router.get('/profile', auth, ctrl.getProfile);
 
 // ══ FREEZE ══════════════════════════════════════════════════
 router.get('/freeze-status', async (req, res) => {
