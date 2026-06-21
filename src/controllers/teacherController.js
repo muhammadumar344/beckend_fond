@@ -1,4 +1,3 @@
-// src/controllers/teacherController.js
 const Class = require('../models/Class')
 const Student = require('../models/Student')
 const MonthlyPayment = require('../models/MonthlyPayment')
@@ -11,22 +10,22 @@ const { PLAN_LIMITS, hasFeature, canOpenNewClass, canAddStudent } = require('../
 const smsService = require('../services/smsService')
 const { sendPaymentConfirmation } = require('../services/telegramService')
 
+// ---------- Helper exports will be assembled at the end ----------
+
 // ============================================================
 //  CLASSES
 // ============================================================
-
-exports.createClass = async (req, res) => {
+const createClass = async (req, res) => {
   try {
     const { name, defaultAmount, initialBalance, initialBalanceNote } = req.body
     const teacherId = req.user.id
 
-    if (!name || !defaultAmount) {
-      return res.status(400).json({ success: false, error: 'Sinf nomi va oylik to\'lov summasi majburiy' })
+    if (!name || defaultAmount === undefined) {
+      return res.status(400).json({ success: false, error: "Sinf nomi va oylik to'lov summasi majburiy" })
     }
-    if (defaultAmount <= 0) {
+    if (Number(defaultAmount) <= 0) {
       return res.status(400).json({ success: false, error: "Summa 0 dan katta bo'lishi kerak" })
     }
-    // ✅ initialBalance manfiy bo'lmasligi
     if (initialBalance !== undefined && Number(initialBalance) < 0) {
       return res.status(400).json({ success: false, error: "Boshlang'ich balans manfiy bo'lishi mumkin emas" })
     }
@@ -39,7 +38,7 @@ exports.createClass = async (req, res) => {
     const currentClassCount = await Class.countDocuments({ teacher: teacherId })
     if (!canOpenNewClass(teacher, currentClassCount)) {
       const activePlan = teacher.isPlanActive() ? teacher.plan : 'free'
-      const limit = PLAN_LIMITS[activePlan]
+      const limit = PLAN_LIMITS[activePlan] || PLAN_LIMITS.free
       return res.status(403).json({
         success: false,
         error: teacher.isPlanActive()
@@ -55,94 +54,108 @@ exports.createClass = async (req, res) => {
       teacher: teacherId,
       defaultAmount: Number(defaultAmount),
       plan: activePlan,
-      // ✅ Boshlang'ich balans (ixtiyoriy, default 0)
-      initialBalance: Number(initialBalance) || 0,
+      initialBalance: initialBalance !== undefined ? Number(initialBalance) : 0,
       initialBalanceNote: (initialBalanceNote || '').trim(),
     })
     await newClass.save()
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: 'Sinf muvaffaqiyatli yaratildi',
       class: newClass,
     })
   } catch (err) {
     console.error('createClass error:', err)
-    res.status(500).json({ success: false, error: err.message })
-  }
-}
-// ============================================================
-//  ONBOARDING — birinchi marta kirgan teacher uchun
-// ============================================================
-exports.completeOnboarding = async (req, res) => {
-  try {
-    const teacherId = req.user.id
-    const {
-      institutionType,
-      institutionName,
-      city,
-      studentCountRange,
-    } = req.body
- 
-    // ── Validatsiya — Teacher modelidagi enum larga mos ──────
-    if (!institutionType || !['school', 'learning_center'].includes(institutionType)) {
-      return res.status(400).json({
-        success: false,
-        error: "institutionType: 'school' yoki 'learning_center' bo'lishi kerak",
-      })
-    }
-    if (!institutionName || !institutionName.trim()) {
-      return res.status(400).json({ success: false, error: 'Muassasa nomi majburiy' })
-    }
-    if (!city || !city.trim()) {
-      return res.status(400).json({ success: false, error: 'Shahar/tuman majburiy' })
-    }
-    if (!studentCountRange || !['1-50', '51-150', '151-300', '300+'].includes(studentCountRange)) {
-      return res.status(400).json({ success: false, error: "O'quvchilar soni diapazoni noto'g'ri" })
-    }
- 
-    const teacher = await Teacher.findByIdAndUpdate(
-      teacherId,
-      {
-        onboardingCompleted: true,
-        institutionType,
-        institutionName: institutionName.trim(),
-        city: city.trim(),
-        studentCountRange,
-      },
-      { new: true }
-    )
- 
-    if (!teacher) {
-      return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
-    }
- 
-    res.json({
-      success: true,
-      message: 'Onboarding muvaffaqiyatli yakunlandi',
-      user: {
-        id: teacher._id,
-        name: teacher.name,
-        email: teacher.email,
-        role: 'teacher',
-        plan: teacher.plan,
-        planActive: teacher.isPlanActive(),
-        daysLeft: teacher.daysLeft(),
-        onboardingCompleted: true,
-        institutionType: teacher.institutionType,
-        institutionName: teacher.institutionName,
-        city: teacher.city,
-        studentCountRange: teacher.studentCountRange,
-        referralCode: teacher.referralCode,
-      },
-    })
-  } catch (err) {
-    console.error('completeOnboarding error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
-exports.getMyClasses = async (req, res) => {
+// ============================================================
+//  ONBOARDING — birinchi marta kirgan teacher uchun
+// ============================================================
+const onboarding = async (req, res) => {
+  try {
+    const user = req.user || null
+    if (!user) return res.status(401).json({ error: 'Token topilmadi' })
+
+    const userId = user.id || user._id || user.userId
+    if (!userId) return res.status(401).json({ error: 'Token yaroqsiz' })
+
+    const { fullName, phone, bio, subjects, meta } = req.body || {}
+    if (!fullName || typeof fullName !== 'string' || fullName.trim().length < 2) {
+      return res.status(400).json({ error: "fullName maydoni talab qilinadi va kamida 2 ta belgi bo'lishi kerak" })
+    }
+
+    let subjectsArr = []
+    if (Array.isArray(subjects)) {
+      subjectsArr = subjects.map(s => String(s).trim()).filter(Boolean)
+    } else if (typeof subjects === 'string' && subjects.trim().length) {
+      subjectsArr = subjects.split(',').map(s => s.trim()).filter(Boolean)
+    }
+
+    let teacher = await Teacher.findOne({ userId })
+
+    if (!teacher) {
+      teacher = new Teacher({
+        userId,
+        name: fullName.trim(),
+        phone: phone ? String(phone).trim() : undefined,
+        onboardingCompleted: true,
+        institutionName: meta?.institutionName || '',
+        institutionType: meta?.institutionType || null,
+        studentCountRange: meta?.studentCountRange || null,
+        // store additional meta
+        meta: meta || {},
+      })
+    } else {
+      teacher.name = fullName.trim()
+      if (phone !== undefined) teacher.phone = String(phone).trim()
+      if (meta?.institutionName !== undefined) teacher.institutionName = meta.institutionName
+      if (meta?.institutionType !== undefined) teacher.institutionType = meta.institutionType
+      if (meta?.studentCountRange !== undefined) teacher.studentCountRange = meta.studentCountRange
+      teacher.onboardingCompleted = true
+      teacher.meta = { ...(teacher.meta || {}), ...(meta || {}) }
+    }
+
+    await teacher.save()
+
+    return res.status(200).json({
+      ok: true,
+      message: 'Onboarding qabul qilindi',
+      teacher: {
+        id: teacher._id,
+        userId: teacher.userId,
+        name: teacher.name,
+        phone: teacher.phone,
+        onboardingCompleted: teacher.onboardingCompleted,
+        updatedAt: teacher.updatedAt,
+      }
+    })
+  } catch (err) {
+    console.error('teacherController.onboarding error:', err)
+    return res.status(500).json({ error: 'Ichki server xatosi' })
+  }
+}
+
+// Qo'shimcha: profile olish
+const getProfile = async (req, res) => {
+  try {
+    const user = req.user || null
+    if (!user) return res.status(401).json({ error: 'Token topilmadi' })
+    const userId = user.id || user._id || user.userId
+    const teacher = await Teacher.findOne({ userId })
+    if (!teacher) return res.status(404).json({ error: 'Teacher topilmadi' })
+    return res.json({ ok: true, teacher })
+  } catch (err) {
+    console.error('teacherController.getProfile error:', err)
+    return res.status(500).json({ error: 'Ichki server xatosi' })
+  }
+}
+
+// ============================================================
+//  CLASSES helpers (list / update / delete)
+// ============================================================
+const getMyClasses = async (req, res) => {
   try {
     const teacherId = req.user.id
     const classes = await Class.find({ teacher: teacherId }).sort({ createdAt: -1 })
@@ -154,11 +167,9 @@ exports.getMyClasses = async (req, res) => {
         const paidPayments = payments.filter((p) => p.status === 'paid')
         const paidCount = paidPayments.length
 
-        // ✅ Jami yig'ilgan = boshlang'ich balans + saytda to'langan
         const collectedOnSite = paidPayments.reduce((s, p) => s + p.amount, 0)
-        const totalCollected = cls.initialBalance + collectedOnSite
+        const totalCollected = (cls.initialBalance || 0) + collectedOnSite
 
-        // ✅ Jami xarajat
         const expenses = await Expense.find({ class: cls._id })
         const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0)
 
@@ -167,24 +178,22 @@ exports.getMyClasses = async (req, res) => {
           studentCount,
           paidCount,
           unpaidCount: payments.length - paidCount,
-          collectedOnSite,           // Saytda yig'ilgan
-          totalCollected,            // Jami (boshlang'ich + saytda)
+          collectedOnSite,
+          totalCollected,
           totalExpenses,
-          // ✅ Haqiqiy fond qoldig'i
           realBalance: totalCollected - totalExpenses,
         }
       })
     )
 
-    res.json({ success: true, classes: classesWithStats })
+    return res.json({ success: true, classes: classesWithStats })
   } catch (err) {
     console.error('getMyClasses error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
-// ✅ YANGI: Sinfning boshlang'ich balansini yangilash
-exports.updateInitialBalance = async (req, res) => {
+const updateInitialBalance = async (req, res) => {
   try {
     const { classId } = req.params
     const { initialBalance, initialBalanceNote } = req.body
@@ -195,77 +204,66 @@ exports.updateInitialBalance = async (req, res) => {
     }
 
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
-    if (!cls) {
-      return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
-    }
+    if (!cls) return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
 
     cls.initialBalance = Number(initialBalance)
     cls.initialBalanceNote = (initialBalanceNote || '').trim()
     await cls.save()
 
-    res.json({
-      success: true,
-      message: "Boshlang'ich balans yangilandi",
-      class: cls,
-    })
+    return res.json({ success: true, message: "Boshlang'ich balans yangilandi", class: cls })
   } catch (err) {
     console.error('updateInitialBalance error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
-exports.updateClassDefaultAmount = async (req, res) => {
+const updateClassDefaultAmount = async (req, res) => {
   try {
     const { classId } = req.params
     const { defaultAmount } = req.body
     const teacherId = req.user.id
 
-    if (!defaultAmount || defaultAmount <= 0) {
+    if (defaultAmount === undefined || Number(defaultAmount) <= 0) {
       return res.status(400).json({ success: false, error: "Summa 0 dan katta bo'lishi kerak" })
     }
 
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
-    if (!cls) {
-      return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
-    }
+    if (!cls) return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
 
     cls.defaultAmount = Number(defaultAmount)
     await cls.save()
 
-    res.json({ success: true, message: 'Default summa yangilandi', class: cls })
+    return res.json({ success: true, message: 'Default summa yangilandi', class: cls })
   } catch (err) {
     console.error('updateClassDefaultAmount error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
-exports.deleteClass = async (req, res) => {
+const deleteClass = async (req, res) => {
   try {
     const { classId } = req.params
     const teacherId = req.user.id
 
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
-    if (!cls) {
-      return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
-    }
+    if (!cls) return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
 
     await Student.deleteMany({ class: classId })
     await MonthlyPayment.deleteMany({ class: classId })
     await Expense.deleteMany({ class: classId })
     await Class.findByIdAndDelete(classId)
 
-    res.json({ success: true, message: "Sinf va barcha bog'liq ma'lumotlar o'chirildi" })
+    return res.json({ success: true, message: "Sinf va barcha bog'liq ma'lumotlar o'chirildi" })
   } catch (err) {
     console.error('deleteClass error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
 // ============================================================
 //  STUDENTS
 // ============================================================
-
-exports.addStudent = async (req, res) => {
+const addStudent = async (req, res) => {
   try {
     const { classId } = req.params
     const { name, parentPhone } = req.body
@@ -276,9 +274,7 @@ exports.addStudent = async (req, res) => {
     }
 
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
-    if (!cls) {
-      return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
-    }
+    if (!cls) return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
 
     const studentCount = await Student.countDocuments({ class: classId })
     if (!canAddStudent(cls.plan, studentCount)) {
@@ -298,61 +294,54 @@ exports.addStudent = async (req, res) => {
     })
     await student.save()
 
-    res.status(201).json({ success: true, message: "O'quvchi qo'shildi", student })
+    return res.status(201).json({ success: true, message: "O'quvchi qo'shildi", student })
   } catch (err) {
     console.error('addStudent error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
-exports.getClassStudents = async (req, res) => {
+const getClassStudents = async (req, res) => {
   try {
     const { classId } = req.params
     const teacherId = req.user.id
 
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
-    if (!cls) {
-      return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
-    }
+    if (!cls) return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
 
     const students = await Student.find({ class: classId }).sort({ rollNumber: 1 })
-    res.json({ success: true, students })
+    return res.json({ success: true, students })
   } catch (err) {
     console.error('getClassStudents error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
-exports.deleteStudent = async (req, res) => {
+const deleteStudent = async (req, res) => {
   try {
     const { studentId } = req.params
     const teacherId = req.user.id
 
     const student = await Student.findById(studentId)
-    if (!student) {
-      return res.status(404).json({ success: false, error: "O'quvchi topilmadi" })
-    }
+    if (!student) return res.status(404).json({ success: false, error: "O'quvchi topilmadi" })
 
     const cls = await Class.findOne({ _id: student.class, teacher: teacherId })
-    if (!cls) {
-      return res.status(403).json({ success: false, error: "Ruxsat yo'q" })
-    }
+    if (!cls) return res.status(403).json({ success: false, error: "Ruxsat yo'q" })
 
     await MonthlyPayment.deleteMany({ student: studentId })
     await Student.findByIdAndDelete(studentId)
 
-    res.json({ success: true, message: "O'quvchi o'chirildi" })
+    return res.json({ success: true, message: "O'quvchi o'chirildi" })
   } catch (err) {
     console.error('deleteStudent error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
 // ============================================================
 //  PAYMENTS
 // ============================================================
-
-exports.createMonthlyPayments = async (req, res) => {
+const createMonthlyPayments = async (req, res) => {
   try {
     const { classId, month, year } = req.body
     const teacherId = req.user.id
@@ -365,14 +354,10 @@ exports.createMonthlyPayments = async (req, res) => {
     }
 
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
-    if (!cls) {
-      return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
-    }
+    if (!cls) return res.status(404).json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" })
 
     const students = await Student.find({ class: classId })
-    if (students.length === 0) {
-      return res.status(400).json({ success: false, error: "Bu sinfda o'quvchi yo'q" })
-    }
+    if (students.length === 0) return res.status(400).json({ success: false, error: "Bu sinfda o'quvchi yo'q" })
 
     let createdCount = 0
     let alreadyExisted = 0
@@ -404,18 +389,18 @@ exports.createMonthlyPayments = async (req, res) => {
       }
     }
 
-    res.json({
+    return res.json({
       success: true,
       message: `${createdCount} ta to'lov yaratildi`,
       summary: { created: createdCount, alreadyExisted, total: students.length },
     })
   } catch (err) {
     console.error('createMonthlyPayments error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
-exports.getMonthlyPayments = async (req, res) => {
+const getMonthlyPayments = async (req, res) => {
   try {
     const teacherId = req.user.id
     const { month, year } = req.query
@@ -440,7 +425,6 @@ exports.getMonthlyPayments = async (req, res) => {
         defaultAmount: cls.defaultAmount,
         studentCount,
         expectedTotal: studentCount * cls.defaultAmount,
-        // ✅ Boshlang'ich balans ham ko'rsatiladi
         initialBalance: cls.initialBalance || 0,
         initialBalanceNote: cls.initialBalanceNote || '',
       }
@@ -449,10 +433,9 @@ exports.getMonthlyPayments = async (req, res) => {
     const paidPayments = payments.filter((p) => p.status === 'paid')
     const collectedTotal = paidPayments.reduce((sum, p) => sum + p.amount, 0)
     const expectedTotal = Object.values(classStats).reduce((sum, c) => sum + c.expectedTotal, 0)
-    // ✅ Umumiy boshlang'ich balans
     const totalInitialBalance = classes.reduce((sum, c) => sum + (c.initialBalance || 0), 0)
 
-    res.json({
+    return res.json({
       success: true,
       payments,
       classStats,
@@ -463,56 +446,49 @@ exports.getMonthlyPayments = async (req, res) => {
         expectedTotal,
         remaining: expectedTotal - collectedTotal,
         totalInitialBalance,
-        // ✅ Haqiqiy jami: boshlang'ich + saytda yig'ilgan
         grandTotal: totalInitialBalance + collectedTotal,
       },
     })
   } catch (err) {
     console.error('getMonthlyPayments error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
-exports.getClassPayments = async (req, res) => {
+const getClassPayments = async (req, res) => {
   try {
     const { classId } = req.params
     const { month, year } = req.query
     const teacherId = req.user.id
 
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
-    if (!cls) {
-      return res.status(404).json({ success: false, error: 'Sinf topilmadi' })
-    }
+    if (!cls) return res.status(404).json({ success: false, error: 'Sinf topilmadi' })
 
     const students = await Student.find({ class: classId })
     const query = { class: classId }
     if (month) query.month = Number(month)
     if (year) query.year = Number(year)
 
-    const payments = await MonthlyPayment.find(query)
-      .populate('student', 'name parentPhone rollNumber')
+    const payments = await MonthlyPayment.find(query).populate('student', 'name parentPhone rollNumber')
 
-    // ✅ rollNumber bo'yicha tartiblash (populate dan keyin, JS da)
     payments.sort((a, b) => (a.student?.rollNumber || 0) - (b.student?.rollNumber || 0))
 
     const paidPayments = payments.filter((p) => p.status === 'paid')
     const collectedOnSite = paidPayments.reduce((sum, p) => sum + p.amount, 0)
     const expectedTotal = students.length * cls.defaultAmount
 
-    // ✅ Ushbu sinfning to'liq balansi
     const allExpenses = await Expense.find({ class: classId })
     const totalExpenses = allExpenses.reduce((sum, e) => sum + e.amount, 0)
     const totalCollected = (cls.initialBalance || 0) + collectedOnSite
     const realBalance = totalCollected - totalExpenses
 
-    res.json({
+    return res.json({
       success: true,
       class: {
         id: cls._id,
         name: cls.name,
         defaultAmount: cls.defaultAmount,
         studentCount: students.length,
-        // ✅ Boshlang'ich balans ma'lumotlari
         initialBalance: cls.initialBalance || 0,
         initialBalanceNote: cls.initialBalanceNote || '',
       },
@@ -522,20 +498,20 @@ exports.getClassPayments = async (req, res) => {
         paidCount: paidPayments.length,
         unpaidCount: students.length - paidPayments.length,
         expectedTotal,
-        collectedOnSite,             // Faqat saytda
-        totalCollected,              // Boshlang'ich + saytda
+        collectedOnSite,
+        totalCollected,
         remaining: expectedTotal - collectedOnSite,
         totalExpenses,
-        realBalance,                 // Haqiqiy qoldiq
+        realBalance,
       },
     })
   } catch (err) {
     console.error('getClassPayments error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
-exports.updatePaymentStatus = async (req, res) => {
+const updatePaymentStatus = async (req, res) => {
   try {
     const { paymentId } = req.params
     const { status } = req.body
@@ -545,20 +521,15 @@ exports.updatePaymentStatus = async (req, res) => {
       return res.status(400).json({ success: false, error: "Status 'paid' yoki 'not_paid' bo'lishi kerak" })
     }
 
-    const payment = await MonthlyPayment.findById(paymentId).populate("class")
-    if (!payment) {
-      return res.status(404).json({ success: false, error: "To'lov topilmadi" })
-    }
-    if (payment.class.teacher.toString() !== teacherId) {
-      return res.status(403).json({ success: false, error: "Ruxsat yo'q" })
-    }
+    const payment = await MonthlyPayment.findById(paymentId).populate("class").populate('student')
+    if (!payment) return res.status(404).json({ success: false, error: "To'lov topilmadi" })
+    if (payment.class.teacher.toString() !== teacherId) return res.status(403).json({ success: false, error: "Ruxsat yo'q" })
 
-    payment.status   = status
+    payment.status = status
     payment.paidDate = status === "paid" ? new Date() : null
     await payment.save()
-    await payment.populate("student", "name parentPhone rollNumber")
 
-    // ✅ TO'LOV QILINGANDA TELEGRAM XABARI
+    // TELEGRAM XABARI
     if (status === "paid") {
       try {
         const tgParent = await TelegramParent.findOne({
@@ -584,37 +555,34 @@ exports.updatePaymentStatus = async (req, res) => {
           await tgParent.save()
         }
       } catch (tgErr) {
-        console.error("Telegram payment notification xatosi:", tgErr.message)
+        console.error("Telegram payment notification xatosi:", tgErr.message || tgErr)
       }
     }
 
-    res.json({ success: true, message: "Status yangilandi", payment })
+    return res.json({ success: true, message: "Status yangilandi", payment })
   } catch (err) {
     console.error("updatePaymentStatus error:", err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
 // ============================================================
 //  EXPENSES
 // ============================================================
-
-exports.addExpense = async (req, res) => {
+const addExpense = async (req, res) => {
   try {
     const { classId, reason, amount, month, year, description } = req.body
     const teacherId = req.user.id
 
-    if (!classId || !reason || !amount || !month || !year) {
+    if (!classId || !reason || amount === undefined || !month || !year) {
       return res.status(400).json({ success: false, error: "Barcha majburiy maydonlarni to'ldiring" })
     }
-    if (amount <= 0) {
+    if (Number(amount) <= 0) {
       return res.status(400).json({ success: false, error: "Summa 0 dan katta bo'lishi kerak" })
     }
 
     const cls = await Class.findOne({ _id: classId, teacher: teacherId })
-    if (!cls) {
-      return res.status(404).json({ success: false, error: 'Sinf topilmadi' })
-    }
+    if (!cls) return res.status(404).json({ success: false, error: 'Sinf topilmadi' })
 
     const expense = new Expense({
       class: classId,
@@ -627,14 +595,14 @@ exports.addExpense = async (req, res) => {
     })
     await expense.save()
 
-    res.status(201).json({ success: true, message: "Xarajat qo'shildi", expense })
+    return res.status(201).json({ success: true, message: "Xarajat qo'shildi", expense })
   } catch (err) {
     console.error('addExpense error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
-exports.getExpenses = async (req, res) => {
+const getExpenses = async (req, res) => {
   try {
     const teacherId = req.user.id
     const { month, year } = req.query
@@ -646,36 +614,33 @@ exports.getExpenses = async (req, res) => {
     const expenses = await Expense.find(query).populate('class', 'name').sort({ createdAt: -1 })
     const total = expenses.reduce((sum, e) => sum + e.amount, 0)
 
-    res.json({ success: true, expenses, total })
+    return res.json({ success: true, expenses, total })
   } catch (err) {
     console.error('getExpenses error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
-exports.deleteExpense = async (req, res) => {
+const deleteExpense = async (req, res) => {
   try {
     const { expenseId } = req.params
     const teacherId = req.user.id
 
     const expense = await Expense.findOne({ _id: expenseId, teacher: teacherId })
-    if (!expense) {
-      return res.status(404).json({ success: false, error: "Xarajat topilmadi yoki ruxsat yo'q" })
-    }
+    if (!expense) return res.status(404).json({ success: false, error: "Xarajat topilmadi yoki ruxsat yo'q" })
 
     await Expense.findByIdAndDelete(expenseId)
-    res.json({ success: true, message: "Xarajat o'chirildi" })
+    return res.json({ success: true, message: "Xarajat o'chirildi" })
   } catch (err) {
     console.error('deleteExpense error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
 // ============================================================
-//  DASHBOARD — ✅ initialBalance hisobga olingan
+//  DASHBOARD
 // ============================================================
-
-exports.getDashboard = async (req, res) => {
+const getDashboard = async (req, res) => {
   try {
     const teacherId = req.user.id
     const now = new Date()
@@ -683,9 +648,7 @@ exports.getDashboard = async (req, res) => {
     const currentYear = now.getFullYear()
 
     const teacher = await Teacher.findById(teacherId)
-    if (!teacher) {
-      return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
-    }
+    if (!teacher) return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
 
     const classes = await Class.find({ teacher: teacherId })
     const classIds = classes.map((c) => c._id)
@@ -709,10 +672,8 @@ exports.getDashboard = async (req, res) => {
     const monthlyExpenses = await Expense.find({ teacher: teacherId, month: currentMonth, year: currentYear })
     const expensesTotal = monthlyExpenses.reduce((sum, e) => sum + e.amount, 0)
 
-    // ✅ Barcha sinflarning boshlang'ich balansi
     const totalInitialBalance = classes.reduce((sum, c) => sum + (c.initialBalance || 0), 0)
 
-    // ✅ Haqiqiy umumiy balans: boshlang'ich + jami to'lovlar - jami xarajatlar
     const allPaidEver = await MonthlyPayment.find({ class: { $in: classIds }, status: 'paid' })
     const allCollectedEver = allPaidEver.reduce((sum, p) => sum + p.amount, 0)
     const allExpensesEver = await Expense.find({ teacher: teacherId })
@@ -729,7 +690,6 @@ exports.getDashboard = async (req, res) => {
           .filter((e) => e.class?.toString() === cls._id.toString())
           .reduce((sum, e) => sum + e.amount, 0)
 
-        // ✅ Sinfning umumiy balansi (boshlang'ichi bilan)
         const classAllPaid = await MonthlyPayment.find({ class: cls._id, status: 'paid' })
         const classAllCollected = classAllPaid.reduce((s, p) => s + p.amount, 0)
         const classAllExpenses = await Expense.find({ class: cls._id })
@@ -746,15 +706,14 @@ exports.getDashboard = async (req, res) => {
           collectedThisMonth: classCollectedThisMonth,
           expectedThisMonth: classStudents.length * cls.defaultAmount,
           expensesThisMonth: classExpensesThisMonth,
-          // ✅ Yangi maydonlar
           initialBalance: cls.initialBalance || 0,
           initialBalanceNote: cls.initialBalanceNote || '',
-          realBalance: classRealBalance,   // Ushbu sinfning haqiqiy qoldig'i
+          realBalance: classRealBalance,
         }
       })
     )
 
-    res.json({
+    return res.json({
       success: true,
       teacher: {
         id: teacher._id,
@@ -784,7 +743,6 @@ exports.getDashboard = async (req, res) => {
         remainingThisMonth: expectedThisMonth - collectedThisMonth,
         expensesTotal,
         balance: collectedThisMonth - expensesTotal,
-        // ✅ Haqiqiy umumiy fond qoldig'i (barcha vaqt uchun)
         totalInitialBalance,
         realTotalBalance,
       },
@@ -792,15 +750,14 @@ exports.getDashboard = async (req, res) => {
     })
   } catch (err) {
     console.error('getDashboard error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
 // ============================================================
 //  MONTHLY REMINDER
 // ============================================================
-
-exports.getMonthlyReminder = async (req, res) => {
+const getMonthlyReminder = async (req, res) => {
   try {
     const teacherId = req.user.id
     const { month, year } = req.query
@@ -853,18 +810,17 @@ exports.getMonthlyReminder = async (req, res) => {
       }
     }
 
-    res.json({ success: true, month: m, year: y, totalUnpaidStudents: unpaidPayments.length, classes: Object.values(grouped), ...extraData })
+    return res.json({ success: true, month: m, year: y, totalUnpaidStudents: unpaidPayments.length, classes: Object.values(grouped), ...extraData })
   } catch (err) {
     console.error('getMonthlyReminder error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
 // ============================================================
 //  SMS REMINDER
 // ============================================================
-
-exports.sendSmsReminders = async (req, res) => {
+const sendSmsReminders = async (req, res) => {
   try {
     const { classId, month, year } = req.body
     const teacherId = req.user.id
@@ -893,93 +849,16 @@ exports.sendSmsReminders = async (req, res) => {
     const successCount = results.filter((r) => r.status === 'sent').length
     const failedCount = results.filter((r) => r.status === 'failed').length
 
-    res.json({ success: true, message: 'SMS reminder yuborildi', summary: { total: results.length, sent: successCount, failed: failedCount }, details: results })
+    return res.json({ success: true, message: 'SMS reminder yuborildi', summary: { total: results.length, sent: successCount, failed: failedCount }, details: results })
   } catch (err) {
     console.error('sendSmsReminders error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
 // ============================================================
-//  EXPORT
+//  EXPORT helpers
 // ============================================================
-
-exports.exportPayments = async (req, res) => {
-  try {
-    const { classId } = req.params
-    const { month, year, format = 'json' } = req.query
-    const teacherId = req.user.id
-
-    const teacher = await Teacher.findById(teacherId)
-    if (!teacher) return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
-    if (!hasFeature(teacher, 'export')) {
-      return res.status(403).json({ success: false, error: 'Export faqat Premium uchun', requiresUpgrade: true })
-    }
-
-    const cls = await Class.findOne({ _id: classId, teacher: teacherId })
-    if (!cls) return res.status(404).json({ success: false, error: 'Sinf topilmadi' })
-
-    const students = await Student.find({ class: classId }).sort({ rollNumber: 1 })
-    if (students.length === 0) return res.status(400).json({ success: false, error: "Bu sinfda o'quvchi yo'q" })
-
-    const query = { class: classId }
-    if (month) query.month = Number(month)
-    if (year) query.year = Number(year)
-
-    const payments = await MonthlyPayment.find(query).populate('student', 'name parentPhone rollNumber')
-
-    const monthNames = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr']
-    const monthName = month ? (monthNames[Number(month) - 1] || '') : ''
-
-    const exportData = students.map((student) => {
-      const payment = payments.find((p) => p.student._id.toString() === student._id.toString())
-      return {
-        '№': student.rollNumber,
-        "O'quvchi ismi": student.name,
-        'Ota-ona telefoni': student.parentPhone || '—',
-        "Summa (so'm)": payment ? payment.amount : cls.defaultAmount,
-        'Holati': payment?.status === 'paid' ? "To'lagan" : "To'lamagan",
-        "To'lagan sanasi": payment?.paidDate ? new Date(payment.paidDate).toLocaleDateString('uz-UZ') : '—',
-      }
-    })
-
-    const paidCount = exportData.filter((r) => r['Holati'] === "To'lagan").length
-    const collectedOnSite = payments.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0)
-    const expectedTotal = students.length * cls.defaultAmount
-
-    // ✅ Barcha xarajatlar
-    const allExpenses = await Expense.find({ class: classId })
-    const totalExpenses = allExpenses.reduce((s, e) => s + e.amount, 0)
-
-    const meta = {
-      paidCount,
-      expectedTotal,
-      collectedOnSite,
-      initialBalance: cls.initialBalance || 0,
-      initialBalanceNote: cls.initialBalanceNote || '',
-      totalCollected: (cls.initialBalance || 0) + collectedOnSite,
-      totalExpenses,
-      realBalance: (cls.initialBalance || 0) + collectedOnSite - totalExpenses,
-      remaining: expectedTotal - collectedOnSite,
-      month: Number(month) || 0,
-      year: Number(year) || new Date().getFullYear(),
-      monthName,
-    }
-
-    if (format === 'excel') return exportToExcel(res, cls, exportData, meta)
-    if (format === 'word') return exportToWord(res, cls, exportData, meta)
-
-    return res.json({
-      success: true,
-      data: exportData,
-      meta: { className: cls.name, ...meta, studentCount: students.length, unpaidCount: students.length - paidCount },
-    })
-  } catch (err) {
-    console.error('exportPayments error:', err)
-    res.status(500).json({ success: false, error: err.message })
-  }
-}
-
 const exportToExcel = (res, cls, data, meta) => {
   try {
     const wb = XLSX.utils.book_new()
@@ -992,7 +871,6 @@ const exportToExcel = (res, cls, data, meta) => {
     ws['!cols'] = [{ wch: 5 }, { wch: 25 }, { wch: 18 }, { wch: 15 }, { wch: 14 }, { wch: 18 }]
     XLSX.utils.book_append_sheet(wb, ws, "To'lovlar")
 
-    // ✅ Hisobot — boshlang'ich balans bilan
     const summaryRows = [
       [`${cls.name} — ${meta.monthName} ${meta.year}`],
       [],
@@ -1092,16 +970,90 @@ const exportToWord = async (res, cls, data, meta) => {
   }
 }
 
+const exportPayments = async (req, res) => {
+  try {
+    const { classId } = req.params
+    const { month, year, format = 'json' } = req.query
+    const teacherId = req.user.id
+
+    const teacher = await Teacher.findById(teacherId)
+    if (!teacher) return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
+    if (!hasFeature(teacher, 'export')) {
+      return res.status(403).json({ success: false, error: 'Export faqat Premium uchun', requiresUpgrade: true })
+    }
+
+    const cls = await Class.findOne({ _id: classId, teacher: teacherId })
+    if (!cls) return res.status(404).json({ success: false, error: 'Sinf topilmadi' })
+
+    const students = await Student.find({ class: classId }).sort({ rollNumber: 1 })
+    if (students.length === 0) return res.status(400).json({ success: false, error: "Bu sinfda o'quvchi yo'q" })
+
+    const query = { class: classId }
+    if (month) query.month = Number(month)
+    if (year) query.year = Number(year)
+
+    const payments = await MonthlyPayment.find(query).populate('student', 'name parentPhone rollNumber')
+
+    const monthNames = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr']
+    const monthName = month ? (monthNames[Number(month) - 1] || '') : ''
+
+    const exportData = students.map((student) => {
+      const payment = payments.find((p) => p.student._id.toString() === student._id.toString())
+      return {
+        '№': student.rollNumber,
+        "O'quvchi ismi": student.name,
+        'Ota-ona telefoni': student.parentPhone || '—',
+        "Summa (so'm)": payment ? payment.amount : cls.defaultAmount,
+        'Holati': payment?.status === 'paid' ? "To'lagan" : "To'lamagan",
+        "To'lagan sanasi": payment?.paidDate ? new Date(payment.paidDate).toLocaleDateString('uz-UZ') : '—',
+      }
+    })
+
+    const paidCount = exportData.filter((r) => r['Holati'] === "To'lagan").length
+    const collectedOnSite = payments.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0)
+    const expectedTotal = students.length * cls.defaultAmount
+
+    const allExpenses = await Expense.find({ class: classId })
+    const totalExpenses = allExpenses.reduce((s, e) => s + e.amount, 0)
+
+    const meta = {
+      paidCount,
+      expectedTotal,
+      collectedOnSite,
+      initialBalance: cls.initialBalance || 0,
+      initialBalanceNote: cls.initialBalanceNote || '',
+      totalCollected: (cls.initialBalance || 0) + collectedOnSite,
+      totalExpenses,
+      realBalance: (cls.initialBalance || 0) + collectedOnSite - totalExpenses,
+      remaining: expectedTotal - collectedOnSite,
+      month: Number(month) || 0,
+      year: Number(year) || new Date().getFullYear(),
+      monthName,
+    }
+
+    if (format === 'excel') return exportToExcel(res, cls, exportData, meta)
+    if (format === 'word') return exportToWord(res, cls, exportData, meta)
+
+    return res.json({
+      success: true,
+      data: exportData,
+      meta: { className: cls.name, ...meta, studentCount: students.length, unpaidCount: students.length - paidCount },
+    })
+  } catch (err) {
+    console.error('exportPayments error:', err)
+    return res.status(500).json({ success: false, error: err.message })
+  }
+}
+
 // ============================================================
 //  SUBSCRIPTION
 // ============================================================
-
-exports.getSubscriptionInfo = async (req, res) => {
+const getSubscriptionInfo = async (req, res) => {
   try {
     const teacher = await Teacher.findById(req.user.id)
     if (!teacher) return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
 
-    res.json({
+    return res.json({
       success: true,
       currentPlan: teacher.plan,
       planActive: teacher.isPlanActive(),
@@ -1117,6 +1069,34 @@ exports.getSubscriptionInfo = async (req, res) => {
     })
   } catch (err) {
     console.error('getSubscriptionInfo error:', err)
-    res.status(500).json({ success: false, error: err.message })
+    return res.status(500).json({ success: false, error: err.message })
   }
+}
+
+// ============================================================
+//  Exports
+// ============================================================
+module.exports = {
+  createClass,
+  onboarding,
+  getProfile,
+  getMyClasses,
+  updateInitialBalance,
+  updateClassDefaultAmount,
+  deleteClass,
+  addStudent,
+  getClassStudents,
+  deleteStudent,
+  createMonthlyPayments,
+  getMonthlyPayments,
+  getClassPayments,
+  updatePaymentStatus,
+  addExpense,
+  getExpenses,
+  deleteExpense,
+  getDashboard,
+  getMonthlyReminder,
+  sendSmsReminders,
+  exportPayments,
+  getSubscriptionInfo,
 }
