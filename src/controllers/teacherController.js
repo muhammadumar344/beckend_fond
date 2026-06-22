@@ -75,80 +75,86 @@ const createClass = async (req, res) => {
 // ============================================================
 const completeOnboarding = async (req, res) => {
   try {
-    const user = req.user || null
-    if (!user) return res.status(401).json({ error: 'Token topilmadi' })
+    // ✅ req.user.id — bu teacher'ning o'zining _id si (JWT dan keladi)
+    //    Yangi teacher yaratish KERAK EMAS — u allaqachon mavjud
+    const teacherId = req.user.id
 
-    const userId = user.id || user._id || user.userId
-    if (!userId) return res.status(401).json({ error: 'Token yaroqsiz' })
+    const {
+      institutionType,
+      institutionName,
+      city,
+      studentCountRange,
+    } = req.body || {}
 
-    const { fullName, phone, bio, subjects, meta } = req.body || {}
-    if (!fullName || typeof fullName !== 'string' || fullName.trim().length < 2) {
-      return res.status(400).json({ error: "fullName maydoni talab qilinadi va kamida 2 ta belgi bo'lishi kerak" })
+    // ── Validatsiya — Teacher modelidagi enum larga mos ──────
+    if (!institutionType || !['school', 'learning_center'].includes(institutionType)) {
+      return res.status(400).json({
+        success: false,
+        error: "institutionType: 'school' yoki 'learning_center' bo'lishi kerak",
+      })
+    }
+    if (!institutionName || !institutionName.trim()) {
+      return res.status(400).json({ success: false, error: 'Muassasa nomi majburiy' })
+    }
+    if (!city || !city.trim()) {
+      return res.status(400).json({ success: false, error: 'Shahar/tuman majburiy' })
+    }
+    if (!studentCountRange || !['1-50', '51-150', '151-300', '300+'].includes(studentCountRange)) {
+      return res.status(400).json({ success: false, error: "O'quvchilar soni diapazoni noto'g'ri" })
     }
 
-    let subjectsArr = []
-    if (Array.isArray(subjects)) {
-      subjectsArr = subjects.map(s => String(s).trim()).filter(Boolean)
-    } else if (typeof subjects === 'string' && subjects.trim().length) {
-      subjectsArr = subjects.split(',').map(s => s.trim()).filter(Boolean)
-    }
-
-    let teacher = await Teacher.findOne({ userId })
+    // ✅ Mavjud teacherni YANGILASH (yangi yaratmaymiz)
+    const teacher = await Teacher.findByIdAndUpdate(
+      teacherId,
+      {
+        onboardingCompleted: true,
+        institutionType,
+        institutionName: institutionName.trim(),
+        city: city.trim(),
+        studentCountRange,
+      },
+      { new: true }
+    )
 
     if (!teacher) {
-      teacher = new Teacher({
-        userId,
-        name: fullName.trim(),
-        phone: phone ? String(phone).trim() : undefined,
-        onboardingCompleted: true,
-        institutionName: meta?.institutionName || '',
-        institutionType: meta?.institutionType || null,
-        studentCountRange: meta?.studentCountRange || null,
-        // store additional meta
-        meta: meta || {},
-      })
-    } else {
-      teacher.name = fullName.trim()
-      if (phone !== undefined) teacher.phone = String(phone).trim()
-      if (meta?.institutionName !== undefined) teacher.institutionName = meta.institutionName
-      if (meta?.institutionType !== undefined) teacher.institutionType = meta.institutionType
-      if (meta?.studentCountRange !== undefined) teacher.studentCountRange = meta.studentCountRange
-      teacher.onboardingCompleted = true
-      teacher.meta = { ...(teacher.meta || {}), ...(meta || {}) }
+      return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
     }
 
-    await teacher.save()
-
-    return res.status(200).json({
-      ok: true,
-      message: 'Onboarding qabul qilindi',
-      teacher: {
+    return res.json({
+      success: true,
+      message: 'Onboarding muvaffaqiyatli yakunlandi',
+      user: {
         id: teacher._id,
-        userId: teacher.userId,
         name: teacher.name,
-        phone: teacher.phone,
-        onboardingCompleted: teacher.onboardingCompleted,
-        updatedAt: teacher.updatedAt,
-      }
+        email: teacher.email,
+        role: 'teacher',
+        plan: teacher.plan,
+        planActive: teacher.isPlanActive(),
+        daysLeft: teacher.daysLeft(),
+        onboardingCompleted: true,
+        institutionType: teacher.institutionType,
+        institutionName: teacher.institutionName,
+        city: teacher.city,
+        studentCountRange: teacher.studentCountRange,
+        referralCode: teacher.referralCode,
+      },
     })
   } catch (err) {
-    console.error('teacherController.onboarding error:', err)
-    return res.status(500).json({ error: 'Ichki server xatosi' })
+    console.error('completeOnboarding error:', err)
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
+
 
 // Qo'shimcha: profile olish
 const getProfile = async (req, res) => {
   try {
-    const user = req.user || null
-    if (!user) return res.status(401).json({ error: 'Token topilmadi' })
-    const userId = user.id || user._id || user.userId
-    const teacher = await Teacher.findOne({ userId })
-    if (!teacher) return res.status(404).json({ error: 'Teacher topilmadi' })
-    return res.json({ ok: true, teacher })
+    const teacher = await Teacher.findById(req.user.id).select('-password')
+    if (!teacher) return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
+    return res.json({ success: true, teacher })
   } catch (err) {
-    console.error('teacherController.getProfile error:', err)
-    return res.status(500).json({ error: 'Ichki server xatosi' })
+    console.error('getProfile error:', err)
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
 
