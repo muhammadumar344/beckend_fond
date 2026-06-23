@@ -1,14 +1,14 @@
-// src/bot/bot.js
-// @SchoolfondsBot
+// src/bot/bot.js — TUZATILGAN (webhook path dagi ":" muammosi)
 const TelegramBot = require('node-telegram-bot-api')
 
 let bot = null
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8551931126:AAFIuDbzMBZqSdiEWY1g8NaDhm0J-6mY4BA'
 
-/**
- * Botni ishga tushirish.
- * Render (production) da webhook, localda polling ishlaydi.
- */
+// ✅ XATO TUZATILDI: ":" belgisini "-" ga almashtiramiz,
+// chunki Express ":" ni route parametri deb talqin qiladi
+// va webhook so'rovni noto'g'ri qabul qiladi.
+const SAFE_PATH_TOKEN = BOT_TOKEN.replace(/:/g, '-')
+
 const initBot = (app) => {
   if (!BOT_TOKEN) {
     console.warn('⚠️  TELEGRAM_BOT_TOKEN topilmadi')
@@ -17,62 +17,56 @@ const initBot = (app) => {
 
   try {
     const isProduction = process.env.NODE_ENV === 'production'
-    const webhookUrl = process.env.WEBHOOK_URL  // masalan: https://yourapp.onrender.com
+    const webhookUrl = process.env.WEBHOOK_URL
 
     if (isProduction && webhookUrl && app) {
-      // ── PRODUCTION: Webhook mode (Render uchun ideal) ──────
+      // ── PRODUCTION: Webhook mode ────────────────────────────
       bot = new TelegramBot(BOT_TOKEN, { webHook: { port: false } })
 
-      const path = `/bot${BOT_TOKEN}`
+      // ✅ Xavfsiz yo'l — ":" belgisisiz
+      const path = `/bot-webhook-${SAFE_PATH_TOKEN}`
       const fullUrl = `${webhookUrl}${path}`
 
-      // Webhook yo'lini Express ga ulash
       app.post(path, (req, res) => {
-        bot.processUpdate(req.body)
+        try {
+          bot.processUpdate(req.body)
+        } catch (e) {
+          console.error('processUpdate xatosi:', e.message)
+        }
+        // Har doim darhol 200 qaytarish — Telegram qayta urinishini oldini oladi
         res.sendStatus(200)
       })
 
-      // Telegramga webhook URL ni yuborish
       bot.setWebHook(fullUrl)
         .then(() => console.log(`✅ Webhook o'rnatildi: ${fullUrl}`))
-        .catch((err) => console.error('Webhook xatosi:', err.message))
+        .catch((err) => console.error('Webhook o\'rnatish xatosi:', err.message))
+
+      _attachHandlers()
+      console.log('🤖 @SchoolfondsBot ishga tushdi (webhook)')
+      return bot
 
     } else {
-      // ── DEVELOPMENT: Polling mode ──────────────────────────
-      // Avval webhookni o'chirish (agar avval production ishlatilgan bo'lsa)
+      // ── DEVELOPMENT: Polling mode ───────────────────────────
       bot = new TelegramBot(BOT_TOKEN, { polling: false })
       bot.deleteWebHook().then(() => {
         bot = new TelegramBot(BOT_TOKEN, {
-          polling: {
-            interval: 300,
-            autoStart: true,
-            params: { timeout: 10 },
-          },
+          polling: { interval: 300, autoStart: true, params: { timeout: 10 } },
         })
         _attachHandlers()
         console.log('🤖 @SchoolfondsBot polling mode da ishga tushdi')
       }).catch(() => {
-        // Webhook o'chirishda xato bo'lsa ham polling boshlash
         bot = new TelegramBot(BOT_TOKEN, { polling: true })
         _attachHandlers()
         console.log('🤖 @SchoolfondsBot ishga tushdi')
       })
       return bot
     }
-
-    _attachHandlers()
-    console.log('🤖 @SchoolfondsBot ishga tushdi (webhook)')
-    return bot
-
   } catch (err) {
     console.error('Bot ishga tushishda xato:', err.message)
     return null
   }
 }
 
-/**
- * Handler larni bot ga ulash — polling va webhook uchun bir xil
- */
 const _attachHandlers = () => {
   if (!bot) return
 
@@ -113,6 +107,10 @@ const _attachHandlers = () => {
     } else {
       console.error('Polling xatosi:', err.message)
     }
+  })
+
+  bot.on('webhook_error', (err) => {
+    console.error('Webhook xatosi:', err.message)
   })
 
   bot.on('error', (err) => {
