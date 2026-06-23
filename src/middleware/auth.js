@@ -14,6 +14,14 @@ module.exports = function auth(req, res, next) {
     return res.status(401).json({ error: "Token format noto'g'ri" });
   }
 
+   const decoded = jwt.verify(token, JWT_SECRET)
+  req.user = {
+    id: decoded.id,
+    role: decoded.role,           // 'admin' | 'teacher' | 'staff'
+    staffRole: decoded.staffRole || null,  // ✅ YANGI: 'branch_manager', 'teacher' va h.k.
+  }
+
+
   const token = parts[1];
   try {
     const secret = process.env.JWT_SECRET || 'changeme';

@@ -1,6 +1,7 @@
 const Class = require('../models/Class')
 const Student = require('../models/Student')
 const MonthlyPayment = require('../models/MonthlyPayment')
+const { createDefaultRoles } = require('./roleController')  // ✅ faylning YUQORISIGA qo'shing
 const Expense = require('../models/Expense')
 const Teacher = require('../models/Teacher')
 const TelegramParent = require('../models/TelegramParent')
@@ -70,28 +71,13 @@ const createClass = async (req, res) => {
   }
 }
 
-// ============================================================
-//  ONBOARDING — birinchi marta kirgan teacher uchun
-// ============================================================
 const completeOnboarding = async (req, res) => {
   try {
-    // ✅ req.user.id — bu teacher'ning o'zining _id si (JWT dan keladi)
-    //    Yangi teacher yaratish KERAK EMAS — u allaqachon mavjud
     const teacherId = req.user.id
-
-    const {
-      institutionType,
-      institutionName,
-      city,
-      studentCountRange,
-    } = req.body || {}
-
-    // ── Validatsiya — Teacher modelidagi enum larga mos ──────
+    const { institutionType, institutionName, city, studentCountRange } = req.body || {}
+ 
     if (!institutionType || !['school', 'learning_center'].includes(institutionType)) {
-      return res.status(400).json({
-        success: false,
-        error: "institutionType: 'school' yoki 'learning_center' bo'lishi kerak",
-      })
+      return res.status(400).json({ success: false, error: "institutionType: 'school' yoki 'learning_center' bo'lishi kerak" })
     }
     if (!institutionName || !institutionName.trim()) {
       return res.status(400).json({ success: false, error: 'Muassasa nomi majburiy' })
@@ -102,8 +88,7 @@ const completeOnboarding = async (req, res) => {
     if (!studentCountRange || !['1-50', '51-150', '151-300', '300+'].includes(studentCountRange)) {
       return res.status(400).json({ success: false, error: "O'quvchilar soni diapazoni noto'g'ri" })
     }
-
-    // ✅ Mavjud teacherni YANGILASH (yangi yaratmaymiz)
+ 
     const teacher = await Teacher.findByIdAndUpdate(
       teacherId,
       {
@@ -115,11 +100,15 @@ const completeOnboarding = async (req, res) => {
       },
       { new: true }
     )
-
-    if (!teacher) {
-      return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
+ 
+    if (!teacher) return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
+ 
+    // ✅ YANGI: O'quv markazi tanlansa — default rollar avtomatik yaratiladi
+    // (Branch Manager, Administration, Teacher, Support Teacher)
+    if (institutionType === 'learning_center') {
+      await createDefaultRoles(teacher._id)
     }
-
+ 
     return res.json({
       success: true,
       message: 'Onboarding muvaffaqiyatli yakunlandi',
@@ -144,8 +133,6 @@ const completeOnboarding = async (req, res) => {
     return res.status(500).json({ success: false, error: err.message })
   }
 }
-
-
 // Qo'shimcha: profile olish
 const getProfile = async (req, res) => {
   try {

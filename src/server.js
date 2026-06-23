@@ -37,6 +37,8 @@ app.use((req, res, next) => {
 
 app.get('/', (req, res) => res.json({ status: 'ok', app: 'Fond School API' }));
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
+ const staffCtrl = require('./controllers/staffController')
+  app.get('/api/staff/verify/:token', staffCtrl.verifyEmail)
 
 try {
   const refCtrl = require('./controllers/referralController');
@@ -52,6 +54,12 @@ try {
   console.log('✅ /api/auth router mounted');
 } catch (e) {
   console.warn('⚠️  routes/auth topilmadi yoki xato:', e.message || e);
+}
+try {
+  app.use('/api/lc', require('./routes/lc'));
+  console.log('✅ /api/lc router mounted');
+} catch (e) {
+  console.warn('⚠️  routes/lc topilmadi yoki xato:', e.message || e);
 }
 
 try {
