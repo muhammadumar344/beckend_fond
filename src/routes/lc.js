@@ -36,6 +36,7 @@ router.put("/staff/:staffId/toggle", staffCtrl.toggleStaffStatus);
 router.put('/branches/:branchId/manager',          branchCtrl.assignManager)
 router.put('/branches/:branchId/become-manager',   branchCtrl.becomeManagerToo)
 
+
 module.exports = router;
 
 // ════════════════════════════════════════════════════════════

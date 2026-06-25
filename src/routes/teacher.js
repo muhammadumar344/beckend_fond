@@ -1,14 +1,14 @@
-// src/routes/teacher.js — TO'LIQ TUZATILGAN
+// src/routes/teacher.js — TO'LIQ, Staff kira oladigan qilib tuzatilgan
 const express = require("express");
 const router = express.Router();
 const ctrl = require("../controllers/teacherController");
 const tgCtrl = require("../controllers/telegramController");
 const gradeCtrl = require("../controllers/gradeController");
+const branchCtrl = require("../controllers/branchController");
 const refCtrl = require("../controllers/referralController");
-const schedCtrl = require("../controllers/scheduleController"); // ✅ QO'
-const branchCtrl = require("../controllers/branchController"); // ✅ YANGI
-const attCtrl = require("../controllers/attendanceController"); // ✅ QO'SHILDI
-const prCtrl = require("../controllers/paymentRequestController"); // ✅ QO'SHILDI
+const schedCtrl = require("../controllers/scheduleController");
+const attCtrl = require("../controllers/attendanceController");
+const prCtrl = require("../controllers/paymentRequestController");
 const auth = require("../middleware/auth");
 const roles = require("../middleware/roles");
 
@@ -17,16 +17,25 @@ const {
   cleanupPreviousYear,
 } = require("../controllers/freezeController");
 
-router.use(auth, roles("teacher")); // ← Auth middleware HAMMAGA qo'llaniladi
-// ══ DASHBOARD ═══════════════════════════════════════════════
-router.get("/dashboard", ctrl.getDashboard);
-router.get("/subscription", ctrl.getSubscriptionInfo);
-// ✅ FIXED: ctrl.onboarding → ctrl.completeOnboarding
-router.put("/onboarding", ctrl.completeOnboarding);
-router.get("/profile", ctrl.getProfile);
+// ✅ MUHIM: faqat auth (token bor-yo'qligi) — role cheklovi YO'Q
+router.use(auth);
 
-// ══ FREEZE ══════════════════════════════════════════════════
-router.get("/freeze-status", async (req, res) => {
+// ✅ Teacher (Director) VA Staff kira oladigan route lar uchun
+const allowTeacherOrStaff = (req, res, next) => {
+  if (["teacher", "staff"].includes(req.user.role)) return next();
+  return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+};
+
+// ✅ FAQAT Teacher (Director) — Staff kira olmaydi
+const onlyTeacher = roles("teacher");
+
+// ══ DASHBOARD — faqat Director ══════════════════════════════
+router.get("/dashboard", onlyTeacher, ctrl.getDashboard);
+router.get("/subscription", onlyTeacher, ctrl.getSubscriptionInfo);
+router.put("/onboarding", onlyTeacher, ctrl.completeOnboarding);
+
+// ══ FREEZE — faqat Director ═════════════════════════════════
+router.get("/freeze-status", onlyTeacher, async (req, res) => {
   try {
     const FreezeSettings = require("../models/FreezeSettings");
     const Teacher = require("../models/Teacher");
@@ -38,10 +47,12 @@ router.get("/freeze-status", async (req, res) => {
     ]);
     let daysLeft = 0;
     if (teacher?.freezeStartedAt && teacher?.freezeRemainingMs > 0) {
-      daysLeft = Math.ceil(teacher.freezeRemainingMs / (1000 * 60 * 60 * 24));
+      daysLeft = Math.ceil(teacher.freezeRemainingMs / 86400000);
     } else if (teacher?.planExpiresAt) {
-      const diff = new Date(teacher.planExpiresAt) - new Date();
-      daysLeft = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+      daysLeft = Math.max(
+        0,
+        Math.ceil((new Date(teacher.planExpiresAt) - new Date()) / 86400000),
+      );
     }
     res.json({
       success: true,
@@ -61,77 +72,151 @@ router.get("/freeze-status", async (req, res) => {
     res.status(500).json({ success: false, error: e.message });
   }
 });
-router.get("/export-previous-year", exportPreviousYear);
-router.post("/cleanup-previous-year", cleanupPreviousYear);
+router.get("/export-previous-year", onlyTeacher, exportPreviousYear);
+router.post("/cleanup-previous-year", onlyTeacher, cleanupPreviousYear);
 
-// ══ CLASSES ═════════════════════════════════════════════════
-router.post("/classes", ctrl.createClass);
-router.get("/classes", ctrl.getMyClasses);
-router.put("/classes/:classId/amount", ctrl.updateClassDefaultAmount);
-router.put("/classes/:classId/initial-balance", ctrl.updateInitialBalance);
-router.delete("/classes/:classId", ctrl.deleteClass);
+// ══ CLASSES — faqat Director (Staff o'z huquqi bilan keyinroq) ══
+router.post("/classes", onlyTeacher, ctrl.createClass);
+router.get("/classes", onlyTeacher, ctrl.getMyClasses);
+router.put(
+  "/classes/:classId/amount",
+  onlyTeacher,
+  ctrl.updateClassDefaultAmount,
+);
+router.put(
+  "/classes/:classId/initial-balance",
+  onlyTeacher,
+  ctrl.updateInitialBalance,
+);
+router.delete("/classes/:classId", onlyTeacher, ctrl.deleteClass);
 
-// ══ STUDENTS ════════════════════════════════════════════════
-router.post("/classes/:classId/students", ctrl.addStudent);
-router.get("/classes/:classId/students", ctrl.getClassStudents);
-router.delete("/students/:studentId", ctrl.deleteStudent);
+// ══ STUDENTS — faqat Director ═══════════════════════════════
+router.post("/classes/:classId/students", onlyTeacher, ctrl.addStudent);
+router.get("/classes/:classId/students", onlyTeacher, ctrl.getClassStudents);
+router.delete("/students/:studentId", onlyTeacher, ctrl.deleteStudent);
 
-// ══ PAYMENTS ════════════════════════════════════════════════
-router.post("/payments/create-monthly", ctrl.createMonthlyPayments);
-router.get("/payments/class/:classId", ctrl.getClassPayments);
-router.get("/payments", ctrl.getMonthlyPayments);
-router.put("/payments/:paymentId/status", ctrl.updatePaymentStatus);
+// ══ PAYMENTS — faqat Director ═══════════════════════════════
+router.post(
+  "/payments/create-monthly",
+  onlyTeacher,
+  ctrl.createMonthlyPayments,
+);
+router.get("/payments/class/:classId", onlyTeacher, ctrl.getClassPayments);
+router.get("/payments", onlyTeacher, ctrl.getMonthlyPayments);
+router.put(
+  "/payments/:paymentId/status",
+  onlyTeacher,
+  ctrl.updatePaymentStatus,
+);
 
-// ══ REMINDER / SMS / EXPORT ════════════════════════════════
-router.get("/reminder", ctrl.getMonthlyReminder);
-router.post("/sms-reminder/send", ctrl.sendSmsReminders);
-router.get("/export/:classId", ctrl.exportPayments);
+// ══ REMINDER / SMS / EXPORT — faqat Director ════════════════
+router.get("/reminder", onlyTeacher, ctrl.getMonthlyReminder);
+router.post("/sms-reminder/send", onlyTeacher, ctrl.sendSmsReminders);
+router.get("/export/:classId", onlyTeacher, ctrl.exportPayments);
 
-// ══ EXPENSES ════════════════════════════════════════════════
-router.post("/expenses", ctrl.addExpense);
-router.get("/expenses", ctrl.getExpenses);
-router.delete("/expenses/:expenseId", ctrl.deleteExpense);
+// ══ EXPENSES — faqat Director ════════════════════════════════
+router.post("/expenses", onlyTeacher, ctrl.addExpense);
+router.get("/expenses", onlyTeacher, ctrl.getExpenses);
+router.delete("/expenses/:expenseId", onlyTeacher, ctrl.deleteExpense);
 
-// ══ TELEGRAM ════════════════════════════════════════════════
-router.get("/telegram/bot-link", tgCtrl.getBotLink);
-router.get("/telegram/parents", tgCtrl.getParents);
-router.get("/telegram/parents/class/:classId", tgCtrl.getParentsByClass);
-router.post("/telegram/send-reminders", tgCtrl.sendRemindersNow);
-router.post("/telegram/send-to-students", tgCtrl.sendToStudents);
+// ══ TELEGRAM — faqat Director ════════════════════════════════
+router.get("/telegram/bot-link", onlyTeacher, tgCtrl.getBotLink);
+router.get("/telegram/parents", onlyTeacher, tgCtrl.getParents);
+router.get(
+  "/telegram/parents/class/:classId",
+  onlyTeacher,
+  tgCtrl.getParentsByClass,
+);
+router.post("/telegram/send-reminders", onlyTeacher, tgCtrl.sendRemindersNow);
+router.post("/telegram/send-to-students", onlyTeacher, tgCtrl.sendToStudents);
 
-// ══ REFERRAL ════════════════════════════════════════════════
-router.get("/referral", refCtrl.getMyReferral);
+// ══ REFERRAL — faqat Director ════════════════════════════════
+router.get("/referral", onlyTeacher, refCtrl.getMyReferral);
 
-// ══ PAYMENT REQUESTS (plan so'rash) ✅ QO'SHILDI ═══════════
-router.post("/payment-requests", prCtrl.createRequest);
-router.get("/payment-requests", prCtrl.getMyRequests);
+// ══ PAYMENT REQUESTS — faqat Director ════════════════════════
+router.post("/payment-requests", onlyTeacher, prCtrl.createRequest);
+router.get("/payment-requests", onlyTeacher, prCtrl.getMyRequests);
 
-// ══ BRANCHES (filiallar) ════════════════════════════════════
-router.post("/branches", branchCtrl.createBranch);
-router.get("/branches", branchCtrl.getBranches);
-router.put("/branches/:branchId", branchCtrl.updateBranch);
-router.delete("/branches/:branchId", branchCtrl.deleteBranch);
-router.put("/branches/assign/:classId", branchCtrl.assignClass);
+// ══ BRANCHES — faqat Director ════════════════════════════════
+router.post("/branches", onlyTeacher, branchCtrl.createBranch);
+router.get("/branches", onlyTeacher, branchCtrl.getBranches);
+router.put("/branches/:branchId", onlyTeacher, branchCtrl.updateBranch);
+router.delete("/branches/:branchId", onlyTeacher, branchCtrl.deleteBranch);
+router.put("/branches/assign/:classId", onlyTeacher, branchCtrl.assignClass);
+router.put(
+  "/branches/:branchId/manager",
+  onlyTeacher,
+  branchCtrl.assignManager,
+);
+router.put(
+  "/branches/:branchId/become-manager",
+  onlyTeacher,
+  branchCtrl.becomeManagerToo,
+);
 
-// ══ SCHEDULE (jadval) ✅ QO'SHILDI ══════════════════════════
-router.post("/schedule", schedCtrl.createSchedule);
-router.get("/schedule/weekly", schedCtrl.getWeeklyOverview);
-router.get("/schedule/class/:classId", schedCtrl.getClassSchedule);
-router.put("/schedule/:scheduleId", schedCtrl.updateSchedule);
-router.delete("/schedule/:scheduleId", schedCtrl.deleteSchedule);
+// ══ SCHEDULE — ✅ Director VA Staff (ruxsat ichkarida tekshiriladi) ══
+router.post("/schedule", allowTeacherOrStaff, schedCtrl.createSchedule);
+router.get(
+  "/schedule/weekly",
+  allowTeacherOrStaff,
+  schedCtrl.getWeeklyOverview,
+);
+router.get(
+  "/schedule/class/:classId",
+  allowTeacherOrStaff,
+  schedCtrl.getClassSchedule,
+);
+router.put(
+  "/schedule/:scheduleId",
+  allowTeacherOrStaff,
+  schedCtrl.updateSchedule,
+);
+router.delete(
+  "/schedule/:scheduleId",
+  allowTeacherOrStaff,
+  schedCtrl.deleteSchedule,
+);
 
-// ══ ATTENDANCE (davomat) ✅ QO'SHILDI ═══════════════════════
-router.post("/attendance", attCtrl.saveAttendance);
-router.get("/attendance/class/:classId", attCtrl.getDayAttendance);
-router.get("/attendance/class/:classId/monthly", attCtrl.getMonthlyStats);
-router.get("/attendance/student/:studentId/history", attCtrl.getStudentHistory);
+// ══ ATTENDANCE — ✅ Director VA Staff ════════════════════════
+router.post("/attendance", allowTeacherOrStaff, attCtrl.saveAttendance);
+router.get(
+  "/attendance/class/:classId",
+  allowTeacherOrStaff,
+  attCtrl.getDayAttendance,
+);
+router.get(
+  "/attendance/class/:classId/monthly",
+  allowTeacherOrStaff,
+  attCtrl.getMonthlyStats,
+);
+router.get(
+  "/attendance/student/:studentId/history",
+  allowTeacherOrStaff,
+  attCtrl.getStudentHistory,
+);
 
-// ══ GRADES (baholar) ════════════════════════════════════════
-router.post("/grades", gradeCtrl.saveGrades);
-router.get("/grades/class/:classId", gradeCtrl.getDayGrades);
-router.get("/grades/class/:classId/subjects", gradeCtrl.getSubjects);
-router.get("/grades/class/:classId/monthly", gradeCtrl.getMonthlyAverage);
-router.get("/grades/student/:studentId", gradeCtrl.getStudentGrades);
-router.delete("/grades/:gradeId", gradeCtrl.deleteGrade);
+// ══ GRADES — ✅ Director VA Staff ═════════════════════════════
+router.post("/grades", allowTeacherOrStaff, gradeCtrl.saveGrades);
+router.get(
+  "/grades/class/:classId",
+  allowTeacherOrStaff,
+  gradeCtrl.getDayGrades,
+);
+router.get(
+  "/grades/class/:classId/subjects",
+  allowTeacherOrStaff,
+  gradeCtrl.getSubjects,
+);
+router.get(
+  "/grades/class/:classId/monthly",
+  allowTeacherOrStaff,
+  gradeCtrl.getMonthlyAverage,
+);
+router.get(
+  "/grades/student/:studentId",
+  allowTeacherOrStaff,
+  gradeCtrl.getStudentGrades,
+);
+router.delete("/grades/:gradeId", allowTeacherOrStaff, gradeCtrl.deleteGrade);
 
-module.exports = router;
+module.exports = routerC;
