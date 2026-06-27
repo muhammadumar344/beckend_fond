@@ -1,52 +1,64 @@
-// src/utils/resolveContext.js — YANGI FAYL
-// Director (teacher) yoki Staff bo'lishidan qat'i nazar,
-// to'g'ri "qaysi muassasaga tegishli" va "qaysi filial bilan
-// cheklangan" ekanini aniqlaydi. Barcha LC controllerlari shuni ishlatadi.
-
-const Staff = require('../models/Staff')
+const Staff = require('../models/Staff');
 
 /**
- * @returns {{
- *   directorId: string,       // muassasa egasining Teacher._id
- *   branchFilter: string|null,// agar staff filialga bog'langan bo'lsa, shu filial bilan cheklash
- *   isDirector: boolean,
- *   permissions: object|null, // staff bo'lsa — uning ruxsatlari
- * }}
+ * Teacher (Director) yoki Staff bo'lishidan qat'i nazar
+ * { directorId, branchFilter, isDirector, permissions } qaytaradi.
+ * Barcha LC controllerlarda shuni ishlating!
  */
-const resolveContext = async (req) => {
-  if (req.user.role === 'teacher') {
-    // Director — cheklovsiz, hammasini ko'radi
+async function resolveContext(req) {
+  const { id: userId, role } = req.user;
+
+  if (role === 'teacher') {
     return {
-      directorId: req.user.id,
-      branchFilter: null,
+      directorId: userId,
+      branchFilter: null,       // barcha filiallarni ko'radi
       isDirector: true,
-      permissions: null,
-    }
+      permissions: null,        // barcha huquqlar mavjud
+    };
   }
 
-  if (req.user.role === 'staff') {
-    const staff = await Staff.findById(req.user.id).populate('role')
-    if (!staff) throw new Error('Staff topilmadi')
+  if (role === 'staff') {
+    const staff = await Staff.findById(userId)
+      .populate('role', 'permissions slug name')
+      .lean();
+
+    if (!staff) {
+      const err = new Error('Xodim topilmadi');
+      err.status = 404;
+      throw err;
+    }
+    if (!staff.isActive) {
+      const err = new Error('Xodim hisobi faol emas');
+      err.status = 403;
+      throw err;
+    }
 
     return {
-      directorId: staff.director.toString(),
-      branchFilter: staff.branch ? staff.branch.toString() : null,
+      directorId: staff.director,       // Teacher._id
+      branchFilter: staff.branch,       // Branch._id
       isDirector: false,
-      permissions: staff.role.permissions,
-      staffId: staff._id.toString(),
-    }
+      permissions: staff.role?.permissions || [],
+      staffId: userId,
+      staffRole: staff.role,
+    };
   }
 
-  throw new Error('Noma\'lum rol')
+  const err = new Error("Noma'lum foydalanuvchi roli");
+  err.status = 401;
+  throw err;
 }
 
 /**
- * Ruxsat tekshirish helper — controller ichida chaqiriladi
- * Misol: requirePermission(ctx, 'manageAttendance')
+ * Permission tekshiradi. Director uchun har doim o'tadi.
+ * Staff uchun permissions ro'yxatida bo'lishi shart, aks holda 403 throw qiladi.
  */
-const requirePermission = (ctx, permKey) => {
-  if (ctx.isDirector) return true   // director hamma narsaga ruxsatli
-  return !!ctx.permissions?.[permKey]
+function requirePermission(ctx, permission) {
+  if (ctx.isDirector) return;
+  if (!Array.isArray(ctx.permissions) || !ctx.permissions.includes(permission)) {
+    const err = new Error(`Ruxsat yo'q: "${permission}" huquqi kerak`);
+    err.status = 403;
+    throw err;
+  }
 }
 
-module.exports = { resolveContext, requirePermission }
+module.exports = { resolveContext, requirePermission };

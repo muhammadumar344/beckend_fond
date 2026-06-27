@@ -75,7 +75,11 @@ router.get("/freeze-status", onlyTeacher, async (req, res) => {
 router.get("/export-previous-year", onlyTeacher, exportPreviousYear);
 router.post("/cleanup-previous-year", onlyTeacher, cleanupPreviousYear);
 
-// ══ CLASSES — faqat Director (Staff o'z huquqi bilan keyinroq) ══
+// ══ CLASSES ══════════════════════════════════════════════════
+// ✅ /classes/list AVVAL yozilishi shart — /classes/:id bilan conflict bo'lmasin
+router.get("/classes/list", allowTeacherOrStaff, ctrl.getClassesForStaff);
+
+// Qolgan class route'lar — faqat Director
 router.post("/classes", onlyTeacher, ctrl.createClass);
 router.get("/classes", onlyTeacher, ctrl.getMyClasses);
 router.put(
@@ -219,4 +223,5 @@ router.get(
 );
 router.delete("/grades/:gradeId", allowTeacherOrStaff, gradeCtrl.deleteGrade);
 
-module.exports = routerC;
+// ✅ TO'G'IRLANDI: routerC → router
+module.exports = router;

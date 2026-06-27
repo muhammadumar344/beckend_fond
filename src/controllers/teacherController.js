@@ -1,7 +1,7 @@
+// src/controllers/teacherController.js
 const Class = require("../models/Class");
 const Student = require("../models/Student");
 const MonthlyPayment = require("../models/MonthlyPayment");
-const { createDefaultRoles } = require("./roleController"); // ✅ faylning YUQORISIGA qo'shing
 const Expense = require("../models/Expense");
 const Teacher = require("../models/Teacher");
 const TelegramParent = require("../models/TelegramParent");
@@ -25,86 +25,14 @@ const {
 } = require("../utils/planHelper");
 const smsService = require("../services/smsService");
 const { sendPaymentConfirmation } = require("../services/telegramService");
-
-// ---------- Helper exports will be assembled at the end ----------
+const {
+  resolveContext,
+  requirePermission,
+} = require("../utils/resolveContext");
 
 // ============================================================
-//  CLASSES
+//  ONBOARDING
 // ============================================================
-const createClass = async (req, res) => {
-  try {
-    const { name, defaultAmount, initialBalance, initialBalanceNote } =
-      req.body;
-    const teacherId = req.user.id;
-
-    if (!name || defaultAmount === undefined) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "Sinf nomi va oylik to'lov summasi majburiy",
-        });
-    }
-    if (Number(defaultAmount) <= 0) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Summa 0 dan katta bo'lishi kerak" });
-    }
-    if (initialBalance !== undefined && Number(initialBalance) < 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "Boshlang'ich balans manfiy bo'lishi mumkin emas",
-        });
-    }
-
-    const teacher = await Teacher.findById(teacherId);
-    if (!teacher) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Teacher topilmadi" });
-    }
-
-    const currentClassCount = await Class.countDocuments({
-      teacher: teacherId,
-    });
-    if (!canOpenNewClass(teacher, currentClassCount)) {
-      const activePlan = teacher.isPlanActive() ? teacher.plan : "free";
-      const limit = PLAN_LIMITS[activePlan] || PLAN_LIMITS.free;
-      return res.status(403).json({
-        success: false,
-        error: teacher.isPlanActive()
-          ? `${activePlan.toUpperCase()} rejimda maksimal ${limit.classes} ta sinf ochishingiz mumkin`
-          : "Obunangiz tugagan. Yangi sinf ochish uchun Pro yoki Premium sotib oling",
-        requiresUpgrade: !teacher.isPlanActive(),
-      });
-    }
-
-    const activePlan = teacher.isPlanActive() ? teacher.plan : "free";
-    const newClass = new Class({
-      name: name.trim(),
-      teacher: teacherId,
-      defaultAmount: Number(defaultAmount),
-      plan: activePlan,
-      initialBalance: initialBalance !== undefined ? Number(initialBalance) : 0,
-      initialBalanceNote: (initialBalanceNote || "").trim(),
-    });
-    await newClass.save();
-
-    return res.status(201).json({
-      success: true,
-      message: "Sinf muvaffaqiyatli yaratildi",
-      class: newClass,
-    });
-  } catch (err) {
-    console.error("createClass error:", err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-// src/controllers/teacherController.js - LINE 87-122 O'ZGARTIRING
-
 const completeOnboarding = async (req, res) => {
   try {
     const teacherId = req.user.id;
@@ -115,13 +43,11 @@ const completeOnboarding = async (req, res) => {
       !institutionType ||
       !["school", "learning_center"].includes(institutionType)
     ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error:
-            "institutionType: 'school' yoki 'learning_center' bo'lishi kerak",
-        });
+      return res.status(400).json({
+        success: false,
+        error:
+          "institutionType: 'school' yoki 'learning_center' bo'lishi kerak",
+      });
     }
     if (!institutionName || !institutionName.trim()) {
       return res
@@ -162,7 +88,7 @@ const completeOnboarding = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Teacher topilmadi" });
 
-    // ✅ O'quv markazi tanlansa — default rollar avtomatik yaratiladi
+    // O'quv markazi tanlansa — default rollar avtomatik yaratiladi
     if (institutionType === "learning_center") {
       const { createDefaultRoles } = require("./roleController");
       await createDefaultRoles(teacher._id);
@@ -192,7 +118,7 @@ const completeOnboarding = async (req, res) => {
     return res.status(500).json({ success: false, error: err.message });
   }
 };
-// Qo'shimcha: profile olish
+
 const getProfile = async (req, res) => {
   try {
     const teacher = await Teacher.findById(req.user.id).select("-password");
@@ -208,8 +134,75 @@ const getProfile = async (req, res) => {
 };
 
 // ============================================================
-//  CLASSES helpers (list / update / delete)
+//  CLASSES — School Fund (Director only, plan limitlar bilan)
 // ============================================================
+const createClass = async (req, res) => {
+  try {
+    const { name, defaultAmount, initialBalance, initialBalanceNote } =
+      req.body;
+    const teacherId = req.user.id;
+
+    if (!name || defaultAmount === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: "Sinf nomi va oylik to'lov summasi majburiy",
+      });
+    }
+    if (Number(defaultAmount) <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Summa 0 dan katta bo'lishi kerak" });
+    }
+    if (initialBalance !== undefined && Number(initialBalance) < 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Boshlang'ich balans manfiy bo'lishi mumkin emas",
+      });
+    }
+
+    const teacher = await Teacher.findById(teacherId);
+    if (!teacher)
+      return res
+        .status(404)
+        .json({ success: false, error: "Teacher topilmadi" });
+
+    const currentClassCount = await Class.countDocuments({
+      teacher: teacherId,
+    });
+    if (!canOpenNewClass(teacher, currentClassCount)) {
+      const activePlan = teacher.isPlanActive() ? teacher.plan : "free";
+      const limit = PLAN_LIMITS[activePlan] || PLAN_LIMITS.free;
+      return res.status(403).json({
+        success: false,
+        error: teacher.isPlanActive()
+          ? `${activePlan.toUpperCase()} rejimda maksimal ${limit.classes} ta sinf ochishingiz mumkin`
+          : "Obunangiz tugagan. Yangi sinf ochish uchun Pro yoki Premium sotib oling",
+        requiresUpgrade: !teacher.isPlanActive(),
+      });
+    }
+
+    const activePlan = teacher.isPlanActive() ? teacher.plan : "free";
+    const newClass = new Class({
+      name: name.trim(),
+      teacher: teacherId,
+      defaultAmount: Number(defaultAmount),
+      plan: activePlan,
+      initialBalance: initialBalance !== undefined ? Number(initialBalance) : 0,
+      initialBalanceNote: (initialBalanceNote || "").trim(),
+    });
+    await newClass.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Sinf muvaffaqiyatli yaratildi",
+      class: newClass,
+    });
+  } catch (err) {
+    console.error("createClass error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+};
+
 const getMyClasses = async (req, res) => {
   try {
     const teacherId = req.user.id;
@@ -223,10 +216,8 @@ const getMyClasses = async (req, res) => {
         const payments = await MonthlyPayment.find({ class: cls._id });
         const paidPayments = payments.filter((p) => p.status === "paid");
         const paidCount = paidPayments.length;
-
         const collectedOnSite = paidPayments.reduce((s, p) => s + p.amount, 0);
         const totalCollected = (cls.initialBalance || 0) + collectedOnSite;
-
         const expenses = await Expense.find({ class: cls._id });
         const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
 
@@ -250,6 +241,70 @@ const getMyClasses = async (req, res) => {
   }
 };
 
+// ✅ Staff + Director — /classes/list dropdown uchun
+const getClassesForStaff = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    const query = { teacher: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+
+    const classes = await Class.find(query)
+      .select("name branch defaultAmount")
+      .populate("branch", "name")
+      .sort({ name: 1 });
+
+    return res.json({ success: true, classes });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
+// LC uchun — guruhni ID bo'yicha olish
+const getClassById = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    const classId = req.params.classId || req.params.id;
+    const query = { _id: classId, teacher: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+
+    const cls = await Class.findOne(query).populate("branch", "name");
+    if (!cls)
+      return res.status(404).json({ success: false, error: "Guruh topilmadi" });
+    res.json({ success: true, class: cls });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
+// LC uchun — guruhni yangilash (resolveContext + permission)
+const updateClass = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageGroups");
+    const classId = req.params.classId || req.params.id;
+    const query = { _id: classId, teacher: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+
+    const cls = await Class.findOne(query);
+    if (!cls)
+      return res.status(404).json({ success: false, error: "Guruh topilmadi" });
+
+    const { name, monthlyFee, defaultAmount, description, isActive, branch } =
+      req.body;
+    if (name !== undefined) cls.name = name;
+    if (monthlyFee !== undefined) cls.monthlyFee = monthlyFee;
+    if (defaultAmount !== undefined) cls.defaultAmount = defaultAmount;
+    if (description !== undefined) cls.description = description;
+    if (isActive !== undefined) cls.isActive = isActive;
+    if (branch !== undefined && ctx.isDirector) cls.branch = branch;
+
+    await cls.save();
+    res.json({ success: true, class: cls });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
 const updateInitialBalance = async (req, res) => {
   try {
     const { classId } = req.params;
@@ -257,12 +312,10 @@ const updateInitialBalance = async (req, res) => {
     const teacherId = req.user.id;
 
     if (initialBalance === undefined || Number(initialBalance) < 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "Balans 0 yoki undan katta bo'lishi kerak",
-        });
+      return res.status(400).json({
+        success: false,
+        error: "Balans 0 yoki undan katta bo'lishi kerak",
+      });
     }
 
     const cls = await Class.findOne({ _id: classId, teacher: teacherId });
@@ -345,7 +398,7 @@ const deleteClass = async (req, res) => {
 };
 
 // ============================================================
-//  STUDENTS
+//  STUDENTS — School Fund (Director only, plan limitlar bilan)
 // ============================================================
 const addStudent = async (req, res) => {
   try {
@@ -413,6 +466,75 @@ const getClassStudents = async (req, res) => {
   }
 };
 
+// LC uchun — barcha o'quvchilarni olish (resolveContext + filial filter)
+const getStudents = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    const query = { teacher: ctx.directorId };
+
+    if (req.query.classId) {
+      query.class = req.query.classId;
+    } else if (ctx.branchFilter) {
+      const classIds = await Class.find({
+        teacher: ctx.directorId,
+        branch: ctx.branchFilter,
+      }).distinct("_id");
+      query.class = { $in: classIds };
+    }
+
+    if (req.query.active !== undefined) {
+      query.isActive = req.query.active === "true";
+    }
+
+    const students = await Student.find(query)
+      .populate("class", "name defaultAmount")
+      .sort({ name: 1 });
+
+    res.json({ success: true, students });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
+// LC uchun — o'quvchini yangilash
+const updateStudent = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageStudents");
+
+    const student = await Student.findOne({
+      _id: req.params.studentId || req.params.id,
+      teacher: ctx.directorId,
+    });
+    if (!student)
+      return res
+        .status(404)
+        .json({ success: false, error: "O'quvchi topilmadi" });
+
+    const { name, parentPhone, classId, notes, isActive } = req.body;
+    if (name !== undefined) student.name = name;
+    if (parentPhone !== undefined) student.parentPhone = parentPhone;
+    if (notes !== undefined) student.notes = notes;
+    if (isActive !== undefined) student.isActive = isActive;
+
+    if (classId && String(classId) !== String(student.class)) {
+      const classQuery = { _id: classId, teacher: ctx.directorId };
+      if (ctx.branchFilter) classQuery.branch = ctx.branchFilter;
+      const cls = await Class.findOne(classQuery);
+      if (!cls)
+        return res
+          .status(404)
+          .json({ success: false, error: "Yangi guruh topilmadi" });
+      student.class = classId;
+    }
+
+    await student.save();
+    res.json({ success: true, student });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
 const deleteStudent = async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -439,7 +561,7 @@ const deleteStudent = async (req, res) => {
 };
 
 // ============================================================
-//  PAYMENTS
+//  PAYMENTS — School Fund
 // ============================================================
 const createMonthlyPayments = async (req, res) => {
   try {
@@ -464,10 +586,11 @@ const createMonthlyPayments = async (req, res) => {
         .json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" });
 
     const students = await Student.find({ class: classId });
-    if (students.length === 0)
+    if (students.length === 0) {
       return res
         .status(400)
         .json({ success: false, error: "Bu sinfda o'quvchi yo'q" });
+    }
 
     let createdCount = 0;
     let alreadyExisted = 0;
@@ -644,12 +767,10 @@ const updatePaymentStatus = async (req, res) => {
     const teacherId = req.user.id;
 
     if (!["paid", "not_paid"].includes(status)) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "Status 'paid' yoki 'not_paid' bo'lishi kerak",
-        });
+      return res.status(400).json({
+        success: false,
+        error: "Status 'paid' yoki 'not_paid' bo'lishi kerak",
+      });
     }
 
     const payment = await MonthlyPayment.findById(paymentId)
@@ -666,14 +787,13 @@ const updatePaymentStatus = async (req, res) => {
     payment.paidDate = status === "paid" ? new Date() : null;
     await payment.save();
 
-    // TELEGRAM XABARI
+    // Telegram xabari
     if (status === "paid") {
       try {
         const tgParent = await TelegramParent.findOne({
           studentId: payment.student._id,
           isActive: true,
         });
-
         if (tgParent) {
           const remainingPayments = await MonthlyPayment.find({
             student: payment.student._id,
@@ -710,8 +830,48 @@ const updatePaymentStatus = async (req, res) => {
   }
 };
 
+// LC uchun — to'lovni yangilash (resolveContext)
+const markPayment = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "managePayments");
+
+    const payment = await MonthlyPayment.findOne({
+      _id: req.params.paymentId || req.params.id,
+      teacher: ctx.directorId,
+    });
+    if (!payment)
+      return res
+        .status(404)
+        .json({ success: false, error: "To'lov topilmadi" });
+
+    const { isPaid, status, amount, paidDate, note } = req.body;
+
+    // isPaid yoki status orqali boshqarish mumkin
+    if (isPaid !== undefined) {
+      payment.status = isPaid ? "paid" : "not_paid";
+      payment.paidDate = isPaid
+        ? paidDate
+          ? new Date(paidDate)
+          : new Date()
+        : null;
+    } else if (status !== undefined) {
+      payment.status = status;
+      payment.paidDate = status === "paid" ? new Date() : null;
+    }
+
+    if (amount !== undefined) payment.amount = amount;
+    if (note !== undefined) payment.note = note;
+
+    await payment.save();
+    res.json({ success: true, payment });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
 // ============================================================
-//  EXPENSES
+//  EXPENSES — School Fund
 // ============================================================
 const addExpense = async (req, res) => {
   try {
@@ -719,12 +879,10 @@ const addExpense = async (req, res) => {
     const teacherId = req.user.id;
 
     if (!classId || !reason || amount === undefined || !month || !year) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "Barcha majburiy maydonlarni to'ldiring",
-        });
+      return res.status(400).json({
+        success: false,
+        error: "Barcha majburiy maydonlarni to'ldiring",
+      });
     }
     if (Number(amount) <= 0) {
       return res
@@ -786,10 +944,11 @@ const deleteExpense = async (req, res) => {
       _id: expenseId,
       teacher: teacherId,
     });
-    if (!expense)
+    if (!expense) {
       return res
         .status(404)
         .json({ success: false, error: "Xarajat topilmadi yoki ruxsat yo'q" });
+    }
 
     await Expense.findByIdAndDelete(expenseId);
     return res.json({ success: true, message: "Xarajat o'chirildi" });
@@ -817,8 +976,8 @@ const getDashboard = async (req, res) => {
 
     const classes = await Class.find({ teacher: teacherId });
     const classIds = classes.map((c) => c._id);
-
     const allStudents = await Student.find({ class: { $in: classIds } });
+
     const monthlyPayments = await MonthlyPayment.find({
       class: { $in: classIds },
       month: currentMonth,
@@ -969,13 +1128,11 @@ const getMonthlyReminder = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Teacher topilmadi" });
     if (!hasFeature(teacher, "monthly_reminder")) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          error: "Bu funksiya Pro va Premium tarifda",
-          requiresUpgrade: true,
-        });
+      return res.status(403).json({
+        success: false,
+        error: "Bu funksiya Pro va Premium tarifda",
+        requiresUpgrade: true,
+      });
     }
 
     const now = new Date();
@@ -1065,13 +1222,11 @@ const sendSmsReminders = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Teacher topilmadi" });
     if (!hasFeature(teacher, "sms_reminder")) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          error: "SMS reminder faqat Premium uchun",
-          requiresUpgrade: true,
-        });
+      return res.status(403).json({
+        success: false,
+        error: "SMS reminder faqat Premium uchun",
+        requiresUpgrade: true,
+      });
     }
 
     const cls = await Class.findOne({ _id: classId, teacher: teacherId });
@@ -1126,12 +1281,11 @@ const sendSmsReminders = async (req, res) => {
 };
 
 // ============================================================
-//  EXPORT helpers
+//  EXPORT
 // ============================================================
 const exportToExcel = (res, cls, data, meta) => {
   try {
     const wb = XLSX.utils.book_new();
-
     const wsData = [
       [
         "№",
@@ -1496,13 +1650,11 @@ const exportPayments = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Teacher topilmadi" });
     if (!hasFeature(teacher, "export")) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          error: "Export faqat Premium uchun",
-          requiresUpgrade: true,
-        });
+      return res.status(403).json({
+        success: false,
+        error: "Export faqat Premium uchun",
+        requiresUpgrade: true,
+      });
     }
 
     const cls = await Class.findOne({ _id: classId, teacher: teacherId });
@@ -1512,10 +1664,11 @@ const exportPayments = async (req, res) => {
     const students = await Student.find({ class: classId }).sort({
       rollNumber: 1,
     });
-    if (students.length === 0)
+    if (students.length === 0) {
       return res
         .status(400)
         .json({ success: false, error: "Bu sinfda o'quvchi yo'q" });
+    }
 
     const query = { class: classId };
     if (month) query.month = Number(month);
@@ -1565,7 +1718,6 @@ const exportPayments = async (req, res) => {
       .filter((p) => p.status === "paid")
       .reduce((s, p) => s + p.amount, 0);
     const expectedTotal = students.length * cls.defaultAmount;
-
     const allExpenses = await Expense.find({ class: classId });
     const totalExpenses = allExpenses.reduce((s, e) => s + e.amount, 0);
 
@@ -1635,29 +1787,54 @@ const getSubscriptionInfo = async (req, res) => {
 };
 
 // ============================================================
-//  Exports
+//  EXPORTS — dublikatsiz, to'liq
 // ============================================================
 module.exports = {
-  createClass,
+  // Onboarding & Profile
   completeOnboarding,
   getProfile,
+
+  // Dashboard & Subscription
+  getDashboard,
+  getSubscriptionInfo,
+
+  // Classes — School Fund (Director only)
+  createClass,
   getMyClasses,
   updateInitialBalance,
   updateClassDefaultAmount,
   deleteClass,
+
+  // Classes — LC (Staff + Director)
+  getClassesForStaff, // GET /classes/list — dropdown
+  getClassById, // GET /classes/:id
+  updateClass, // PUT /classes/:id
+
+  // Students — School Fund (Director only)
   addStudent,
   getClassStudents,
   deleteStudent,
+
+  // Students — LC (Staff + Director)
+  getStudents, // GET /students
+  updateStudent, // PUT /students/:id
+
+  // Payments — School Fund (Director only)
   createMonthlyPayments,
   getMonthlyPayments,
   getClassPayments,
   updatePaymentStatus,
+
+  // Payments — LC (Staff + Director)
+  markPayment, // PUT /payments/:id
+
+  // Expenses — School Fund (Director only)
   addExpense,
   getExpenses,
   deleteExpense,
-  getDashboard,
+
+  // Reminder & SMS & Export
   getMonthlyReminder,
   sendSmsReminders,
   exportPayments,
-  getSubscriptionInfo,
 };

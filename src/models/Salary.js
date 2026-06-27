@@ -1,24 +1,53 @@
-// src/models/Salary.js
-const mongoose = require('mongoose')
+const mongoose = require('mongoose');
 
-const salarySchema = new mongoose.Schema({
-  staff:   { type: mongoose.Schema.Types.ObjectId, ref: 'Staff', required: true },
-  branch:  { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', default: null },
-  director:{ type: mongoose.Schema.Types.ObjectId, ref: 'Teacher', required: true },
+const salarySchema = new mongoose.Schema(
+  {
+    staff: {
+      type:     mongoose.Schema.Types.ObjectId,
+      ref:      'Staff',
+      required: true,
+    },
+    director: {
+      type:     mongoose.Schema.Types.ObjectId,
+      ref:      'Teacher',
+      required: true,
+    },
+    branch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref:  'Branch',
+    },
+    // Format: "2025-01" (YYYY-MM)
+    month: {
+      type:     String,
+      required: true,
+      match:    [/^\d{4}-(0[1-9]|1[0-2])$/, "Month formati: YYYY-MM"],
+    },
+    amount: {
+      type:    Number,
+      required: true,
+      min:     [0, "Maosh manfiy bo'lishi mumkin emas"],
+    },
+    isPaid: {
+      type:    Boolean,
+      default: false,
+    },
+    paidDate: {
+      type: Date,
+      default: null,
+    },
+    note: {
+      type:    String,
+      default: '',
+      trim:    true,
+    },
+  },
+  { timestamps: true }
+);
 
-  baseSalary: { type: Number, required: true, min: 0 },   // belgilangan oylik maosh
-  bonus:      { type: Number, default: 0 },                 // bonus (agar bo'lsa)
-  deduction:  { type: Number, default: 0 },                 // ushlab qolingan summa
+// Bir xodim uchun bir oyda faqat bitta yozuv
+salarySchema.index({ staff: 1, month: 1, director: 1 }, { unique: true });
+// Tezkor so'rovlar uchun
+salarySchema.index({ director: 1, month: 1 });
+salarySchema.index({ branch:   1, month: 1 });
 
-  month: { type: Number, required: true },
-  year:  { type: Number, required: true },
-
-  status: { type: String, enum: ['pending', 'paid'], default: 'pending' },
-  paidAt: { type: Date, default: null },
-  note:   { type: String, default: '' },
-}, { timestamps: true })
-
-salarySchema.index({ staff: 1, month: 1, year: 1 }, { unique: true })
-salarySchema.index({ branch: 1, month: 1, year: 1 })
-
-module.exports = mongoose.model('Salary', salarySchema)
+module.exports = mongoose.model('Salary', salarySchema);

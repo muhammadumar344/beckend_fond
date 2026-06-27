@@ -1,135 +1,104 @@
-// src/controllers/roleController.js
-const Role = require('../models/Role')
+const Role  = require('../models/Role');
+const Staff = require('../models/Staff');
+const { resolveContext } = require('../utils/resolveContext');
 
-// Tizim tomonidan har bir Director uchun avtomatik yaratiladigan default rollar
-const DEFAULT_ROLES = [
-  {
-    name: 'Branch Manager', slug: 'branch_manager',
-    permissions: {
-      manageStaff: true, manageBranches: false, manageGroups: true,
-      manageStudents: true, manageAttendance: true, manageGrades: true,
-      managePayments: true, manageSalaries: false,
-      viewBranchStats: true, viewAllStats: false,
-    },
-  },
-  {
-    name: 'Administration', slug: 'administration',
-    permissions: {
-      manageStaff: false, manageBranches: false, manageGroups: true,
-      manageStudents: true, manageAttendance: false, manageGrades: false,
-      managePayments: true, manageSalaries: false,
-      viewBranchStats: true, viewAllStats: false,
-    },
-  },
-  {
-    name: 'Teacher', slug: 'teacher',
-    permissions: {
-      manageStaff: false, manageBranches: false, manageGroups: false,
-      manageStudents: false, manageAttendance: true, manageGrades: true,
-      managePayments: false, manageSalaries: false,
-      viewBranchStats: false, viewAllStats: false,
-    },
-  },
-  {
-    name: 'Support Teacher', slug: 'support_teacher',
-    permissions: {
-      manageStaff: false, manageBranches: false, manageGroups: false,
-      manageStudents: false, manageAttendance: true, manageGrades: false,
-      managePayments: false, manageSalaries: false,
-      viewBranchStats: false, viewAllStats: false,
-    },
-  },
-]
-
-// ── Director birinchi marta LC tanlaganda chaqiriladi ────────
-exports.createDefaultRoles = async (directorId) => {
+// GET /api/lc/roles — Director: o'z rollari; Staff: o'z directorining rollari
+const getRoles = async (req, res) => {
   try {
-    const existing = await Role.countDocuments({ director: directorId })
-    if (existing > 0) return // allaqachon yaratilgan
-
-    const roles = DEFAULT_ROLES.map(r => ({
-      director: directorId,
-      name: r.name,
-      slug: r.slug,
-      permissions: r.permissions,
-      isDefault: true,
-    }))
-    await Role.insertMany(roles)
-    console.log(`✅ ${roles.length} ta default rol yaratildi (director: ${directorId})`)
-  } catch (e) {
-    console.error('createDefaultRoles error:', e.message)
+    const ctx = await resolveContext(req);
+    const roles = await Role.find({ director: ctx.directorId })
+      .sort({ isDefault: -1, name: 1 });
+    res.json(roles);
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
   }
-}
+};
 
-// ── Director: barcha rollarni ko'rish ────────────────────────
-exports.getMyRoles = async (req, res) => {
+// GET /api/lc/roles/my — Staff o'z rolini ko'radi
+const getMyRole = async (req, res) => {
   try {
-    const roles = await Role.find({ director: req.user.id, isActive: true }).sort({ isDefault: -1, createdAt: 1 })
-    res.json({ success: true, roles })
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message })
+    if (req.user.role === 'teacher') {
+      return res.json({ name: 'Director', slug: 'director', permissions: null, isDirector: true });
+    }
+    const staff = await Staff.findById(req.user.id).populate('role');
+    if (!staff) return res.status(404).json({ message: 'Xodim topilmadi' });
+    res.json(staff.role || null);
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
   }
-}
+};
 
-// ── Director: yangi custom rol yaratish ─────────────────────
-exports.createRole = async (req, res) => {
+// POST /api/lc/roles — FAQAT Director
+const createRole = async (req, res) => {
   try {
-    const { name, permissions } = req.body
-    if (!name?.trim()) {
-      return res.status(400).json({ success: false, error: 'Rol nomi majburiy' })
+    if (req.user.role !== 'teacher') {
+      return res.status(403).json({ message: 'Faqat direktor rol yarata oladi' });
     }
+    const { name, permissions = [], color = '#4299e1' } = req.body;
+    if (!name) return res.status(400).json({ message: 'Rol nomi majburiy' });
 
-    const slug = name.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
-
-    const existing = await Role.findOne({ director: req.user.id, slug })
-    if (existing) {
-      return res.status(400).json({ success: false, error: 'Bu nomdagi rol allaqachon mavjud' })
-    }
-
-    const role = await Role.create({
+    const role = new Role({
+      name,
+      slug: name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''),
+      permissions,
+      color,
       director: req.user.id,
-      name: name.trim(),
-      slug,
-      permissions: {
-        manageStaff:     !!permissions?.manageStaff,
-        manageBranches:  !!permissions?.manageBranches,
-        manageGroups:    !!permissions?.manageGroups,
-        manageStudents:  !!permissions?.manageStudents,
-        manageAttendance:!!permissions?.manageAttendance,
-        manageGrades:    !!permissions?.manageGrades,
-        managePayments:  !!permissions?.managePayments,
-        manageSalaries:  !!permissions?.manageSalaries,
-        viewBranchStats: !!permissions?.viewBranchStats,
-        viewAllStats:    false, // faqat director uchun, custom rolga berilmaydi
-      },
       isDefault: false,
-    })
-
-    res.status(201).json({ success: true, message: 'Yangi rol yaratildi', role })
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message })
+    });
+    await role.save();
+    res.status(201).json(role);
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(400).json({ message: 'Bu nomli rol allaqachon mavjud' });
+    }
+    res.status(err.status || 500).json({ message: err.message });
   }
-}
+};
 
-// ── Rol o'chirish (faqat custom, default emas) ──────────────
-exports.deleteRole = async (req, res) => {
+// PUT /api/lc/roles/:id — FAQAT Director
+const updateRole = async (req, res) => {
   try {
-    const role = await Role.findOne({ _id: req.params.roleId, director: req.user.id })
-    if (!role) return res.status(404).json({ success: false, error: 'Rol topilmadi' })
+    if (req.user.role !== 'teacher') {
+      return res.status(403).json({ message: 'Faqat direktor rol yangilaya oladi' });
+    }
+    const role = await Role.findOne({ _id: req.params.id, director: req.user.id });
+    if (!role) return res.status(404).json({ message: 'Rol topilmadi' });
     if (role.isDefault) {
-      return res.status(400).json({ success: false, error: 'Standart rollarni o\'chirish mumkin emas' })
+      return res.status(400).json({ message: "Default rolni o'zgartirish mumkin emas" });
     }
-
-    const Staff = require('../models/Staff')
-    const staffCount = await Staff.countDocuments({ role: role._id })
-    if (staffCount > 0) {
-      return res.status(400).json({ success: false, error: `Bu rolda ${staffCount} ta xodim bor, avval ularni o'zgartiring` })
-    }
-
-    role.isActive = false
-    await role.save()
-    res.json({ success: true, message: 'Rol o\'chirildi' })
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message })
+    const { name, permissions, color } = req.body;
+    if (name !== undefined) role.name = name;
+    if (permissions !== undefined) role.permissions = permissions;
+    if (color !== undefined) role.color = color;
+    await role.save();
+    res.json(role);
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
   }
-}
+};
+
+// DELETE /api/lc/roles/:id — FAQAT Director
+const deleteRole = async (req, res) => {
+  try {
+    if (req.user.role !== 'teacher') {
+      return res.status(403).json({ message: "Faqat direktor rol o'chira oladi" });
+    }
+    const role = await Role.findOne({ _id: req.params.id, director: req.user.id });
+    if (!role) return res.status(404).json({ message: 'Rol topilmadi' });
+    if (role.isDefault) {
+      return res.status(400).json({ message: "Default rolni o'chirish mumkin emas" });
+    }
+    const staffCount = await Staff.countDocuments({ role: role._id });
+    if (staffCount > 0) {
+      return res.status(400).json({
+        message: `Bu rol ${staffCount} ta xodimga biriktirilgan. Avval ularni boshqa rolga o'tkazing.`,
+      });
+    }
+    await role.deleteOne();
+    res.json({ message: "Rol o'chirildi" });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+};
+
+module.exports = { getRoles, getMyRole, createRole, updateRole, deleteRole };

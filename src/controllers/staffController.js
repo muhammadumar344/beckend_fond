@@ -1,231 +1,445 @@
-// src/controllers/staffController.js
-const Staff   = require('../models/Staff')
-const Role    = require('../models/Role')
-const Branch  = require('../models/Branch')
-const Teacher = require('../models/Teacher')
-const jwt     = require('jsonwebtoken')
-const crypto  = require('crypto')
+const Staff  = require('../models/Staff');
+const Role   = require('../models/Role');
+const Branch = require('../models/Branch');
+const Teacher = require('../models/Teacher');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const { resolveContext, requirePermission } = require('../utils/resolveContext');
+const { sendStaffWelcomeEmail, sendPasswordResetEmail } = require('../services/emailService');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fond-school-secret-2024'
+// ─── HELPER ───────────────────────────────────────────────────────────────────
 
-// ── Email format tekshirish (gmail.com bilan tugashi shart) ──
-const isValidGmail = (email) => {
-  const re = /^[^\s@]+@gmail\.com$/i
-  return re.test(email)
+function generateTempPassword() {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  return Array.from({ length: 8 }, () =>
+    chars.charAt(Math.floor(Math.random() * chars.length))
+  ).join('');
 }
 
-// ── Tasodifiy parol generatsiya ──────────────────────────────
-const generatePassword = () => {
-  // 8 ta belgi: harf + raqam, o'qish oson bo'lishi uchun
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
-  let pass = ''
-  for (let i = 0; i < 8; i++) pass += chars[Math.floor(Math.random() * chars.length)]
-  return pass
-}
+// ─── CREATE ───────────────────────────────────────────────────────────────────
 
-// ── Kim caqirayotganini aniqlash: Director (Teacher) yoki Staff ──
-const getCallerContext = (req) => {
-  // auth middleware req.user = { id, role } qo'yadi
-  // role: 'teacher' (director) yoki 'staff'
-  return { id: req.user.id, role: req.user.role, staffRole: req.user.staffRole || null }
-}
-
-// ============================================================
-//  XODIM YARATISH (Director YOKI Branch Manager chaqiradi)
-// ============================================================
-exports.createStaff = async (req, res) => {
+const createStaff = async (req, res) => {
   try {
-    const caller = getCallerContext(req)
-    const { name, email, roleSlug, branchId, phone } = req.body
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, 'manageStaff');
 
-    if (!name?.trim()) return res.status(400).json({ success: false, error: 'Ism majburiy' })
-    if (!email || !isValidGmail(email)) {
-      return res.status(400).json({ success: false, error: "Email @gmail.com bilan tugashi va to'g'ri formatda bo'lishi kerak" })
+    const { name, email, roleId, branchId, position } = req.body;
+
+    if (!name || !email || !roleId) {
+      return res.status(400).json({ message: "Ism, email va rol majburiy" });
     }
-    if (!roleSlug) return res.status(400).json({ success: false, error: 'Rol tanlanishi shart' })
-
-    // ── Director ID ni aniqlash ──────────────────────────────
-    let directorId
-    let allowedBranchId = branchId || null
-
-    if (caller.role === 'teacher') {
-      // Director o'zi yaratmoqda
-      directorId = caller.id
-    } else if (caller.role === 'staff') {
-      // Branch Manager yaratmoqda — faqat o'z filiali uchun, manageStaff ruxsati bo'lishi kerak
-      const callerStaff = await Staff.findById(caller.id).populate('role')
-      if (!callerStaff || !callerStaff.role.permissions.manageStaff) {
-        return res.status(403).json({ success: false, error: "Xodim qo'shish huquqi yo'q" })
-      }
-      directorId = callerStaff.director
-      allowedBranchId = callerStaff.branch // Branch manager faqat o'z filialiga qo'sha oladi
-    } else {
-      return res.status(403).json({ success: false, error: 'Ruxsat yo\'q' })
+    if (!email.toLowerCase().endsWith('@gmail.com')) {
+      return res.status(400).json({ message: "Email @gmail.com bilan tugashi kerak" });
     }
 
-    // ── Rolni topish ──────────────────────────────────────────
-    const role = await Role.findOne({ director: directorId, slug: roleSlug, isActive: true })
-    if (!role) return res.status(404).json({ success: false, error: 'Rol topilmadi' })
+    const role = await Role.findOne({ _id: roleId, director: ctx.directorId });
+    if (!role) return res.status(404).json({ message: "Rol topilmadi" });
 
-    // Branch manager — branch_manager yoki director rolini bera olmaydi
-    if (caller.role === 'staff' && ['branch_manager'].includes(roleSlug)) {
-      return res.status(403).json({ success: false, error: 'Bu rolni faqat direktor bera oladi' })
+    if (role.slug === 'branch_manager' && !ctx.isDirector) {
+      return res.status(403).json({
+        message: "Branch Manager rolini faqat direktor tayinlay oladi",
+      });
     }
 
-    // ── Email band emasligini tekshirish ─────────────────────
-    if (await Staff.findOne({ email: email.toLowerCase() })) {
-      return res.status(400).json({ success: false, error: 'Bu email allaqachon ishlatilgan' })
+    const assignedBranch = branchId || ctx.branchFilter;
+    if (!assignedBranch) {
+      return res.status(400).json({ message: "Filial ko'rsatilmagan" });
     }
-    if (await Teacher.findOne({ email: email.toLowerCase() })) {
-      return res.status(400).json({ success: false, error: 'Bu email allaqachon ishlatilgan' })
-    }
-
-    // ── Filial tekshirish (agar ko'rsatilgan bo'lsa) ─────────
-    if (allowedBranchId) {
-      const branch = await Branch.findOne({ _id: allowedBranchId, teacher: directorId })
-      if (!branch) return res.status(404).json({ success: false, error: 'Filial topilmadi' })
+    if (!ctx.isDirector && String(assignedBranch) !== String(ctx.branchFilter)) {
+      return res.status(403).json({
+        message: "Faqat o'z filialingizga xodim qo'sha olasiz",
+      });
     }
 
-    // ── Parol generatsiya va saqlash ─────────────────────────
-    const plainPassword = generatePassword()
-    const verificationToken = crypto.randomBytes(24).toString('hex')
+    const existing = await Staff.findOne({ email: email.toLowerCase() });
+    if (existing) {
+      return res.status(400).json({ message: "Bu email bilan xodim allaqachon mavjud" });
+    }
 
-    const staff = await Staff.create({
-      director: directorId,
-      branch: allowedBranchId,
-      role: role._id,
-      name: name.trim(),
-      email: email.toLowerCase(),
-      password: plainPassword,
-      phone: (phone || '').trim(),
+    const tempPassword      = generateTempPassword();
+    const hashedPassword    = await bcrypt.hash(tempPassword, 10);
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+
+    const staff = new Staff({
+      name,
+      email:            email.toLowerCase(),
+      password:         hashedPassword,
+      role:             roleId,
+      branch:           assignedBranch,
+      director:         ctx.directorId,
+      position:         position || '',
+      isActive:         true,
+      emailVerified:    false,
       verificationToken,
-      verificationSentAt: new Date(),
-      createdBy: caller.role === 'staff' ? caller.id : null,
-    })
+    });
+    await staff.save();
 
-    // ── Tasdiqlash xati yuborish (TODO: real email service ulanganda) ──
-    // Hozircha login ma'lumotlarini javobda qaytaramiz —
-    // chunki direktor/manager buni xodimga o'zi yetkazadi.
-    // sendVerificationEmail(staff.email, verificationToken) // keyingi bosqichda
+    // Email yuborish (xato bo'lsa ham staff yaratiladi)
+    try {
+      const teacher = await Teacher.findById(ctx.directorId).lean();
+      const verificationLink = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
+      await sendStaffWelcomeEmail({
+        toEmail:         staff.email,
+        staffName:       staff.name,
+        directorName:    teacher?.fullName || teacher?.institutionName || 'Direktor',
+        institutionName: teacher?.institutionName || 'FondSchool',
+        tempPassword,
+        verificationLink,
+      });
+    } catch (emailErr) {
+      console.error('[Email] Xato (staff yaratildi, email ketmadi):', emailErr.message);
+    }
+
+    await staff.populate([
+      { path: 'role',   select: 'name color slug' },
+      { path: 'branch', select: 'name' },
+    ]);
 
     res.status(201).json({
-      success: true,
-      message: `${role.name} muvaffaqiyatli qo'shildi. Login ma'lumotlarini xodimga yuboring.`,
       staff: {
-        id: staff._id,
-        name: staff.name,
-        email: staff.email,
-        role: role.name,
-        roleSlug: role.slug,
-        branch: allowedBranchId,
-        // ⚠️ Parol FAQAT shu javobda bir marta ko'rsatiladi — keyin qaytarilmaydi
-        generatedPassword: plainPassword,
-      },
-    })
-  } catch (e) {
-    console.error('createStaff error:', e)
-    res.status(500).json({ success: false, error: e.message })
-  }
-}
-
-// ── Staff login ────────────────────────────────────────────
-exports.staffLogin = async (req, res) => {
-  try {
-    const { email, password } = req.body
-    if (!email || !password) return res.status(400).json({ error: 'Email va parol majburiy' })
-
-    const staff = await Staff.findOne({ email: email.toLowerCase() })
-      .select('+password')
-      .populate('role')
-      .populate('director', 'name institutionName')
-      .populate('branch', 'name')
-
-    if (!staff || !(await staff.comparePassword(password))) {
-      return res.status(401).json({ error: "Email yoki parol noto'g'ri" })
-    }
-    if (!staff.isActive) return res.status(403).json({ error: 'Akkaunt bloklangan' })
-
-    const token = jwt.sign(
-      { id: staff._id, role: 'staff', staffRole: staff.role.slug },
-      JWT_SECRET,
-      { expiresIn: '30d' }
-    )
-
-    res.json({
-      token,
-      user: {
-        id: staff._id,
-        name: staff.name,
-        email: staff.email,
-        role: 'staff',
-        staffRole: staff.role.slug,
-        staffRoleName: staff.role.name,
-        permissions: staff.role.permissions,
-        director: staff.director,
-        branch: staff.branch,
+        _id:           staff._id,
+        name:          staff.name,
+        email:         staff.email,
+        role:          staff.role,
+        branch:        staff.branch,
+        position:      staff.position,
+        isActive:      staff.isActive,
         emailVerified: staff.emailVerified,
       },
-    })
-  } catch (e) {
-    res.status(500).json({ error: e.message })
+      tempPassword,
+      warning: "Parolni xodimga xavfsiz yetkazing. Bu sahifadan keyin ko'rinmaydi!",
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
   }
-}
+};
 
-// ── Director/Manager: o'z xodimlarini ko'rish ────────────────
-exports.getMyStaff = async (req, res) => {
+// ─── GET ALL ──────────────────────────────────────────────────────────────────
+
+const getStaff = async (req, res) => {
   try {
-    const caller = getCallerContext(req)
-    let filter = {}
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, 'manageStaff');
 
-    if (caller.role === 'teacher') {
-      filter.director = caller.id
-    } else if (caller.role === 'staff') {
-      const callerStaff = await Staff.findById(caller.id)
-      filter.director = callerStaff.director
-      // Branch manager faqat o'z filialidagi xodimlarni ko'radi
-      if (callerStaff.branch) filter.branch = callerStaff.branch
+    const query = { director: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+
+    // Query filters
+    if (req.query.branchId)  query.branch   = req.query.branchId;
+    if (req.query.roleId)    query.role      = req.query.roleId;
+    if (req.query.isActive !== undefined) {
+      query.isActive = req.query.isActive === 'true';
     }
 
-    const staff = await Staff.find(filter)
-      .populate('role', 'name slug permissions')
+    const staff = await Staff.find(query)
+      .populate('role',   'name color slug permissions')
       .populate('branch', 'name')
-      .sort({ createdAt: -1 })
+      .select('-password -verificationToken -resetPasswordToken -resetPasswordExpires')
+      .sort({ name: 1 });
 
-    res.json({ success: true, total: staff.length, staff })
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message })
+    res.json(staff);
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
   }
-}
+};
 
-// ── Xodimni bloklash/faollashtirish ──────────────────────────
-exports.toggleStaffStatus = async (req, res) => {
+// ─── GET ONE ──────────────────────────────────────────────────────────────────
+
+const getStaffById = async (req, res) => {
   try {
-    const { staffId } = req.params
-    const staff = await Staff.findById(staffId)
-    if (!staff) return res.status(404).json({ success: false, error: 'Xodim topilmadi' })
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, 'manageStaff');
 
-    staff.isActive = !staff.isActive
-    await staff.save()
+    const query = { _id: req.params.id, director: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
 
-    res.json({ success: true, message: staff.isActive ? 'Faollashtirildi' : 'Bloklandi', isActive: staff.isActive })
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message })
+    const staff = await Staff.findOne(query)
+      .populate('role',   'name color slug permissions')
+      .populate('branch', 'name')
+      .select('-password -verificationToken -resetPasswordToken -resetPasswordExpires');
+
+    if (!staff) return res.status(404).json({ message: 'Xodim topilmadi' });
+    res.json(staff);
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
   }
-}
+};
 
-// ── Email tasdiqlash (link orqali) ───────────────────────────
-exports.verifyEmail = async (req, res) => {
+// ─── UPDATE ───────────────────────────────────────────────────────────────────
+
+const updateStaff = async (req, res) => {
   try {
-    const { token } = req.params
-    const staff = await Staff.findOne({ verificationToken: token }).select('+verificationToken')
-    if (!staff) return res.status(404).json({ success: false, error: 'Havola yaroqsiz yoki muddati o\'tgan' })
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, 'manageStaff');
 
-    staff.emailVerified = true
-    staff.verificationToken = null
-    await staff.save()
+    const query = { _id: req.params.id, director: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
 
-    res.json({ success: true, message: 'Email tasdiqlandi!' })
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message })
+    const staff = await Staff.findOne(query);
+    if (!staff) return res.status(404).json({ message: 'Xodim topilmadi' });
+
+    const { name, position, roleId, branchId } = req.body;
+
+    if (name !== undefined)     staff.name     = name;
+    if (position !== undefined) staff.position = position;
+
+    // Rol o'zgartirish
+    if (roleId && String(roleId) !== String(staff.role)) {
+      const newRole = await Role.findOne({ _id: roleId, director: ctx.directorId });
+      if (!newRole) return res.status(404).json({ message: "Yangi rol topilmadi" });
+
+      // Branch Manager rolini faqat Director berishi mumkin
+      if (newRole.slug === 'branch_manager' && !ctx.isDirector) {
+        return res.status(403).json({
+          message: "Branch Manager rolini faqat direktor tayinlay oladi",
+        });
+      }
+      staff.role = roleId;
+    }
+
+    // Filial o'zgartirish — faqat Director
+    if (branchId && ctx.isDirector && String(branchId) !== String(staff.branch)) {
+      const branch = await Branch.findOne({ _id: branchId, teacher: ctx.directorId });
+      if (!branch) return res.status(404).json({ message: "Filial topilmadi" });
+      staff.branch = branchId;
+    }
+
+    await staff.save();
+    await staff.populate([
+      { path: 'role',   select: 'name color slug' },
+      { path: 'branch', select: 'name' },
+    ]);
+
+    res.json({
+      _id:      staff._id,
+      name:     staff.name,
+      email:    staff.email,
+      role:     staff.role,
+      branch:   staff.branch,
+      position: staff.position,
+      isActive: staff.isActive,
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
   }
-}
+};
+
+// ─── TOGGLE (faollashtirish / o'chirish) ─────────────────────────────────────
+
+const toggleStaff = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, 'manageStaff');
+
+    const query = { _id: req.params.id, director: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+
+    const staff = await Staff.findOne(query);
+    if (!staff) return res.status(404).json({ message: 'Xodim topilmadi' });
+
+    staff.isActive = !staff.isActive;
+    await staff.save();
+
+    res.json({
+      _id:      staff._id,
+      name:     staff.name,
+      isActive: staff.isActive,
+      message:  staff.isActive ? "Xodim faollashtirildi" : "Xodim bloklandi",
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+};
+
+// ─── RESET PASSWORD (Director tomonidan) ─────────────────────────────────────
+
+const resetStaffPassword = async (req, res) => {
+  try {
+    // Faqat Director
+    if (req.user.role !== 'teacher') {
+      return res.status(403).json({ message: "Faqat direktor parol yangilaya oladi" });
+    }
+
+    const staff = await Staff.findOne({
+      _id:      req.params.id,
+      director: req.user.id,
+    });
+    if (!staff) return res.status(404).json({ message: 'Xodim topilmadi' });
+
+    const newPassword  = generateTempPassword();
+    staff.password     = await bcrypt.hash(newPassword, 10);
+    staff.emailVerified = false; // qayta tasdiqlash kerak
+    await staff.save();
+
+    res.json({
+      tempPassword: newPassword,
+      warning: "Yangi parolni xodimga xavfsiz yetkazing!",
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+};
+
+// ─── EMAIL VERIFICATION ───────────────────────────────────────────────────────
+
+const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.params;
+    if (!token) return res.status(400).json({ message: 'Token mavjud emas' });
+
+    const staff = await Staff.findOne({ verificationToken: token });
+    if (!staff) {
+      return res.status(400).json({
+        message: "Token noto'g'ri yoki muddati o'tgan",
+      });
+    }
+
+    staff.emailVerified    = true;
+    staff.verificationToken = undefined;
+    await staff.save();
+
+    res.json({
+      message: "Email muvaffaqiyatli tasdiqlandi! Endi tizimga kirishingiz mumkin.",
+      email: staff.email,
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+};
+
+// ─── FORGOT PASSWORD (Staff o'zi so'raydi) ───────────────────────────────────
+
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email majburiy' });
+
+    const staff = await Staff.findOne({ email: email.toLowerCase() });
+
+    // Xavfsizlik: email topilmasa ham xuddi shu javob
+    if (!staff) {
+      return res.json({ message: "Agar email mavjud bo'lsa, tiklash xati yuborildi" });
+    }
+
+    const resetToken  = crypto.randomBytes(32).toString('hex');
+    staff.resetPasswordToken   = resetToken;
+    staff.resetPasswordExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 soat
+    await staff.save();
+
+    try {
+      const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+      await sendPasswordResetEmail({ toEmail: staff.email, name: staff.name, resetLink });
+    } catch (emailErr) {
+      console.error('[Email] Parol tiklash xati ketmadi:', emailErr.message);
+    }
+
+    res.json({ message: "Agar email mavjud bo'lsa, tiklash xati yuborildi" });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+};
+
+// ─── RESET PASSWORD (token orqali) ───────────────────────────────────────────
+
+const resetPasswordByToken = async (req, res) => {
+  try {
+    const { token }       = req.params;
+    const { newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ message: "Token va yangi parol majburiy" });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Parol kamida 6 ta belgi bo'lishi kerak" });
+    }
+
+    const staff = await Staff.findOne({
+      resetPasswordToken:   token,
+      resetPasswordExpires: { $gt: new Date() },
+    });
+
+    if (!staff) {
+      return res.status(400).json({
+        message: "Token noto'g'ri yoki muddati o'tgan (24 soat)",
+      });
+    }
+
+    staff.password             = await bcrypt.hash(newPassword, 10);
+    staff.resetPasswordToken   = undefined;
+    staff.resetPasswordExpires = undefined;
+    await staff.save();
+
+    res.json({ message: "Parol muvaffaqiyatli yangilandi. Endi tizimga kirishingiz mumkin." });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+};
+
+// ─── CHANGE OWN PASSWORD (Staff login qilib o'zi o'zgartiradi) ───────────────
+
+const changeOwnPassword = async (req, res) => {
+  try {
+    if (req.user.role !== 'staff') {
+      return res.status(403).json({ message: "Faqat xodimlar uchun" });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Joriy va yangi parol majburiy" });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Yangi parol kamida 6 ta belgi" });
+    }
+
+    const staff = await Staff.findById(req.user.id);
+    if (!staff) return res.status(404).json({ message: 'Xodim topilmadi' });
+
+    const isMatch = await bcrypt.compare(currentPassword, staff.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Joriy parol noto'g'ri" });
+    }
+
+    staff.password = await bcrypt.hash(newPassword, 10);
+    await staff.save();
+
+    res.json({ message: "Parol muvaffaqiyatli yangilandi" });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+};
+
+// ─── GET MY PROFILE (Staff o'z profilini ko'radi) ────────────────────────────
+
+const getMyProfile = async (req, res) => {
+  try {
+    if (req.user.role !== 'staff') {
+      return res.status(403).json({ message: "Faqat xodimlar uchun" });
+    }
+
+    const staff = await Staff.findById(req.user.id)
+      .populate('role',   'name color slug permissions')
+      .populate('branch', 'name address')
+      .select('-password -verificationToken -resetPasswordToken -resetPasswordExpires');
+
+    if (!staff) return res.status(404).json({ message: 'Xodim topilmadi' });
+    res.json(staff);
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+};
+
+// ─── EXPORTS ──────────────────────────────────────────────────────────────────
+
+module.exports = {
+  createStaff,
+  getStaff,
+  getStaffById,
+  updateStaff,
+  toggleStaff,
+  resetStaffPassword,
+  verifyEmail,
+  forgotPassword,
+  resetPasswordByToken,
+  changeOwnPassword,
+  getMyProfile,
+};

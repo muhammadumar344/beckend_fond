@@ -1,97 +1,262 @@
-// src/controllers/salaryController.js
-const Salary = require('../models/Salary')
-const Staff  = require('../models/Staff')
+const Salary = require('../models/Salary');
+const Staff  = require('../models/Staff');
+const { resolveContext, requirePermission } = require('../utils/resolveContext');
 
-// ── Maosh belgilash/yangilash (Director yoki manageSalaries huquqi bor manager) ──
-exports.setSalary = async (req, res) => {
+// ─── SET / UPDATE OYLIK MAOSH ─────────────────────────────────────────────────
+// POST /api/lc/salaries
+// Body: { staffId, month: "2025-01", amount, note }
+
+const setSalary = async (req, res) => {
   try {
-    const { staffId, baseSalary, bonus = 0, deduction = 0, month, year, note } = req.body
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, 'manageSalaries');
 
-    if (!staffId || baseSalary === undefined || !month || !year) {
-      return res.status(400).json({ success: false, error: 'staffId, baseSalary, month, year majburiy' })
+    const { staffId, month, amount, note } = req.body;
+    if (!staffId || !month || amount === undefined) {
+      return res.status(400).json({ message: "staffId, month va amount majburiy" });
     }
 
-    const staff = await Staff.findById(staffId).populate('role')
-    if (!staff) return res.status(404).json({ success: false, error: 'Xodim topilmadi' })
-
-    // ── Ruxsat tekshirish ──────────────────────────────────
-    if (req.user.role === 'staff') {
-      const caller = await Staff.findById(req.user.id).populate('role')
-      if (!caller.role.permissions.manageSalaries) {
-        return res.status(403).json({ success: false, error: 'Maosh boshqarish huquqi yo\'q' })
-      }
-      // Manager faqat o'z filialidagi xodimlarga maosh belgilaydi
-      if (String(caller.branch) !== String(staff.branch)) {
-        return res.status(403).json({ success: false, error: 'Faqat o\'z filialingizdagi xodimlarga maosh belgilashingiz mumkin' })
-      }
+    // Month format: YYYY-MM
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      return res.status(400).json({ message: "Month formati: YYYY-MM (masalan: 2025-01)" });
     }
 
+    // Xodim directorga tegishli va filial mos kelishini tekshirish
+    const staffQuery = { _id: staffId, director: ctx.directorId };
+    if (ctx.branchFilter) staffQuery.branch = ctx.branchFilter;
+    const staff = await Staff.findOne(staffQuery);
+    if (!staff) return res.status(404).json({ message: "Xodim topilmadi" });
+
+    // Upsert — agar bu oy uchun yozuv bo'lsa yangilaydi, bo'lmasa yaratadi
     const salary = await Salary.findOneAndUpdate(
-      { staff: staffId, month: Number(month), year: Number(year) },
+      { staff: staffId, month, director: ctx.directorId },
       {
-        director: staff.director,
-        branch: staff.branch,
-        baseSalary: Number(baseSalary),
-        bonus: Number(bonus),
-        deduction: Number(deduction),
-        note: (note || '').trim(),
+        $set: {
+          amount:   Number(amount),
+          note:     note || '',
+          branch:   staff.branch,
+          director: ctx.directorId,
+          // To'langan bo'lsa to'lov ma'lumotlarini o'zgartirilmaydi
+        },
+        $setOnInsert: {
+          isPaid:   false,
+          paidDate: null,
+        },
       },
-      { upsert: true, new: true }
-    )
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    ).populate('staff', 'name email position');
 
-    res.json({ success: true, message: 'Maosh belgilandi', salary })
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message })
+    res.status(201).json(salary);
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
   }
-}
+};
 
-// ── Maoshni to'langan deb belgilash ──────────────────────────
-exports.markAsPaid = async (req, res) => {
+// ─── TO'LANDI DEYB BELGILASH ──────────────────────────────────────────────────
+// PUT /api/lc/salaries/:id/pay
+// Body: { paidDate (optional), note (optional) }
+
+const markSalaryPaid = async (req, res) => {
   try {
-    const { salaryId } = req.params
-    const salary = await Salary.findById(salaryId)
-    if (!salary) return res.status(404).json({ success: false, error: 'Maosh yozuvi topilmadi' })
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, 'manageSalaries');
 
-    salary.status = 'paid'
-    salary.paidAt = new Date()
-    await salary.save()
+    const query = { _id: req.params.id, director: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
 
-    res.json({ success: true, message: 'To\'langan deb belgilandi', salary })
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message })
+    const salary = await Salary.findOne(query);
+    if (!salary) return res.status(404).json({ message: "Maosh yozuvi topilmadi" });
+
+    const { isPaid, paidDate, note } = req.body;
+
+    // Agar isPaid body'da kelsa shu qiymat, aks holda toggle
+    if (typeof isPaid === 'boolean') {
+      salary.isPaid  = isPaid;
+      salary.paidDate = isPaid ? (paidDate ? new Date(paidDate) : new Date()) : null;
+    } else {
+      // Toggle
+      salary.isPaid  = !salary.isPaid;
+      salary.paidDate = salary.isPaid ? new Date() : null;
+    }
+
+    if (note !== undefined) salary.note = note;
+    await salary.save();
+
+    await salary.populate('staff', 'name email position');
+    res.json(salary);
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
   }
-}
+};
 
-// ── Filial bo'yicha oylik maoshlar ro'yxati ──────────────────
-exports.getBranchSalaries = async (req, res) => {
+// ─── RO'YXAT (Director / Branch Manager) ─────────────────────────────────────
+// GET /api/lc/salaries?month=2025-01&branchId=...&staffId=...&isPaid=true
+
+const getSalaries = async (req, res) => {
   try {
-    const { branchId } = req.params
-    const { month, year } = req.query
-    const m = Number(month) || new Date().getMonth() + 1
-    const y = Number(year)  || new Date().getFullYear()
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, 'manageSalaries');
 
-    const salaries = await Salary.find({ branch: branchId, month: m, year: y })
-      .populate('staff', 'name email')
+    const query = { director: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
 
-    const total = salaries.reduce((s, sal) => s + sal.baseSalary + sal.bonus - sal.deduction, 0)
-    const paidTotal = salaries.filter(s => s.status === 'paid')
-      .reduce((s, sal) => s + sal.baseSalary + sal.bonus - sal.deduction, 0)
+    // Filter'lar
+    if (req.query.month)    query.month  = req.query.month;
+    if (req.query.branchId && ctx.isDirector) query.branch = req.query.branchId;
+    if (req.query.staffId)  query.staff  = req.query.staffId;
+    if (req.query.isPaid !== undefined) {
+      query.isPaid = req.query.isPaid === 'true';
+    }
+
+    const salaries = await Salary.find(query)
+      .populate('staff',  'name email position')
+      .populate('branch', 'name')
+      .sort({ month: -1, createdAt: -1 });
+
+    // Umumiy statistika
+    const total    = salaries.reduce((sum, s) => sum + s.amount, 0);
+    const paid     = salaries.filter(s => s.isPaid).reduce((sum, s) => sum + s.amount, 0);
+    const unpaid   = total - paid;
 
     res.json({
-      success: true, month: m, year: y, salaries,
-      summary: { total, paidTotal, pendingTotal: total - paidTotal, count: salaries.length },
-    })
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message })
+      salaries,
+      stats: {
+        total,
+        paid,
+        unpaid,
+        count:       salaries.length,
+        paidCount:   salaries.filter(s => s.isPaid).length,
+        unpaidCount: salaries.filter(s => !s.isPaid).length,
+      },
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
   }
-}
+};
 
-// ── Xodimning o'z maosh tarixi ────────────────────────────────
-exports.getMySalaryHistory = async (req, res) => {
+// ─── STAFF O'Z MAOSH TARIXI ───────────────────────────────────────────────────
+// GET /api/lc/salaries/my?year=2025
+
+const getMySalaryHistory = async (req, res) => {
   try {
-    const salaries = await Salary.find({ staff: req.user.id }).sort({ year: -1, month: -1 }).limit(12)
-    res.json({ success: true, salaries })
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message })
+    if (req.user.role !== 'staff') {
+      return res.status(403).json({ message: "Faqat xodimlar uchun" });
+    }
+
+    const query = { staff: req.user.id };
+
+    // Yil bo'yicha filter
+    if (req.query.year) {
+      const year = req.query.year;
+      query.month = { $regex: `^${year}-` };
+    }
+
+    const salaries = await Salary.find(query)
+      .sort({ month: -1 })
+      .select('month amount isPaid paidDate note createdAt');
+
+    const total  = salaries.reduce((sum, s) => sum + s.amount, 0);
+    const paid   = salaries.filter(s => s.isPaid).reduce((sum, s) => sum + s.amount, 0);
+
+    res.json({
+      salaries,
+      stats: {
+        total,
+        paid,
+        unpaid: total - paid,
+        count:  salaries.length,
+      },
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
   }
-}
+};
+
+// ─── O'CHIRISH ────────────────────────────────────────────────────────────────
+// DELETE /api/lc/salaries/:id — faqat to'lanmagan maoshni o'chirsa bo'ladi
+
+const deleteSalary = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, 'manageSalaries');
+
+    const query = { _id: req.params.id, director: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+
+    const salary = await Salary.findOne(query);
+    if (!salary) return res.status(404).json({ message: "Maosh yozuvi topilmadi" });
+
+    if (salary.isPaid) {
+      return res.status(400).json({
+        message: "To'langan maoshni o'chirish mumkin emas",
+      });
+    }
+
+    await salary.deleteOne();
+    res.json({ message: "Maosh yozuvi o'chirildi" });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+};
+
+// ─── OYLIK XULOSA (branch bo'yicha) ──────────────────────────────────────────
+// GET /api/lc/salaries/summary?month=2025-01
+
+const getSalarySummary = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, 'manageSalaries');
+
+    const month = req.query.month;
+    if (!month) return res.status(400).json({ message: "month parametri majburiy" });
+
+    const matchQuery = { director: ctx.directorId, month };
+    if (ctx.branchFilter) matchQuery.branch = ctx.branchFilter;
+
+    const summary = await Salary.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id:         '$branch',
+          totalAmount: { $sum: '$amount' },
+          paidAmount:  { $sum: { $cond: ['$isPaid', '$amount', 0] } },
+          count:       { $sum: 1 },
+          paidCount:   { $sum: { $cond: ['$isPaid', 1, 0] } },
+        },
+      },
+      {
+        $lookup: {
+          from:         'branches',
+          localField:   '_id',
+          foreignField: '_id',
+          as:           'branch',
+        },
+      },
+      { $unwind: { path: '$branch', preserveNullAndEmpty: true } },
+      {
+        $project: {
+          branchName:   { $ifNull: ['$branch.name', "Filialsiz"] },
+          totalAmount:  1,
+          paidAmount:   1,
+          unpaidAmount: { $subtract: ['$totalAmount', '$paidAmount'] },
+          count:        1,
+          paidCount:    1,
+          unpaidCount:  { $subtract: ['$count', '$paidCount'] },
+        },
+      },
+    ]);
+
+    res.json(summary);
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+};
+
+module.exports = {
+  setSalary,
+  markSalaryPaid,
+  getSalaries,
+  getMySalaryHistory,
+  deleteSalary,
+  getSalarySummary,
+};
