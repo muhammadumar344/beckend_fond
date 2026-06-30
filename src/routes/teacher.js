@@ -10,7 +10,7 @@ const schedCtrl = require("../controllers/scheduleController");
 const attCtrl = require("../controllers/attendanceController");
 const prCtrl = require("../controllers/paymentRequestController");
 const auth = require("../middleware/auth");
-const roles = require("../middleware/roles");
+const { onlyTeacher, allowTeacherOrStaff } = require("../middleware/roles"); // ✅ TUZATILDI: destructure
 
 const {
   exportPreviousYear,
@@ -19,15 +19,6 @@ const {
 
 // ✅ MUHIM: faqat auth (token bor-yo'qligi) — role cheklovi YO'Q
 router.use(auth);
-
-// ✅ Teacher (Director) VA Staff kira oladigan route lar uchun
-const allowTeacherOrStaff = (req, res, next) => {
-  if (["teacher", "staff"].includes(req.user.role)) return next();
-  return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
-};
-
-// ✅ FAQAT Teacher (Director) — Staff kira olmaydi
-const onlyTeacher = roles("teacher");
 
 // ══ DASHBOARD — faqat Director ══════════════════════════════
 router.get("/dashboard", onlyTeacher, ctrl.getDashboard);
@@ -223,5 +214,4 @@ router.get(
 );
 router.delete("/grades/:gradeId", allowTeacherOrStaff, gradeCtrl.deleteGrade);
 
-// ✅ TO'G'IRLANDI: routerC → router
 module.exports = router;

@@ -1,10 +1,11 @@
-// src/bot/bot.js — WEBHOOK PATH BUG TUZATILDI + HYBRID MODE
+// src/bot/bot.js — WEBHOOK PATH BUG TUZATILDI + HYBRID MODE + RETRY LOOP FIX
 const TelegramBot = require("node-telegram-bot-api");
 
 let bot = null;
+let isRestarting = false; // ✅ YANGI: bir vaqtda bir nechta restart bo'lishini oldini olish
 const BOT_TOKEN =
   process.env.TELEGRAM_BOT_TOKEN ||
-  "8551931126:AAFIuDbzMBZqSdiEWY1g8NaDhm0J-6mY4BA";
+  "8864838291:AAEPQCVZey0nJjFAOpX3rSLV5oZBujir8Mo";
 
 // ✅ XATO TUZATILDI: ":" belgisini "-" ga almashtiramiz
 const SAFE_PATH_TOKEN = BOT_TOKEN.replace(/:/g, "-");
@@ -64,6 +65,18 @@ const initBot = (app) => {
 };
 
 const startPolling = () => {
+  // ✅ YANGI: agar allaqachon restart jarayonida bo'lsak, qayta boshlamaymiz
+  if (isRestarting) {
+    console.log("⏭️  Restart allaqachon jarayonda, o'tkazib yuborildi");
+    return;
+  }
+  isRestarting = true;
+
+  // ✅ Eski bot bo'lsa, listenerlarni tozalaymiz (xotira tirqishi oldini olish)
+  if (bot) {
+    bot.removeAllListeners();
+  }
+
   bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
   bot
@@ -78,6 +91,7 @@ const startPolling = () => {
         },
       });
       _attachHandlers();
+      isRestarting = false; // ✅ Muvaffaqiyatli tugadi
       console.log("🤖 @SchoolfondsBot POLLING MODE DA ISHGA TUSHDI");
       console.log("📍 Bot /start buyrugini kutmoqda...");
     })
@@ -86,6 +100,7 @@ const startPolling = () => {
       console.log("Fallback: To'g'ri polling mode...");
       bot = new TelegramBot(BOT_TOKEN, { polling: true });
       _attachHandlers();
+      isRestarting = false;
       console.log("🤖 @SchoolfondsBot FALLBACK POLLING MODE DA");
     });
 };
@@ -147,9 +162,10 @@ const _attachHandlers = () => {
   bot.on("polling_error", (err) => {
     console.error("📡 Polling xatosi:", err.message || err);
     if (err?.response?.body?.error_code === 409) {
-      console.warn("⚠️  Boshqa polling sessiya bor — o'chirish...");
+      console.warn("⚠️  Boshqa polling sessiya bor (boshqa joyda shu bot ishlamoqda).");
+      console.warn("⚠️  Agar bu local development bo'lsa — alohida test bot token ishlating!");
       bot.stopPolling();
-      setTimeout(() => startPolling(), 2000);
+      setTimeout(() => startPolling(), 3000); // ✅ 2s → 3s (kamroq tezkor retry)
     }
   });
 
