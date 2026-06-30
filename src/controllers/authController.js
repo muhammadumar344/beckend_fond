@@ -1,10 +1,10 @@
 // src/controllers/authController.js
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const bcrypt = require("bcryptjs"); // ✅ TO'G'RI JOY — fayl boshida
+const bcrypt = require("bcryptjs");
 const Admin = require("../models/Admin");
 const Teacher = require("../models/Teacher");
-const Staff = require("../models/Staff"); // ✅ TO'G'RI JOY — fayl boshida
+const Staff = require("../models/Staff");
 
 const JWT_SECRET = process.env.JWT_SECRET || "fond-school-secret-2024";
 
@@ -125,28 +125,27 @@ exports.staffLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    if (!email || !password)
       return res.status(400).json({ message: "Email va parol majburiy" });
-    }
 
+    // ✅ TUZATILDI: .select("+password") — password select:false bo'lgani uchun
+    // qo'shmasak staff.password = undefined va bcrypt.compare xato beradi
     const staff = await Staff.findOne({ email: email.toLowerCase() })
+      .select("+password")
       .populate("role", "name slug permissions color")
       .populate("branch", "name");
 
-    if (!staff) {
+    if (!staff)
       return res.status(401).json({ message: "Email yoki parol noto'g'ri" });
-    }
 
-    if (!staff.isActive) {
+    if (!staff.isActive)
       return res.status(403).json({
         message: "Hisobingiz bloklangan. Direktor bilan bog'laning.",
       });
-    }
 
     const isMatch = await bcrypt.compare(password, staff.password);
-    if (!isMatch) {
+    if (!isMatch)
       return res.status(401).json({ message: "Email yoki parol noto'g'ri" });
-    }
 
     const token = generateToken(staff._id, "staff");
 
@@ -166,6 +165,6 @@ exports.staffLogin = async (req, res) => {
     });
   } catch (err) {
     console.error("[staffLogin]", err.message);
-    res.status(500).json({ message: "Server xatosi" });
+    res.status(500).json({ message: "Server xatosi: " + err.message });
   }
 };
