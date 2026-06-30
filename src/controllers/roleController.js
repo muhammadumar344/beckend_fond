@@ -8,7 +8,7 @@ const getRoles = async (req, res) => {
     const ctx = await resolveContext(req);
     const roles = await Role.find({ director: ctx.directorId })
       .sort({ isDefault: -1, name: 1 });
-    res.json(roles);
+    res.json({ success: true, roles });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
   }
@@ -46,7 +46,7 @@ const createRole = async (req, res) => {
       isDefault: false,
     });
     await role.save();
-    res.status(201).json(role);
+    res.status(201).json({ success: true, role });
   } catch (err) {
     if (err.code === 11000) {
       return res.status(400).json({ message: 'Bu nomli rol allaqachon mavjud' });
@@ -71,7 +71,7 @@ const updateRole = async (req, res) => {
     if (permissions !== undefined) role.permissions = permissions;
     if (color !== undefined) role.color = color;
     await role.save();
-    res.json(role);
+    res.json({ success: true, role });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
   }
@@ -95,7 +95,7 @@ const deleteRole = async (req, res) => {
       });
     }
     await role.deleteOne();
-    res.json({ message: "Rol o'chirildi" });
+    res.json({ success: true, message: "Rol o'chirildi" });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
   }

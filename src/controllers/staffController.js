@@ -96,6 +96,7 @@ const createStaff = async (req, res) => {
     ]);
 
     res.status(201).json({
+      success: true,
       staff: {
         _id:           staff._id,
         name:          staff.name,
@@ -105,6 +106,7 @@ const createStaff = async (req, res) => {
         position:      staff.position,
         isActive:      staff.isActive,
         emailVerified: staff.emailVerified,
+        generatedPassword: tempPassword,
       },
       tempPassword,
       warning: "Parolni xodimga xavfsiz yetkazing. Bu sahifadan keyin ko'rinmaydi!",
@@ -124,7 +126,6 @@ const getStaff = async (req, res) => {
     const query = { director: ctx.directorId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
 
-    // Query filters
     if (req.query.branchId)  query.branch   = req.query.branchId;
     if (req.query.roleId)    query.role      = req.query.roleId;
     if (req.query.isActive !== undefined) {
@@ -137,7 +138,7 @@ const getStaff = async (req, res) => {
       .select('-password -verificationToken -resetPasswordToken -resetPasswordExpires')
       .sort({ name: 1 });
 
-    res.json(staff);
+    res.json({ success: true, staff });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
   }
@@ -159,7 +160,7 @@ const getStaffById = async (req, res) => {
       .select('-password -verificationToken -resetPasswordToken -resetPasswordExpires');
 
     if (!staff) return res.status(404).json({ message: 'Xodim topilmadi' });
-    res.json(staff);
+    res.json({ success: true, staff });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
   }
@@ -183,12 +184,10 @@ const updateStaff = async (req, res) => {
     if (name !== undefined)     staff.name     = name;
     if (position !== undefined) staff.position = position;
 
-    // Rol o'zgartirish
     if (roleId && String(roleId) !== String(staff.role)) {
       const newRole = await Role.findOne({ _id: roleId, director: ctx.directorId });
       if (!newRole) return res.status(404).json({ message: "Yangi rol topilmadi" });
 
-      // Branch Manager rolini faqat Director berishi mumkin
       if (newRole.slug === 'branch_manager' && !ctx.isDirector) {
         return res.status(403).json({
           message: "Branch Manager rolini faqat direktor tayinlay oladi",
@@ -197,7 +196,6 @@ const updateStaff = async (req, res) => {
       staff.role = roleId;
     }
 
-    // Filial o'zgartirish — faqat Director
     if (branchId && ctx.isDirector && String(branchId) !== String(staff.branch)) {
       const branch = await Branch.findOne({ _id: branchId, teacher: ctx.directorId });
       if (!branch) return res.status(404).json({ message: "Filial topilmadi" });
@@ -211,13 +209,16 @@ const updateStaff = async (req, res) => {
     ]);
 
     res.json({
-      _id:      staff._id,
-      name:     staff.name,
-      email:    staff.email,
-      role:     staff.role,
-      branch:   staff.branch,
-      position: staff.position,
-      isActive: staff.isActive,
+      success: true,
+      staff: {
+        _id:      staff._id,
+        name:     staff.name,
+        email:    staff.email,
+        role:     staff.role,
+        branch:   staff.branch,
+        position: staff.position,
+        isActive: staff.isActive,
+      },
     });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
@@ -241,6 +242,7 @@ const toggleStaff = async (req, res) => {
     await staff.save();
 
     res.json({
+      success: true,
       _id:      staff._id,
       name:     staff.name,
       isActive: staff.isActive,
@@ -251,11 +253,65 @@ const toggleStaff = async (req, res) => {
   }
 };
 
+// ─── BRANCH MANAGER TAYINLASH ─────────────────────────────────────────────────
+// PUT /lc/branches/:id/manager   body: { staffId }  (staffId=null bo'lsa olib tashlanadi)
+const assignManager = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, 'manageBranches');
+
+    if (!ctx.isDirector) {
+      return res.status(403).json({ message: "Faqat direktor manager tayinlay oladi" });
+    }
+
+    const branch = await Branch.findOne({ _id: req.params.id, teacher: ctx.directorId });
+    if (!branch) return res.status(404).json({ message: "Filial topilmadi" });
+
+    const { staffId } = req.body;
+
+    if (staffId) {
+      const staff = await Staff.findOne({ _id: staffId, director: ctx.directorId });
+      if (!staff) return res.status(404).json({ message: "Xodim topilmadi" });
+      branch.manager = staffId;
+    } else {
+      branch.manager = null;
+    }
+
+    await branch.save();
+    await branch.populate('manager', 'name email');
+
+    res.json({ success: true, branch });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+};
+
+// ─── DIREKTOR O'ZINI HAM MANAGER QILIB BELGILASH ─────────────────────────────
+// PUT /lc/branches/:id/manager/self
+const becomeManagerToo = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+
+    if (!ctx.isDirector) {
+      return res.status(403).json({ message: "Faqat direktor uchun" });
+    }
+
+    const branch = await Branch.findOne({ _id: req.params.id, teacher: ctx.directorId });
+    if (!branch) return res.status(404).json({ message: "Filial topilmadi" });
+
+    branch.directorIsManager = !branch.directorIsManager;
+    await branch.save();
+
+    res.json({ success: true, branch });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+};
+
 // ─── RESET PASSWORD (Director tomonidan) ─────────────────────────────────────
 
 const resetStaffPassword = async (req, res) => {
   try {
-    // Faqat Director
     if (req.user.role !== 'teacher') {
       return res.status(403).json({ message: "Faqat direktor parol yangilaya oladi" });
     }
@@ -268,10 +324,11 @@ const resetStaffPassword = async (req, res) => {
 
     const newPassword  = generateTempPassword();
     staff.password     = await bcrypt.hash(newPassword, 10);
-    staff.emailVerified = false; // qayta tasdiqlash kerak
+    staff.emailVerified = false;
     await staff.save();
 
     res.json({
+      success: true,
       tempPassword: newPassword,
       warning: "Yangi parolni xodimga xavfsiz yetkazing!",
     });
@@ -316,14 +373,13 @@ const forgotPassword = async (req, res) => {
 
     const staff = await Staff.findOne({ email: email.toLowerCase() });
 
-    // Xavfsizlik: email topilmasa ham xuddi shu javob
     if (!staff) {
       return res.json({ message: "Agar email mavjud bo'lsa, tiklash xati yuborildi" });
     }
 
     const resetToken  = crypto.randomBytes(32).toString('hex');
     staff.resetPasswordToken   = resetToken;
-    staff.resetPasswordExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 soat
+    staff.resetPasswordExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await staff.save();
 
     try {
@@ -436,6 +492,8 @@ module.exports = {
   getStaffById,
   updateStaff,
   toggleStaff,
+  assignManager,
+  becomeManagerToo,
   resetStaffPassword,
   verifyEmail,
   forgotPassword,
