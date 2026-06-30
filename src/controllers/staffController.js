@@ -74,7 +74,6 @@ const createStaff = async (req, res) => {
     });
     await staff.save();
 
-    // Email yuborish (xato bo'lsa ham staff yaratiladi)
     try {
       const teacher = await Teacher.findById(ctx.directorId).lean();
       const verificationLink = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
@@ -126,8 +125,8 @@ const getStaff = async (req, res) => {
     const query = { director: ctx.directorId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
 
-    if (req.query.branchId)  query.branch   = req.query.branchId;
-    if (req.query.roleId)    query.role      = req.query.roleId;
+    if (req.query.branchId) query.branch   = req.query.branchId;
+    if (req.query.roleId)   query.role     = req.query.roleId;
     if (req.query.isActive !== undefined) {
       query.isActive = req.query.isActive === 'true';
     }
@@ -225,7 +224,7 @@ const updateStaff = async (req, res) => {
   }
 };
 
-// ─── TOGGLE (faollashtirish / o'chirish) ─────────────────────────────────────
+// ─── TOGGLE ───────────────────────────────────────────────────────────────────
 
 const toggleStaff = async (req, res) => {
   try {
@@ -254,7 +253,7 @@ const toggleStaff = async (req, res) => {
 };
 
 // ─── BRANCH MANAGER TAYINLASH ─────────────────────────────────────────────────
-// PUT /lc/branches/:id/manager   body: { staffId }  (staffId=null bo'lsa olib tashlanadi)
+
 const assignManager = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
@@ -286,8 +285,8 @@ const assignManager = async (req, res) => {
   }
 };
 
-// ─── DIREKTOR O'ZINI HAM MANAGER QILIB BELGILASH ─────────────────────────────
-// PUT /lc/branches/:id/manager/self
+// ─── DIREKTOR O'ZINI MANAGER QILISH ──────────────────────────────────────────
+
 const becomeManagerToo = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
@@ -316,14 +315,11 @@ const resetStaffPassword = async (req, res) => {
       return res.status(403).json({ message: "Faqat direktor parol yangilaya oladi" });
     }
 
-    const staff = await Staff.findOne({
-      _id:      req.params.id,
-      director: req.user.id,
-    });
+    const staff = await Staff.findOne({ _id: req.params.id, director: req.user.id });
     if (!staff) return res.status(404).json({ message: 'Xodim topilmadi' });
 
-    const newPassword  = generateTempPassword();
-    staff.password     = await bcrypt.hash(newPassword, 10);
+    const newPassword   = generateTempPassword();
+    staff.password      = await bcrypt.hash(newPassword, 10);
     staff.emailVerified = false;
     await staff.save();
 
@@ -344,18 +340,17 @@ const verifyEmail = async (req, res) => {
     const { token } = req.params;
     if (!token) return res.status(400).json({ message: 'Token mavjud emas' });
 
-    const staff = await Staff.findOne({ verificationToken: token });
+    const staff = await Staff.findOne({ verificationToken: token }).select('+verificationToken');
     if (!staff) {
-      return res.status(400).json({
-        message: "Token noto'g'ri yoki muddati o'tgan",
-      });
+      return res.status(400).json({ message: "Token noto'g'ri yoki muddati o'tgan" });
     }
 
-    staff.emailVerified    = true;
+    staff.emailVerified     = true;
     staff.verificationToken = undefined;
     await staff.save();
 
     res.json({
+      success: true,
       message: "Email muvaffaqiyatli tasdiqlandi! Endi tizimga kirishingiz mumkin.",
       email: staff.email,
     });
@@ -364,7 +359,7 @@ const verifyEmail = async (req, res) => {
   }
 };
 
-// ─── FORGOT PASSWORD (Staff o'zi so'raydi) ───────────────────────────────────
+// ─── FORGOT PASSWORD ──────────────────────────────────────────────────────────
 
 const forgotPassword = async (req, res) => {
   try {
@@ -373,23 +368,30 @@ const forgotPassword = async (req, res) => {
 
     const staff = await Staff.findOne({ email: email.toLowerCase() });
 
+    // Xavfsizlik: email mavjud bo'lmasa ham bir xil javob qaytaramiz
     if (!staff) {
-      return res.json({ message: "Agar email mavjud bo'lsa, tiklash xati yuborildi" });
+      return res.json({ success: true, message: "Agar email mavjud bo'lsa, tiklash xati yuborildi" });
     }
 
-    const resetToken  = crypto.randomBytes(32).toString('hex');
+    const resetToken = crypto.randomBytes(32).toString('hex');
+
+    // ✅ TUZATILDI: Staff.js modelida bu fieldlar endi mavjud
     staff.resetPasswordToken   = resetToken;
-    staff.resetPasswordExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    staff.resetPasswordExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 soat
     await staff.save();
 
     try {
-      const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+      // ✅ FRONTEND_URL dan faqat birinchi domenni olamiz (vergul bo'lsa)
+      const baseUrl = (process.env.FRONTEND_URL || 'https://schoolfonds.netlify.app')
+        .split(',')[0]
+        .trim();
+      const resetLink = `${baseUrl}/reset-password/${resetToken}`;
       await sendPasswordResetEmail({ toEmail: staff.email, name: staff.name, resetLink });
     } catch (emailErr) {
       console.error('[Email] Parol tiklash xati ketmadi:', emailErr.message);
     }
 
-    res.json({ message: "Agar email mavjud bo'lsa, tiklash xati yuborildi" });
+    res.json({ success: true, message: "Agar email mavjud bo'lsa, tiklash xati yuborildi" });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
   }
@@ -399,8 +401,10 @@ const forgotPassword = async (req, res) => {
 
 const resetPasswordByToken = async (req, res) => {
   try {
-    const { token }       = req.params;
-    const { newPassword } = req.body;
+    const { token } = req.params;
+
+    // ✅ TUZATILDI: frontend { password } yuboradi, { newPassword } emas
+    const newPassword = req.body.password || req.body.newPassword;
 
     if (!token || !newPassword) {
       return res.status(400).json({ message: "Token va yangi parol majburiy" });
@@ -409,29 +413,36 @@ const resetPasswordByToken = async (req, res) => {
       return res.status(400).json({ message: "Parol kamida 6 ta belgi bo'lishi kerak" });
     }
 
+    // ✅ TUZATILDI: resetPasswordToken select:false — .select('+resetPasswordToken') kerak
     const staff = await Staff.findOne({
       resetPasswordToken:   token,
       resetPasswordExpires: { $gt: new Date() },
-    });
+    }).select('+resetPasswordToken +resetPasswordExpires');
 
     if (!staff) {
       return res.status(400).json({
+        success: false,
         message: "Token noto'g'ri yoki muddati o'tgan (24 soat)",
       });
     }
 
-    staff.password             = await bcrypt.hash(newPassword, 10);
+    // Parol yangilash (pre-save hook hash qiladi)
+    staff.password             = newPassword;
     staff.resetPasswordToken   = undefined;
     staff.resetPasswordExpires = undefined;
     await staff.save();
 
-    res.json({ message: "Parol muvaffaqiyatli yangilandi. Endi tizimga kirishingiz mumkin." });
+    res.json({
+      success: true,
+      message: "Parol muvaffaqiyatli yangilandi. Endi tizimga kirishingiz mumkin.",
+    });
   } catch (err) {
+    console.error('[resetPasswordByToken]', err.message);
     res.status(err.status || 500).json({ message: err.message });
   }
 };
 
-// ─── CHANGE OWN PASSWORD (Staff login qilib o'zi o'zgartiradi) ───────────────
+// ─── CHANGE OWN PASSWORD ──────────────────────────────────────────────────────
 
 const changeOwnPassword = async (req, res) => {
   try {
@@ -447,7 +458,7 @@ const changeOwnPassword = async (req, res) => {
       return res.status(400).json({ message: "Yangi parol kamida 6 ta belgi" });
     }
 
-    const staff = await Staff.findById(req.user.id);
+    const staff = await Staff.findById(req.user.id).select('+password');
     if (!staff) return res.status(404).json({ message: 'Xodim topilmadi' });
 
     const isMatch = await bcrypt.compare(currentPassword, staff.password);
@@ -455,16 +466,16 @@ const changeOwnPassword = async (req, res) => {
       return res.status(400).json({ message: "Joriy parol noto'g'ri" });
     }
 
-    staff.password = await bcrypt.hash(newPassword, 10);
+    staff.password = newPassword; // pre-save hook hash qiladi
     await staff.save();
 
-    res.json({ message: "Parol muvaffaqiyatli yangilandi" });
+    res.json({ success: true, message: "Parol muvaffaqiyatli yangilandi" });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
   }
 };
 
-// ─── GET MY PROFILE (Staff o'z profilini ko'radi) ────────────────────────────
+// ─── GET MY PROFILE ───────────────────────────────────────────────────────────
 
 const getMyProfile = async (req, res) => {
   try {
