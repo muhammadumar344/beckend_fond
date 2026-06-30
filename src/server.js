@@ -5,19 +5,26 @@ const cors = require('cors');
 
 const app = express();
 
+// ✅ TUZATILDI: agar FRONTEND_URL muhitda sozlanmagan/xato bo'lsa ham,
+// production domen qattiq yozilgan — sayt CORS sababli butunlay
+// to'xtab qolmaydi.
 const allowedOrigins = [
-  process.env.FRONTEND_URL,        // production frontend (Netlify)
+  process.env.FRONTEND_URL,        // Render muhitidagi qiymat
+  'https://schoolfonds.netlify.app', // ✅ Fallback — har doim ishlaydi
   'http://localhost:3000',         // local dev
   'http://localhost:5173',         // Vite default port
 ].filter(Boolean);
 
+// ✅ Netlify preview deploylar uchun ham ruxsat (masalan: deploy-preview-12--schoolfonds.netlify.app)
+const isNetlifyPreview = (origin) => /^https:\/\/[a-z0-9-]+--schoolfonds\.netlify\.app$/.test(origin);
+
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin) || isNetlifyPreview(origin)) {
       callback(null, true);
     } else {
       console.warn('❌ CORS tomonidan bloklandi:', origin);
-      callback(new Error('CORS tomonidan bloklandi: ' + origin));
+      callback(null, false); // ✅ TUZATILDI: Error tashlash o'rniga shunchaki rad etamiz
     }
   },
   methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
