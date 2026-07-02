@@ -33,91 +33,87 @@ const {
 // ============================================================
 //  ONBOARDING
 // ============================================================
+// ============================================================
+//  ONBOARDING — Fonds va Learning Center uchun ajratilgan validatsiya
+// ============================================================
 const completeOnboarding = async (req, res) => {
   try {
-    const teacherId = req.user.id;
-    const { institutionType, institutionName, city, studentCountRange } =
-      req.body || {};
+    const teacherId = req.user.id
+    const { institutionType, institutionName, city, studentCountRange } = req.body || {}
 
-    if (
-      !institutionType ||
-      !["school", "learning_center"].includes(institutionType)
-    ) {
+    if (!institutionType || !['school', 'learning_center'].includes(institutionType)) {
       return res.status(400).json({
         success: false,
-        error:
-          "institutionType: 'school' yoki 'learning_center' bo'lishi kerak",
-      });
+        error: "institutionType: 'school' yoki 'learning_center' bo'lishi kerak",
+      })
     }
+
     if (!institutionName || !institutionName.trim()) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Muassasa nomi majburiy" });
-    }
-    if (!city || !city.trim()) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Shahar/tuman majburiy" });
-    }
-    if (
-      !studentCountRange ||
-      !["1-50", "51-150", "151-300", "300+"].includes(studentCountRange)
-    ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "O'quvchilar soni diapazoni noto'g'ri",
-        });
+      return res.status(400).json({
+        success: false,
+        error: institutionType === 'school'
+          ? 'Sinf nomini kiriting (masalan: 8-D)'
+          : 'Muassasa nomi majburiy',
+      })
     }
 
-    const teacher = await Teacher.findByIdAndUpdate(
-      teacherId,
-      {
-        onboardingCompleted: true,
-        institutionType,
-        institutionName: institutionName.trim(),
-        city: city.trim(),
-        studentCountRange,
-      },
-      { new: true },
-    );
+    const updateData = {
+      onboardingCompleted: true,
+      institutionType,
+      institutionName: institutionName.trim(),
+    }
 
-    if (!teacher)
-      return res
-        .status(404)
-        .json({ success: false, error: "Teacher topilmadi" });
+    if (institutionType === 'learning_center') {
+      // ✅ Learning Center — to'liq muassasa ma'lumoti kerak
+      if (!city || !city.trim()) {
+        return res.status(400).json({ success: false, error: 'Shahar/tuman majburiy' })
+      }
+      if (!studentCountRange || !['1-50', '51-150', '151-300', '300+'].includes(studentCountRange)) {
+        return res.status(400).json({ success: false, error: "O'quvchilar soni diapazoni noto'g'ri" })
+      }
+      updateData.city = city.trim()
+      updateData.studentCountRange = studentCountRange
+    } else {
+      // ✅ Fonds (school) — city/studentCountRange kerak EMAS, chunki
+      // account bitta SINF uchun, butun maktab uchun emas
+      updateData.city = ''
+      updateData.studentCountRange = null
+    }
+
+    const teacher = await Teacher.findByIdAndUpdate(teacherId, updateData, { new: true })
+
+    if (!teacher) return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
 
     // O'quv markazi tanlansa — default rollar avtomatik yaratiladi
-    if (institutionType === "learning_center") {
-      const { createDefaultRoles } = require("./roleController");
-      await createDefaultRoles(teacher._id);
+    if (institutionType === 'learning_center') {
+      const { createDefaultRoles } = require('./roleController')
+      await createDefaultRoles(teacher._id)
     }
 
     return res.json({
       success: true,
-      message: "Onboarding muvaffaqiyatli yakunlandi",
+      message: 'Onboarding muvaffaqiyatli yakunlandi',
       user: {
-        id: teacher._id,
-        name: teacher.name,
-        email: teacher.email,
-        role: "teacher",
-        plan: teacher.plan,
-        planActive: teacher.isPlanActive(),
-        daysLeft: teacher.daysLeft(),
+        id:                  teacher._id,
+        name:                teacher.name,
+        email:               teacher.email,
+        role:                'teacher',
+        plan:                teacher.plan,
+        planActive:          teacher.isPlanActive(),
+        daysLeft:            teacher.daysLeft(),
         onboardingCompleted: true,
-        institutionType: teacher.institutionType,
-        institutionName: teacher.institutionName,
-        city: teacher.city,
-        studentCountRange: teacher.studentCountRange,
-        referralCode: teacher.referralCode,
+        institutionType:     teacher.institutionType,
+        institutionName:     teacher.institutionName,
+        city:                teacher.city,
+        studentCountRange:   teacher.studentCountRange,
+        referralCode:        teacher.referralCode,
       },
-    });
+    })
   } catch (err) {
-    console.error("completeOnboarding error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    console.error('completeOnboarding error:', err)
+    return res.status(500).json({ success: false, error: err.message })
   }
-};
+}
 
 const getProfile = async (req, res) => {
   try {

@@ -8,6 +8,11 @@ const teacherSchema = new mongoose.Schema({
   password:         { type: String, required: true, select: false },
   phone:            { type: String, default: '' },
 
+  // ✅ YANGI — ro'yxatdan o'tishda email tasdiqlash uchun
+  emailVerified:           { type: Boolean, default: false },
+  verificationCode:        { type: String, select: false },
+  verificationCodeExpires: { type: Date,   select: false },
+
   plan:             { type: String, enum: ['free','pro','premium'], default: 'free' },
   planExpiresAt:    { type: Date, default: null },
   highestPlanEver:  { type: String, enum: ['free','pro','premium'], default: 'free' },

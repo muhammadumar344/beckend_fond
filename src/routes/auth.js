@@ -25,5 +25,9 @@ router.post("/staff/change-password", auth, staffCtrl.changeOwnPassword);
 
 // O'z profilini ko'rish (login kerak)
 router.get("/staff/me", auth, staffCtrl.getMyProfile);
+router.post('/teacher/register',     authController.teacherRegister)
+router.post('/login', authController.unifiedLogin)
+router.post('/teacher/verify-email', authController.verifyTeacherEmail)
+router.post('/teacher/resend-code',  authController.resendVerificationCode)
 
 module.exports = router;

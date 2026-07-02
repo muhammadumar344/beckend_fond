@@ -1,16 +1,14 @@
-const axios = require('axios');
+// src/services/emailService.js — Brevo (Sendinblue) HTTP API orqali
+const axios = require('axios')
 
-const BREVO_URL = 'https://api.brevo.com/v3/smtp/email';
+const BREVO_URL = 'https://api.brevo.com/v3/smtp/email'
 
 const brevoHeaders = {
-  'accept': 'application/json',
+  accept: 'application/json',
   'api-key': process.env.BREVO_API_KEY,
   'content-type': 'application/json',
-};
+}
 
-/**
- * Asosiy yuboruvchi funksiya — barcha emaillar shu orqali ketadi
- */
 const sendEmail = async ({ toEmail, toName, subject, htmlContent }) => {
   const payload = {
     sender: {
@@ -20,15 +18,85 @@ const sendEmail = async ({ toEmail, toName, subject, htmlContent }) => {
     to: [{ email: toEmail, name: toName || toEmail }],
     subject,
     htmlContent,
-  };
+  }
 
-  const response = await axios.post(BREVO_URL, payload, { headers: brevoHeaders });
-  return response.data;
-};
+  const response = await axios.post(BREVO_URL, payload, { headers: brevoHeaders })
+  return response.data
+}
 
-/**
- * Staff yaratilganda — kirish ma'lumotlari + tasdiqlash linki
- */
+// ══ Ro'yxatdan o'tish — tasdiqlash kodi (YANGI) ══════════════════════════════
+const sendVerificationCode = async ({ toEmail, name, code }) => {
+  const subject = 'FondSchool — Emailni tasdiqlash kodi'
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="uz">
+    <body style="margin:0;padding:0;background:#0a0f1e;font-family:Arial,sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td align="center" style="padding:40px 20px;">
+            <table width="480" cellpadding="0" cellspacing="0"
+                   style="background:#111827;border-radius:12px;
+                          border:1px solid rgba(255,255,255,0.07);overflow:hidden;">
+
+              <tr>
+                <td style="background:linear-gradient(135deg,#f6ad55,#ed8936);
+                            padding:28px 32px;">
+                  <h1 style="margin:0;color:#0a0f1e;font-size:22px;font-weight:700;">
+                    FondSchool
+                  </h1>
+                </td>
+              </tr>
+
+              <tr>
+                <td style="padding:32px;">
+                  <h2 style="color:#f6ad55;margin:0 0 16px;font-size:20px;">
+                    Salom, ${name}!
+                  </h2>
+                  <p style="color:#e2e8f0;line-height:1.6;margin:0 0 28px;">
+                    Ro'yxatdan o'tishni yakunlash uchun quyidagi kodni kiriting.
+                    Kod <strong style="color:#a0aec0;">15 daqiqa</strong> amal qiladi.
+                  </p>
+
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td align="center" style="padding:8px 0 28px;">
+                        <div style="background:#1a2035;border:1px solid rgba(246,173,85,0.3);
+                                    border-radius:10px;padding:20px 32px;display:inline-block;">
+                          <span style="font-family:monospace;font-size:34px;
+                                       letter-spacing:10px;font-weight:800;color:#f6ad55;">
+                            ${code}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  </table>
+
+                  <p style="color:#718096;font-size:13px;line-height:1.5;margin:0;text-align:center;">
+                    Bu amalni siz boshlamagan bo'lsangiz, xabarni e'tiborsiz qoldiring.
+                  </p>
+                </td>
+              </tr>
+
+              <tr>
+                <td style="padding:20px 32px;border-top:1px solid rgba(255,255,255,0.07);">
+                  <p style="margin:0;color:#4a5568;font-size:12px;text-align:center;">
+                    © FondSchool &nbsp;•&nbsp; schoolfonds.netlify.app
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `
+
+  return sendEmail({ toEmail, toName: name, subject, htmlContent })
+}
+
+// ══ Staff yaratilganda — kirish ma'lumotlari ═════════════════════════════════
 const sendStaffWelcomeEmail = async ({
   toEmail,
   staffName,
@@ -37,7 +105,7 @@ const sendStaffWelcomeEmail = async ({
   tempPassword,
   verificationLink,
 }) => {
-  const subject = `${institutionName || 'FondSchool'} — Xodim hisobi yaratildi`;
+  const subject = `${institutionName || 'FondSchool'} — Xodim hisobi yaratildi`
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -55,7 +123,6 @@ const sendStaffWelcomeEmail = async ({
                           border:1px solid rgba(255,255,255,0.07);
                           overflow:hidden;">
 
-              <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#f6ad55,#ed8936);
                             padding:28px 32px;">
@@ -68,7 +135,6 @@ const sendStaffWelcomeEmail = async ({
                 </td>
               </tr>
 
-              <!-- Body -->
               <tr>
                 <td style="padding:32px;">
                   <h2 style="color:#f6ad55;margin:0 0 16px;font-size:20px;">
@@ -81,7 +147,6 @@ const sendStaffWelcomeEmail = async ({
                     platformasida sizga xodim hisobi yaratildi.
                   </p>
 
-                  <!-- Kirish ma'lumotlari -->
                   <table width="100%" cellpadding="0" cellspacing="0"
                          style="background:#1a2035;border-left:4px solid #4299e1;
                                 border-radius:6px;margin:0 0 28px;">
@@ -109,7 +174,6 @@ const sendStaffWelcomeEmail = async ({
                     </tr>
                   </table>
 
-                  <!-- Tasdiqlash tugmasi -->
                   <p style="color:#a0aec0;font-size:14px;margin:0 0 20px;line-height:1.5;">
                     Hisobingizni faollashtirish va tizimga kirish uchun quyidagi
                     tugmani bosing:
@@ -130,7 +194,6 @@ const sendStaffWelcomeEmail = async ({
                     </tr>
                   </table>
 
-                  <!-- Eslatma -->
                   <table width="100%" cellpadding="0" cellspacing="0"
                          style="background:#1a2035;border-radius:6px;
                                 border:1px solid rgba(246,173,85,0.2);">
@@ -149,7 +212,6 @@ const sendStaffWelcomeEmail = async ({
                 </td>
               </tr>
 
-              <!-- Footer -->
               <tr>
                 <td style="padding:20px 32px;border-top:1px solid rgba(255,255,255,0.07);">
                   <p style="margin:0;color:#4a5568;font-size:12px;text-align:center;">
@@ -172,16 +234,14 @@ const sendStaffWelcomeEmail = async ({
       </table>
     </body>
     </html>
-  `;
+  `
 
-  return sendEmail({ toEmail, toName: staffName, subject, htmlContent });
-};
+  return sendEmail({ toEmail, toName: staffName, subject, htmlContent })
+}
 
-/**
- * Parol tiklash uchun
- */
+// ══ Parol tiklash ═════════════════════════════════════════════════════════════
 const sendPasswordResetEmail = async ({ toEmail, name, resetLink }) => {
-  const subject = 'FondSchool — Parolni tiklash';
+  const subject = 'FondSchool — Parolni tiklash'
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -247,13 +307,14 @@ const sendPasswordResetEmail = async ({ toEmail, name, resetLink }) => {
       </table>
     </body>
     </html>
-  `;
+  `
 
-  return sendEmail({ toEmail, toName: name, subject, htmlContent });
-};
+  return sendEmail({ toEmail, toName: name, subject, htmlContent })
+}
 
 module.exports = {
   sendEmail,
+  sendVerificationCode,
   sendStaffWelcomeEmail,
   sendPasswordResetEmail,
-};
+}
