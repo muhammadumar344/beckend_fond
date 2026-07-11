@@ -38,7 +38,7 @@ const {
 // ============================================================
 const completeOnboarding = async (req, res) => {
   try {
-    const teacherId = req.user.id
+   const teacherId = req.user.id
     const { institutionType, institutionName, city, studentCountRange } = req.body || {}
 
     if (!institutionType || !['school', 'learning_center'].includes(institutionType)) {
