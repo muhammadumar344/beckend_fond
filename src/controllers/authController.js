@@ -242,7 +242,11 @@ exports.staffLogin = async (req, res) => {
       return res.status(400).json({ message: 'Email va parol majburiy' })
     }
 
+    // ✅ TUZATILDI: .select('+password') qo'shildi — Staff.js da password
+    // select:false bo'lgani uchun bu bo'lmasa staff.password har doim
+    // undefined bo'lib, bcrypt.compare 500 xato berardi
     const staff = await Staff.findOne({ email: email.toLowerCase() })
+      .select('+password')
       .populate('role',   'name slug permissions color')
       .populate('branch', 'name')
 
@@ -251,7 +255,7 @@ exports.staffLogin = async (req, res) => {
       return res.status(403).json({ message: "Hisobingiz bloklangan. Direktor bilan bog'laning." })
     }
 
-    const isMatch = await bcrypt.compare(password, staff.password)
+    const isMatch = await staff.comparePassword(password)
     if (!isMatch) return res.status(401).json({ message: "Email yoki parol noto'g'ri" })
 
     const token = generateToken(staff._id, 'staff')
@@ -318,11 +322,13 @@ exports.unifiedLogin = async (req, res) => {
     }
 
     // 2) STAFF (LC xodimi)
+    // ✅ TUZATILDI: .select('+password') qo'shildi (aynan shu yer 500 xatoning sababi edi)
     const staff = await Staff.findOne({ email: normalizedEmail })
+      .select('+password')
       .populate('role',   'name slug permissions color')
       .populate('branch', 'name')
     if (staff) {
-      const isMatch = await bcrypt.compare(password, staff.password)
+      const isMatch = await staff.comparePassword(password)
       if (!isMatch) return res.status(401).json({ error: "Email yoki parol noto'g'ri" })
       if (!staff.isActive) {
         return res.status(403).json({ error: "Hisobingiz bloklangan. Direktor bilan bog'laning." })
