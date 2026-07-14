@@ -31,89 +31,116 @@ const {
 } = require("../utils/resolveContext");
 
 // ============================================================
-//  ONBOARDING
-// ============================================================
-// ============================================================
 //  ONBOARDING — Fonds va Learning Center uchun ajratilgan validatsiya
 // ============================================================
 const completeOnboarding = async (req, res) => {
   try {
-   const teacherId = req.user.id
-    const { institutionType, institutionName, city, studentCountRange } = req.body || {}
+    const teacherId = req.user.id;
+    const { institutionType, institutionName, city, studentCountRange } =
+      req.body || {};
 
-    if (!institutionType || !['school', 'learning_center'].includes(institutionType)) {
+    if (
+      !institutionType ||
+      !["school", "learning_center"].includes(institutionType)
+    ) {
       return res.status(400).json({
         success: false,
-        error: "institutionType: 'school' yoki 'learning_center' bo'lishi kerak",
-      })
+        error:
+          "institutionType: 'school' yoki 'learning_center' bo'lishi kerak",
+      });
     }
 
     if (!institutionName || !institutionName.trim()) {
       return res.status(400).json({
         success: false,
-        error: institutionType === 'school'
-          ? 'Sinf nomini kiriting (masalan: 8-D)'
-          : 'Muassasa nomi majburiy',
-      })
+        error:
+          institutionType === "school"
+            ? "Sinf nomini kiriting (masalan: 8-D)"
+            : "Muassasa nomi majburiy",
+      });
     }
 
     const updateData = {
       onboardingCompleted: true,
       institutionType,
       institutionName: institutionName.trim(),
-    }
+    };
 
-    if (institutionType === 'learning_center') {
+    if (institutionType === "learning_center") {
       // ✅ Learning Center — to'liq muassasa ma'lumoti kerak
       if (!city || !city.trim()) {
-        return res.status(400).json({ success: false, error: 'Shahar/tuman majburiy' })
+        return res
+          .status(400)
+          .json({ success: false, error: "Shahar/tuman majburiy" });
       }
-      if (!studentCountRange || !['1-50', '51-150', '151-300', '300+'].includes(studentCountRange)) {
-        return res.status(400).json({ success: false, error: "O'quvchilar soni diapazoni noto'g'ri" })
+      if (
+        !studentCountRange ||
+        !["1-50", "51-150", "151-300", "300+"].includes(studentCountRange)
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            error: "O'quvchilar soni diapazoni noto'g'ri",
+          });
       }
-      updateData.city = city.trim()
-      updateData.studentCountRange = studentCountRange
+      updateData.city = city.trim();
+      updateData.studentCountRange = studentCountRange;
     } else {
       // ✅ Fonds (school) — city/studentCountRange kerak EMAS, chunki
       // account bitta SINF uchun, butun maktab uchun emas
-      updateData.city = ''
-      updateData.studentCountRange = null
+      updateData.city = "";
+      updateData.studentCountRange = null;
     }
 
-    const teacher = await Teacher.findByIdAndUpdate(teacherId, updateData, { new: true })
+    const teacher = await Teacher.findByIdAndUpdate(teacherId, updateData, {
+      new: true,
+    });
 
-    if (!teacher) return res.status(404).json({ success: false, error: 'Teacher topilmadi' })
+    if (!teacher)
+      return res
+        .status(404)
+        .json({ success: false, error: "Teacher topilmadi" });
 
     // O'quv markazi tanlansa — default rollar avtomatik yaratiladi
-    if (institutionType === 'learning_center') {
-      const { createDefaultRoles } = require('./roleController')
-      await createDefaultRoles(teacher._id)
+    // ✅ TUZATILDI: try/catch bilan himoyalangan — agar rol yaratishda
+    // xato bo'lsa ham, onboarding umuman to'xtab qolmaydi
+    if (institutionType === "learning_center") {
+      try {
+        const { createDefaultRoles } = require("./roleController");
+        await createDefaultRoles(teacher._id);
+      } catch (roleErr) {
+        console.error(
+          "createDefaultRoles xatosi (onboarding davom etadi):",
+          roleErr.message,
+        );
+      }
     }
 
     return res.json({
       success: true,
-      message: 'Onboarding muvaffaqiyatli yakunlandi',
+      message: "Onboarding muvaffaqiyatli yakunlandi",
       user: {
-        id:                  teacher._id,
-        name:                teacher.name,
-        email:               teacher.email,
-        role:                'teacher',
-        plan:                teacher.plan,
-        planActive:          teacher.isPlanActive(),
-        daysLeft:            teacher.daysLeft(),
+        id: teacher._id,
+        name: teacher.name,
+        email: teacher.email,
+        role: "teacher",
+        plan: teacher.plan,
+        planActive: teacher.isPlanActive(),
+        daysLeft: teacher.daysLeft(),
         onboardingCompleted: true,
-        institutionType:     teacher.institutionType,
-        institutionName:     teacher.institutionName,
-        city:                teacher.city,
-        studentCountRange:   teacher.studentCountRange,
-        referralCode:        teacher.referralCode,
+        institutionType: teacher.institutionType,
+        institutionName: teacher.institutionName,
+        city: teacher.city,
+        studentCountRange: teacher.studentCountRange,
+        referralCode: teacher.referralCode,
       },
-    })
+    });
   } catch (err) {
-    console.error('completeOnboarding error:', err)
-    return res.status(500).json({ success: false, error: err.message })
+    console.error("completeOnboarding error:", err);
+    return res.status(500).json({ success: false, error: err.message });
   }
-}
+};
 
 const getProfile = async (req, res) => {
   try {
@@ -139,10 +166,12 @@ const createClass = async (req, res) => {
     const teacherId = req.user.id;
 
     if (!name || defaultAmount === undefined) {
-      return res.status(400).json({
-        success: false,
-        error: "Sinf nomi va oylik to'lov summasi majburiy",
-      });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error: "Sinf nomi va oylik to'lov summasi majburiy",
+        });
     }
     if (Number(defaultAmount) <= 0) {
       return res
@@ -150,10 +179,12 @@ const createClass = async (req, res) => {
         .json({ success: false, error: "Summa 0 dan katta bo'lishi kerak" });
     }
     if (initialBalance !== undefined && Number(initialBalance) < 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Boshlang'ich balans manfiy bo'lishi mumkin emas",
-      });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error: "Boshlang'ich balans manfiy bo'lishi mumkin emas",
+        });
     }
 
     const teacher = await Teacher.findById(teacherId);
@@ -255,7 +286,6 @@ const getClassesForStaff = async (req, res) => {
   }
 };
 
-// LC uchun — guruhni ID bo'yicha olish
 const getClassById = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
@@ -272,7 +302,6 @@ const getClassById = async (req, res) => {
   }
 };
 
-// LC uchun — guruhni yangilash (resolveContext + permission)
 const updateClass = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
@@ -462,7 +491,6 @@ const getClassStudents = async (req, res) => {
   }
 };
 
-// LC uchun — barcha o'quvchilarni olish (resolveContext + filial filter)
 const getStudents = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
@@ -492,7 +520,6 @@ const getStudents = async (req, res) => {
   }
 };
 
-// LC uchun — o'quvchini yangilash
 const updateStudent = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
@@ -783,7 +810,6 @@ const updatePaymentStatus = async (req, res) => {
     payment.paidDate = status === "paid" ? new Date() : null;
     await payment.save();
 
-    // Telegram xabari
     if (status === "paid") {
       try {
         const tgParent = await TelegramParent.findOne({
@@ -826,7 +852,6 @@ const updatePaymentStatus = async (req, res) => {
   }
 };
 
-// LC uchun — to'lovni yangilash (resolveContext)
 const markPayment = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
@@ -843,7 +868,6 @@ const markPayment = async (req, res) => {
 
     const { isPaid, status, amount, paidDate, note } = req.body;
 
-    // isPaid yoki status orqali boshqarish mumkin
     if (isPaid !== undefined) {
       payment.status = isPaid ? "paid" : "not_paid";
       payment.paidDate = isPaid
@@ -1783,53 +1807,40 @@ const getSubscriptionInfo = async (req, res) => {
 };
 
 // ============================================================
-//  EXPORTS — dublikatsiz, to'liq
+//  EXPORTS
 // ============================================================
 module.exports = {
-  // Onboarding & Profile
   completeOnboarding,
   getProfile,
 
-  // Dashboard & Subscription
   getDashboard,
   getSubscriptionInfo,
 
-  // Classes — School Fund (Director only)
-  createClass,
+  getClassesForStaff,
   getMyClasses,
-  updateInitialBalance,
+  getClassById,
+  createClass,
   updateClassDefaultAmount,
+  updateInitialBalance,
   deleteClass,
+  updateClass,
 
-  // Classes — LC (Staff + Director)
-  getClassesForStaff, // GET /classes/list — dropdown
-  getClassById, // GET /classes/:id
-  updateClass, // PUT /classes/:id
-
-  // Students — School Fund (Director only)
   addStudent,
   getClassStudents,
   deleteStudent,
+  getStudents,
+  updateStudent,
 
-  // Students — LC (Staff + Director)
-  getStudents, // GET /students
-  updateStudent, // PUT /students/:id
-
-  // Payments — School Fund (Director only)
   createMonthlyPayments,
   getMonthlyPayments,
   getClassPayments,
   updatePaymentStatus,
+  markPayment,
 
-  // Payments — LC (Staff + Director)
-  markPayment, // PUT /payments/:id
-
-  // Expenses — School Fund (Director only)
   addExpense,
   getExpenses,
   deleteExpense,
 
-  // Reminder & SMS & Export
   getMonthlyReminder,
   sendSmsReminders,
   exportPayments,

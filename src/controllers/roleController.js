@@ -101,4 +101,48 @@ const deleteRole = async (req, res) => {
   }
 };
 
-module.exports = { getRoles, getMyRole, createRole, updateRole, deleteRole };
+// ✅ YANGI — Onboarding paytida LC tanlanganda avtomatik chaqiriladi
+// (teacherController.js dagi completeOnboarding shu funksiyani chaqiradi)
+// require/export orqali ishlatiladi, HTTP route emas — shuning uchun (req, res) yo'q
+const createDefaultRoles = async (directorId) => {
+  const defaults = [
+    {
+      name: 'Branch Manager',
+      slug: 'branch_manager',
+      color: '#f6ad55',
+      permissions: [
+        'manageStaff', 'manageGroups', 'manageStudents', 'manageAttendance',
+        'manageGrades', 'managePayments', 'viewBranchStats', 'manageSubjects',
+      ],
+    },
+    {
+      name: 'Administration',
+      slug: 'administration',
+      color: '#4299e1',
+      permissions: ['manageGroups', 'manageStudents', 'managePayments'],
+    },
+    {
+      name: 'Teacher',
+      // ✅ slug'ga e'tibor: "teacher" emas "teacher_staff" — Teacher modeli/role
+      // bilan atash chalkashmasligi uchun. Frontend'da nom baribir "Teacher" ko'rinadi.
+      slug: 'teacher_staff',
+      color: '#48bb78',
+      permissions: ['manageAttendance', 'manageGrades'],
+    },
+    {
+      name: 'Support Teacher',
+      slug: 'support_teacher',
+      color: '#9f7aea',
+      permissions: ['manageAttendance'],
+    },
+  ];
+
+  for (const roleData of defaults) {
+    const exists = await Role.findOne({ director: directorId, slug: roleData.slug });
+    if (!exists) {
+      await Role.create({ ...roleData, director: directorId, isDefault: true });
+    }
+  }
+};
+
+module.exports = { getRoles, getMyRole, createRole, updateRole, deleteRole, createDefaultRoles };
