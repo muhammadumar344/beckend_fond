@@ -11,11 +11,7 @@ const {
 exports.saveGrades = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
-    if (!requirePermission(ctx, "manageGrades")) {
-      return res
-        .status(403)
-        .json({ success: false, error: "Baho qo'yish huquqi yo'q" });
-    }
+    requirePermission(ctx, "manageGrades"); // ✅ TUZATILDI — throw qiladi, endi to'g'ri 403 qaytaradi
 
     const {
       classId,
@@ -25,12 +21,12 @@ exports.saveGrades = async (req, res) => {
       maxScore = 100,
       grades,
     } = req.body;
-    if (!classId || !subject || !date || !grades?.length) {
+    if (!classId || !date || !grades?.length) {
       return res
         .status(400)
         .json({
           success: false,
-          error: "classId, subject, date, grades majburiy",
+          error: "classId, date, grades majburiy",
         });
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -39,7 +35,10 @@ exports.saveGrades = async (req, res) => {
         .json({ success: false, error: "date: YYYY-MM-DD formatida" });
     }
 
-    const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId });
+    const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId }).populate(
+      "subject",
+      "name",
+    );
     if (!cls)
       return res.status(404).json({ success: false, error: "Guruh topilmadi" });
     if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
@@ -51,6 +50,18 @@ exports.saveGrades = async (req, res) => {
         });
     }
 
+    // ✅ YANGI — fan har safar qo'lda kiritilmasin: guruhga biriktirilgan
+    // fan avtomatik ishlatiladi, faqat kerak bo'lsa qo'lda ustidan yozish
+    // mumkin (masalan aralash guruhlarda).
+    const resolvedSubject = (subject || cls.subject?.name || "").trim();
+    if (!resolvedSubject) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Fan aniqlanmadi — avval guruhga fan biriktiring yoki 'subject' yuboring",
+      });
+    }
+
     const [year, month] = date.split("-").map(Number);
     let saved = 0;
 
@@ -58,7 +69,7 @@ exports.saveGrades = async (req, res) => {
       if (g.score === undefined || g.score === null) continue;
       const score = Math.max(0, Math.min(Number(maxScore), Number(g.score)));
       await Grade.findOneAndUpdate(
-        { class: classId, student: g.studentId, subject, date, type },
+        { class: classId, student: g.studentId, subject: resolvedSubject, date, type },
         {
           teacher: ctx.directorId,
           month,
@@ -74,7 +85,7 @@ exports.saveGrades = async (req, res) => {
 
     res.json({ success: true, message: `${saved} ta baho saqlandi`, saved });
   } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+    res.status(e.status || 500).json({ success: false, error: e.message });
   }
 };
 
@@ -264,9 +275,7 @@ exports.getStudentGrades = async (req, res) => {
 exports.deleteGrade = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
-    if (!requirePermission(ctx, "manageGrades")) {
-      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
-    }
+    requirePermission(ctx, "manageGrades"); // ✅ TUZATILDI
     const { gradeId } = req.params;
     const grade = await Grade.findOneAndDelete({
       _id: gradeId,
@@ -276,6 +285,6 @@ exports.deleteGrade = async (req, res) => {
       return res.status(404).json({ success: false, error: "Baho topilmadi" });
     res.json({ success: true, message: "Baho o'chirildi" });
   } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+    res.status(e.status || 500).json({ success: false, error: e.message });
   }
 };

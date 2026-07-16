@@ -44,6 +44,34 @@ const classSchema = new mongoose.Schema({
     ref: "Branch",
     default: null,
   },
+
+  // ══════════════════════════════════════════════════════════
+  // ✅ YANGI — FAQAT O'quv markazi (LC) rejimida ishlatiladi.
+  // Fond (school) rejimida bular hech qachon to'ldirilmaydi (har doim
+  // null qoladi) — chunki bitta director ilova ichida FAQAT bitta
+  // rejimda bo'lishi mumkin (institutionType qulflangan, middleware/mode.js
+  // orqali backend darajasida ham kafolatlanadi). Shu sabab bitta jadvalda
+  // ikkala rejim maydonlari birga tursa ham, ular hech qachon aralashib
+  // ketmaydi.
+  // ══════════════════════════════════════════════════════════
+  subject: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Subject",
+    default: null,
+  },
+  assignedTeacher: {
+    // Guruhga tayinlangan asosiy ustoz (Staff, Direktorning o'zi emas)
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Staff",
+    default: null,
+  },
+  capacity: {
+    // Guruhdagi maksimal o'quvchilar soni (ixtiyoriy)
+    type: Number,
+    default: null,
+    min: 1,
+  },
+
   createdAt: {
     type: Date,
     default: Date.now,

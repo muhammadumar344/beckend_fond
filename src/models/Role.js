@@ -5,17 +5,51 @@ const mongoose = require('mongoose')
 
 // ✅ Barcha mumkin bo'lgan ruxsat turlari — yangi permission qo'shilganda
 // shu ro'yxatga ham qo'shing (masalan kelajakda 'manageSchedule' kabi)
+// ✅ TUZATILDI — StaffManagement.vue'dagi 25 ta ruxsat (view/manage
+// granularity) bilan bir xil qilindi. Oldin bu yerda faqat 11 tasi bor edi,
+// StaffManagement.vue orqali yuborilgan qolgan ruxsatlar (viewGroups,
+// viewStudents, manageSchedule va h.k.) enum tomonidan jimgina o'chirilib
+// ketardi.
 const PERMISSION_TYPES = [
-  'manageStaff',       // xodim qo'sha oladi
-  'manageBranches',    // filiallarni boshqaradi
-  'manageGroups',      // guruh yaratadi/tahrirlaydi
-  'manageStudents',    // o'quvchi qo'shadi/tahrirlaydi
+  // Guruhlar
+  'manageGroups',      // guruh yaratadi/tahrirlaydi/o'chiradi
+  'viewGroups',        // faqat ko'radi
+  // O'quvchilar
+  'manageStudents',    // o'quvchi qo'shadi/tahrirlaydi/o'chiradi
+  'viewStudents',      // faqat ko'radi
+  // Davomat
   'manageAttendance',  // davomat oladi
+  'viewAttendance',    // faqat ko'radi
+  // Baholar
   'manageGrades',      // baho qo'yadi
+  'viewGrades',        // faqat ko'radi
+  // To'lovlar / xarajatlar
   'managePayments',    // to'lovlarni boshqaradi
+  'viewPayments',      // faqat ko'radi
+  'manageExpenses',    // xarajat kiritadi
+  // Xodimlar
+  'manageStaff',       // xodim qo'sha oladi
+  'viewStaff',         // faqat ko'radi
+  // Maoshlar
   'manageSalaries',    // xodimlar maoshini boshqaradi
-  'manageSubjects',    // fanlar ro'yxatini boshqaradi (Rus tili, IT va h.k.)
+  'viewOwnSalary',      // faqat o'z maoshini ko'radi
+  // Filiallar
+  'manageBranches',    // filiallarni boshqaradi
   'viewBranchStats',   // o'z filiali statistikasi
+  // Jadval
+  'manageSchedule',    // jadval tuzadi
+  'viewSchedule',      // faqat ko'radi
+  // Xabarlar
+  'sendSMS',
+  'sendTelegram',
+  // Hisobotlar
+  'viewReports',
+  'exportData',
+  // Vazifalar (kelgusi funksiya uchun zamin)
+  'manageHomework',
+  'viewHomework',
+  // Umumiy
+  'manageSubjects',    // fanlar ro'yxatini boshqaradi (Rus tili, IT va h.k.)
   'viewAllStats',      // barcha filiallar statistikasi (odatda faqat director)
 ]
 

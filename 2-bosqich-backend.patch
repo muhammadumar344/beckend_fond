@@ -1,0 +1,880 @@
+--- a/src/models/Class.js
++++ b/src/models/Class.js
+@@ -44,6 +44,34 @@
+     ref: "Branch",
+     default: null,
+   },
++
++  // ══════════════════════════════════════════════════════════
++  // ✅ YANGI — FAQAT O'quv markazi (LC) rejimida ishlatiladi.
++  // Fond (school) rejimida bular hech qachon to'ldirilmaydi (har doim
++  // null qoladi) — chunki bitta director ilova ichida FAQAT bitta
++  // rejimda bo'lishi mumkin (institutionType qulflangan, middleware/mode.js
++  // orqali backend darajasida ham kafolatlanadi). Shu sabab bitta jadvalda
++  // ikkala rejim maydonlari birga tursa ham, ular hech qachon aralashib
++  // ketmaydi.
++  // ══════════════════════════════════════════════════════════
++  subject: {
++    type: mongoose.Schema.Types.ObjectId,
++    ref: "Subject",
++    default: null,
++  },
++  assignedTeacher: {
++    // Guruhga tayinlangan asosiy ustoz (Staff, Direktorning o'zi emas)
++    type: mongoose.Schema.Types.ObjectId,
++    ref: "Staff",
++    default: null,
++  },
++  capacity: {
++    // Guruhdagi maksimal o'quvchilar soni (ixtiyoriy)
++    type: Number,
++    default: null,
++    min: 1,
++  },
++
+   createdAt: {
+     type: Date,
+     default: Date.now,
+--- a/src/utils/teacherAvailability.js
++++ b/src/utils/teacherAvailability.js
+@@ -0,0 +1,71 @@
++// src/utils/teacherAvailability.js
++// ✅ YANGI — ustozni guruhga tayinlashdan oldin uning band-bandligini
++// tekshiradi ("ustoz tayinlaydi ustozning vaqtiga qarab").
++
++const Schedule = require("../models/Schedule");
++
++// "HH:MM" qatorlar zero-padded 24 soatlik formatda bo'lgani uchun
++// oddiy string solishtirish orqali ham to'g'ri ishlaydi.
++const timesOverlap = (start1, end1, start2, end2) =>
++  start1 < end2 && start2 < end1;
++
++/**
++ * Berilgan ustoz (Staff._id) tanlangan kun(lar) + vaqt oralig'ida
++ * boshqa guruhga band emasligini tekshiradi.
++ *
++ * @param {Object} params
++ * @param {string} params.teacherId - Staff._id (band tekshirilayotgan ustoz)
++ * @param {string} params.directorId - Teacher._id (shu muassasa doirasida)
++ * @param {number[]} params.daysOfWeek - 0..6 (0=Dushanba ... 6=Yakshanba)
++ * @param {string} params.startTime - "18:00"
++ * @param {string} params.endTime - "19:30"
++ * @param {string} [params.excludeClassId] - tahrirlanayotgan guruhning o'zi
++ *   (o'z-o'ziga qarshi "band" deb chiqmasligi uchun)
++ * @returns {Promise<Array>} bo'sh massiv = band emas; aks holda ziddiyatlar
++ */
++async function findTeacherConflicts({
++  teacherId,
++  directorId,
++  daysOfWeek,
++  startTime,
++  endTime,
++  excludeClassId = null,
++}) {
++  if (!teacherId || !daysOfWeek?.length || !startTime || !endTime) return [];
++
++  const query = {
++    teacher: teacherId,
++    dayOfWeek: { $in: daysOfWeek },
++    isActive: { $ne: false },
++  };
++
++  const existing = await Schedule.find(query).populate({
++    path: "class",
++    select: "name teacher",
++  });
++
++  const DAY_NAMES = [
++    "Dushanba",
++    "Seshanba",
++    "Chorshanba",
++    "Payshanba",
++    "Juma",
++    "Shanba",
++    "Yakshanba",
++  ];
++
++  return existing
++    .filter((s) => s.class && String(s.class.teacher) === String(directorId))
++    .filter((s) => !excludeClassId || String(s.class._id) !== String(excludeClassId))
++    .filter((s) => timesOverlap(startTime, endTime, s.startTime, s.endTime))
++    .map((s) => ({
++      day: DAY_NAMES[s.dayOfWeek] || s.dayOfWeek,
++      dayOfWeek: s.dayOfWeek,
++      startTime: s.startTime,
++      endTime: s.endTime,
++      groupId: s.class._id,
++      groupName: s.class.name,
++    }));
++}
++
++module.exports = { findTeacherConflicts, timesOverlap };
+--- a/src/controllers/groupController.js
++++ b/src/controllers/groupController.js
+@@ -0,0 +1,432 @@
++// src/controllers/groupController.js
++// ✅ YANGI — O'quv markazi (LC) uchun "Guruh" API'si.
++// Ichkarida Class kolleksiyasidan foydalanadi (Fond bilan bir xil jadval,
++// lekin bu route'lar requireLCMode orqali faqat LC muassasalarga ochiq —
++// routes/lc.js'da), shu sabab hech qanday ma'lumot ko'chirish (migration)
++// shart emas. Class'dagi subject/assignedTeacher/capacity maydonlari
++// FAQAT shu controller orqali to'ldiriladi.
++
++const Class = require("../models/Class");
++const Student = require("../models/Student");
++const Subject = require("../models/Subject");
++const Staff = require("../models/Staff");
++const Schedule = require("../models/Schedule");
++const Attendance = require("../models/Attendance");
++const Grade = require("../models/Grade");
++const MonthlyPayment = require("../models/MonthlyPayment");
++const Expense = require("../models/Expense");
++const { resolveContext, requirePermission } = require("../utils/resolveContext");
++const { findTeacherConflicts } = require("../utils/teacherAvailability");
++
++const DAY_NAMES = [
++  "Dushanba",
++  "Seshanba",
++  "Chorshanba",
++  "Payshanba",
++  "Juma",
++  "Shanba",
++  "Yakshanba",
++];
++
++// ── Tayinlash uchun ustozlar ro'yxati ───────────────────────────
++exports.getAvailableTeachers = async (req, res) => {
++  try {
++    const ctx = await resolveContext(req);
++    const query = { director: ctx.directorId, isActive: true };
++    if (ctx.branchFilter) query.branch = ctx.branchFilter;
++
++    const staff = await Staff.find(query)
++      .populate("role", "name slug")
++      .select("name email role branch")
++      .sort({ name: 1 });
++
++    res.json({
++      success: true,
++      teachers: staff.map((s) => ({
++        id: s._id,
++        name: s.name,
++        email: s.email,
++        roleName: s.role?.name || "",
++        roleSlug: s.role?.slug || "",
++      })),
++    });
++  } catch (err) {
++    console.error("getAvailableTeachers error:", err);
++    res.status(err.status || 500).json({ success: false, error: err.message });
++  }
++};
++
++// ── Ustoz bandligini oldindan tekshirish (forma to'ldirilayotganda) ──
++exports.checkAvailability = async (req, res) => {
++  try {
++    const ctx = await resolveContext(req);
++    const { teacherId, daysOfWeek, startTime, endTime, excludeGroupId } =
++      req.body;
++
++    const conflicts = await findTeacherConflicts({
++      teacherId,
++      directorId: ctx.directorId,
++      daysOfWeek,
++      startTime,
++      endTime,
++      excludeClassId: excludeGroupId || null,
++    });
++
++    res.json({ success: true, available: conflicts.length === 0, conflicts });
++  } catch (err) {
++    console.error("checkAvailability error:", err);
++    res.status(err.status || 500).json({ success: false, error: err.message });
++  }
++};
++
++// ── Guruh yaratish ───────────────────────────────────────────────
++exports.createGroup = async (req, res) => {
++  try {
++    const ctx = await resolveContext(req);
++    requirePermission(ctx, "manageGroups");
++
++    const {
++      name,
++      subjectId,
++      branchId,
++      assignedTeacherId,
++      price,
++      capacity,
++      daysOfWeek, // number[] 0-6, ixtiyoriy
++      startTime, // "18:00", ixtiyoriy
++      endTime, // "19:30", ixtiyoriy
++      force, // true bo'lsa, ustoz band bo'lsa ham davom etadi
++    } = req.body;
++
++    if (!name || !name.trim()) {
++      return res
++        .status(400)
++        .json({ success: false, error: "Guruh nomi majburiy" });
++    }
++    if (price === undefined || Number(price) < 0) {
++      return res
++        .status(400)
++        .json({ success: false, error: "Narx to'g'ri kiritilmagan" });
++    }
++
++    let subjectDoc = null;
++    if (subjectId) {
++      subjectDoc = await Subject.findOne({
++        _id: subjectId,
++        director: ctx.directorId,
++      });
++      if (!subjectDoc) {
++        return res
++          .status(404)
++          .json({ success: false, error: "Fan topilmadi" });
++      }
++    }
++
++    if (assignedTeacherId) {
++      const teacherDoc = await Staff.findOne({
++        _id: assignedTeacherId,
++        director: ctx.directorId,
++        isActive: true,
++      });
++      if (!teacherDoc) {
++        return res
++          .status(404)
++          .json({ success: false, error: "Ustoz topilmadi" });
++      }
++    }
++
++    const hasSchedule = daysOfWeek?.length && startTime && endTime;
++
++    // ✅ Ustoz bandligini tekshirish — "force" berilmasa, band bo'lsa to'xtaydi
++    let conflicts = [];
++    if (hasSchedule && assignedTeacherId) {
++      conflicts = await findTeacherConflicts({
++        teacherId: assignedTeacherId,
++        directorId: ctx.directorId,
++        daysOfWeek,
++        startTime,
++        endTime,
++      });
++      if (conflicts.length && !force) {
++        return res.status(409).json({
++          success: false,
++          error: "Ustoz shu vaqtda boshqa guruhda band",
++          conflicts,
++        });
++      }
++    }
++    if (hasSchedule && !assignedTeacherId) {
++      return res.status(400).json({
++        success: false,
++        error: "Jadval belgilash uchun avval ustoz tayinlang",
++      });
++    }
++
++    const resolvedBranch = ctx.branchFilter || branchId || null;
++
++    const newGroup = new Class({
++      name: name.trim(),
++      teacher: ctx.directorId,
++      defaultAmount: Number(price),
++      subject: subjectDoc?._id || null,
++      assignedTeacher: assignedTeacherId || null,
++      capacity: capacity ? Number(capacity) : null,
++      branch: resolvedBranch,
++    });
++    await newGroup.save();
++
++    let createdSchedule = [];
++    if (hasSchedule && assignedTeacherId) {
++      createdSchedule = await Promise.all(
++        daysOfWeek.map((d) =>
++          new Schedule({
++            class: newGroup._id,
++            teacher: assignedTeacherId,
++            dayOfWeek: d,
++            startTime,
++            endTime,
++            subject: subjectDoc?.name || "",
++          }).save(),
++        ),
++      );
++    }
++
++    res.status(201).json({
++      success: true,
++      message: "Guruh yaratildi",
++      group: {
++        ...newGroup.toObject(),
++        subject: subjectDoc
++          ? { id: subjectDoc._id, name: subjectDoc.name, color: subjectDoc.color }
++          : null,
++      },
++      schedule: createdSchedule,
++      conflictsIgnored: force ? conflicts : [],
++    });
++  } catch (err) {
++    console.error("createGroup error:", err);
++    res.status(err.status || 500).json({ success: false, error: err.message });
++  }
++};
++
++// ── Guruhlar ro'yxati ────────────────────────────────────────────
++exports.getGroups = async (req, res) => {
++  try {
++    const ctx = await resolveContext(req);
++    const query = { teacher: ctx.directorId };
++    if (ctx.branchFilter) query.branch = ctx.branchFilter;
++
++    const groups = await Class.find(query)
++      .populate("subject", "name color")
++      .populate("assignedTeacher", "name")
++      .populate("branch", "name color")
++      .sort({ createdAt: -1 });
++
++    const withDetails = await Promise.all(
++      groups.map(async (g) => {
++        const studentCount = await Student.countDocuments({ class: g._id });
++        const schedule = await Schedule.find({
++          class: g._id,
++          isActive: { $ne: false },
++        }).sort({ dayOfWeek: 1 });
++        return {
++          ...g.toObject(),
++          studentCount,
++          schedule: schedule.map((s) => ({
++            id: s._id,
++            day: DAY_NAMES[s.dayOfWeek],
++            dayOfWeek: s.dayOfWeek,
++            startTime: s.startTime,
++            endTime: s.endTime,
++          })),
++        };
++      }),
++    );
++
++    res.json({ success: true, groups: withDetails });
++  } catch (err) {
++    console.error("getGroups error:", err);
++    res.status(err.status || 500).json({ success: false, error: err.message });
++  }
++};
++
++// ── Bitta guruh (batafsil) ───────────────────────────────────────
++exports.getGroupById = async (req, res) => {
++  try {
++    const ctx = await resolveContext(req);
++    const { groupId } = req.params;
++
++    const query = { _id: groupId, teacher: ctx.directorId };
++    if (ctx.branchFilter) query.branch = ctx.branchFilter;
++
++    const group = await Class.findOne(query)
++      .populate("subject", "name color")
++      .populate("assignedTeacher", "name email")
++      .populate("branch", "name color");
++    if (!group)
++      return res
++        .status(404)
++        .json({ success: false, error: "Guruh topilmadi" });
++
++    const [studentCount, schedule] = await Promise.all([
++      Student.countDocuments({ class: group._id }),
++      Schedule.find({ class: group._id, isActive: { $ne: false } }).sort({
++        dayOfWeek: 1,
++      }),
++    ]);
++
++    res.json({
++      success: true,
++      group: {
++        ...group.toObject(),
++        studentCount,
++        schedule: schedule.map((s) => ({
++          id: s._id,
++          day: DAY_NAMES[s.dayOfWeek],
++          dayOfWeek: s.dayOfWeek,
++          startTime: s.startTime,
++          endTime: s.endTime,
++        })),
++      },
++    });
++  } catch (err) {
++    console.error("getGroupById error:", err);
++    res.status(err.status || 500).json({ success: false, error: err.message });
++  }
++};
++
++// ── Guruhni tahrirlash (nomi/fan/ustoz/narx/sig'im) ──────────────
++exports.updateGroup = async (req, res) => {
++  try {
++    const ctx = await resolveContext(req);
++    requirePermission(ctx, "manageGroups");
++    const { groupId } = req.params;
++    const { name, subjectId, assignedTeacherId, price, capacity, force } =
++      req.body;
++
++    const query = { _id: groupId, teacher: ctx.directorId };
++    if (ctx.branchFilter) query.branch = ctx.branchFilter;
++    const group = await Class.findOne(query);
++    if (!group)
++      return res
++        .status(404)
++        .json({ success: false, error: "Guruh topilmadi" });
++
++    if (name !== undefined) {
++      if (!name.trim())
++        return res
++          .status(400)
++          .json({ success: false, error: "Guruh nomi bo'sh bo'lishi mumkin emas" });
++      group.name = name.trim();
++    }
++    if (price !== undefined) {
++      if (Number(price) < 0)
++        return res
++          .status(400)
++          .json({ success: false, error: "Narx to'g'ri emas" });
++      group.defaultAmount = Number(price);
++    }
++    if (capacity !== undefined) group.capacity = capacity ? Number(capacity) : null;
++
++    if (subjectId !== undefined) {
++      if (subjectId) {
++        const subjectDoc = await Subject.findOne({
++          _id: subjectId,
++          director: ctx.directorId,
++        });
++        if (!subjectDoc)
++          return res
++            .status(404)
++            .json({ success: false, error: "Fan topilmadi" });
++        group.subject = subjectDoc._id;
++      } else {
++        group.subject = null;
++      }
++    }
++
++    let conflicts = [];
++    if (assignedTeacherId !== undefined) {
++      if (assignedTeacherId) {
++        const teacherDoc = await Staff.findOne({
++          _id: assignedTeacherId,
++          director: ctx.directorId,
++          isActive: true,
++        });
++        if (!teacherDoc)
++          return res
++            .status(404)
++            .json({ success: false, error: "Ustoz topilmadi" });
++
++        // Guruhning MAVJUD jadvali bo'yicha yangi ustozni tekshiramiz
++        const existingSchedule = await Schedule.find({
++          class: group._id,
++          isActive: { $ne: false },
++        });
++        for (const slot of existingSchedule) {
++          const slotConflicts = await findTeacherConflicts({
++            teacherId: assignedTeacherId,
++            directorId: ctx.directorId,
++            daysOfWeek: [slot.dayOfWeek],
++            startTime: slot.startTime,
++            endTime: slot.endTime,
++            excludeClassId: group._id,
++          });
++          conflicts.push(...slotConflicts);
++        }
++        if (conflicts.length && !force) {
++          return res.status(409).json({
++            success: false,
++            error: "Ustoz guruhning jadvalidagi vaqt(lar)da band",
++            conflicts,
++          });
++        }
++        group.assignedTeacher = teacherDoc._id;
++        // ✅ Mavjud jadval slotlarini ham yangi ustozga o'tkazamiz
++        await Schedule.updateMany(
++          { class: group._id, isActive: { $ne: false } },
++          { teacher: teacherDoc._id },
++        );
++      } else {
++        group.assignedTeacher = null;
++      }
++    }
++
++    await group.save();
++    res.json({ success: true, message: "Guruh yangilandi", group });
++  } catch (err) {
++    console.error("updateGroup error:", err);
++    res.status(err.status || 500).json({ success: false, error: err.message });
++  }
++};
++
++// ── Guruhni o'chirish ─────────────────────────────────────────────
++exports.deleteGroup = async (req, res) => {
++  try {
++    const ctx = await resolveContext(req);
++    requirePermission(ctx, "manageGroups");
++    const { groupId } = req.params;
++
++    const query = { _id: groupId, teacher: ctx.directorId };
++    if (ctx.branchFilter) query.branch = ctx.branchFilter;
++    const group = await Class.findOne(query);
++    if (!group)
++      return res
++        .status(404)
++        .json({ success: false, error: "Guruh topilmadi" });
++
++    await Promise.all([
++      Student.deleteMany({ class: groupId }),
++      MonthlyPayment.deleteMany({ class: groupId }),
++      Expense.deleteMany({ class: groupId }),
++      Schedule.deleteMany({ class: groupId }),
++      Attendance.deleteMany({ class: groupId }),
++      Grade.deleteMany({ class: groupId }),
++    ]);
++    await Class.findByIdAndDelete(groupId);
++
++    res.json({ success: true, message: "Guruh va bog'liq barcha ma'lumotlar o'chirildi" });
++  } catch (err) {
++    console.error("deleteGroup error:", err);
++    res.status(err.status || 500).json({ success: false, error: err.message });
++  }
++};
+--- a/src/controllers/scheduleController.js
++++ b/src/controllers/scheduleController.js
+@@ -1,7 +1,9 @@
+ // src/controllers/scheduleController.js — STAFF UCHUN TUZATILGAN
+ const Schedule = require("../models/Schedule");
+ const Class = require("../models/Class");
++const Staff = require("../models/Staff");
+ const { resolveContext } = require("../utils/resolveContext");
++const { findTeacherConflicts } = require("../utils/teacherAvailability"); // ✅ YANGI
+ 
+ const DAYS = [
+   "Dushanba",
+@@ -17,7 +19,8 @@
+ exports.createSchedule = async (req, res) => {
+   try {
+     const ctx = await resolveContext(req);
+-    const { classId, dayOfWeek, startTime, endTime, subject, room } = req.body;
++    const { classId, dayOfWeek, startTime, endTime, subject, room, teacherId, force } =
++      req.body;
+ 
+     if (!classId || dayOfWeek === undefined || !startTime || !endTime) {
+       return res
+@@ -37,7 +40,10 @@
+     }
+ 
+     // ✅ directorId orqali qidirish (teacherId emas)
+-    const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId });
++    const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId }).populate(
++      "subject",
++      "name",
++    );
+     if (!cls)
+       return res.status(404).json({ success: false, error: "Sinf topilmadi" });
+ 
+@@ -63,13 +69,47 @@
+       });
+     }
+ 
++    // ✅ TUZATILDI — endi haqiqiy ustoz (Staff) tayinlanadi, avval doim
++    // ctx.directorId (direktor) yozilardi. Berilmasa, guruhga tayinlangan
++    // asosiy ustoz ishlatiladi.
++    const resolvedTeacherId = teacherId || cls.assignedTeacher;
++    if (!resolvedTeacherId) {
++      return res.status(400).json({
++        success: false,
++        error: "Avval ustoz tayinlang (teacherId) — jadval ustozsiz yaratilmaydi",
++      });
++    }
++    const teacherDoc = await Staff.findOne({
++      _id: resolvedTeacherId,
++      director: ctx.directorId,
++      isActive: true,
++    });
++    if (!teacherDoc) {
++      return res.status(404).json({ success: false, error: "Ustoz topilmadi" });
++    }
++
++    const conflicts = await findTeacherConflicts({
++      teacherId: resolvedTeacherId,
++      directorId: ctx.directorId,
++      daysOfWeek: [dayOfWeek],
++      startTime,
++      endTime,
++    });
++    if (conflicts.length && !force) {
++      return res.status(409).json({
++        success: false,
++        error: "Ustoz shu vaqtda boshqa guruhda band",
++        conflicts,
++      });
++    }
++
+     const schedule = await Schedule.create({
+       class: classId,
+-      teacher: ctx.directorId,
++      teacher: resolvedTeacherId,
+       dayOfWeek,
+       startTime,
+       endTime,
+-      subject: (subject || "").trim(),
++      subject: (subject || cls.subject?.name || "").trim(),
+       room: (room || "").trim(),
+     });
+ 
+@@ -77,7 +117,7 @@
+       .status(201)
+       .json({ success: true, message: "Jadval qo'shildi", schedule });
+   } catch (e) {
+-    res.status(500).json({ success: false, error: e.message });
++    res.status(e.status || 500).json({ success: false, error: e.message });
+   }
+ };
+ 
+@@ -162,22 +202,54 @@
+   try {
+     const ctx = await resolveContext(req);
+     const { scheduleId } = req.params;
+-    const { startTime, endTime, subject, room } = req.body;
++    const { startTime, endTime, subject, room, teacherId, force } = req.body;
+ 
+-    const schedule = await Schedule.findOne({
+-      _id: scheduleId,
+-      teacher: ctx.directorId,
+-    });
++    const schedule = await Schedule.findById(scheduleId);
+     if (!schedule)
+       return res
+         .status(404)
+         .json({ success: false, error: "Jadval topilmadi" });
+ 
+-    if (ctx.branchFilter) {
+-      const cls = await Class.findById(schedule.class);
+-      if (String(cls?.branch) !== ctx.branchFilter) {
+-        return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
++    // ✅ TUZATILDI — egalikni schedule.teacher orqali emas, bog'langan
++    // Class(guruh).teacher orqali tekshiramiz. Avvalgi kod schedule.teacher
++    // har doim direktor ID'siga teng deb hisoblardi — endi haqiqiy ustoz
++    // (Staff) bo'lgani uchun bu solishtirish noto'g'ri natija berardi.
++    const cls = await Class.findOne({ _id: schedule.class, teacher: ctx.directorId });
++    if (!cls)
++      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
++    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
++      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
++    }
++
++    const nextStart = startTime || schedule.startTime;
++    const nextEnd = endTime || schedule.endTime;
++    const nextTeacherId = teacherId || String(schedule.teacher);
++
++    if (teacherId || startTime || endTime) {
++      const teacherDoc = await Staff.findOne({
++        _id: nextTeacherId,
++        director: ctx.directorId,
++        isActive: true,
++      });
++      if (!teacherDoc)
++        return res.status(404).json({ success: false, error: "Ustoz topilmadi" });
++
++      const conflicts = await findTeacherConflicts({
++        teacherId: nextTeacherId,
++        directorId: ctx.directorId,
++        daysOfWeek: [schedule.dayOfWeek],
++        startTime: nextStart,
++        endTime: nextEnd,
++        excludeClassId: schedule.class,
++      });
++      if (conflicts.length && !force) {
++        return res.status(409).json({
++          success: false,
++          error: "Ustoz shu vaqtda boshqa guruhda band",
++          conflicts,
++        });
+       }
++      schedule.teacher = nextTeacherId;
+     }
+ 
+     if (startTime) schedule.startTime = startTime;
+@@ -188,7 +260,7 @@
+ 
+     res.json({ success: true, message: "Jadval yangilandi", schedule });
+   } catch (e) {
+-    res.status(500).json({ success: false, error: e.message });
++    res.status(e.status || 500).json({ success: false, error: e.message });
+   }
+ };
+ 
+@@ -198,26 +270,24 @@
+     const ctx = await resolveContext(req);
+     const { scheduleId } = req.params;
+ 
+-    const schedule = await Schedule.findOne({
+-      _id: scheduleId,
+-      teacher: ctx.directorId,
+-    });
++    const schedule = await Schedule.findById(scheduleId);
+     if (!schedule)
+       return res
+         .status(404)
+         .json({ success: false, error: "Jadval topilmadi" });
+ 
+-    if (ctx.branchFilter) {
+-      const cls = await Class.findById(schedule.class);
+-      if (String(cls?.branch) !== ctx.branchFilter) {
+-        return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+-      }
++    // ✅ TUZATILDI — xuddi updateSchedule'dagi kabi, Class orqali tekshiramiz
++    const cls = await Class.findOne({ _id: schedule.class, teacher: ctx.directorId });
++    if (!cls)
++      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
++    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
++      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+     }
+ 
+     schedule.isActive = false;
+     await schedule.save();
+     res.json({ success: true, message: "Jadval o'chirildi" });
+   } catch (e) {
+-    res.status(500).json({ success: false, error: e.message });
++    res.status(e.status || 500).json({ success: false, error: e.message });
+   }
+ };
+--- a/src/controllers/gradeController.js
++++ b/src/controllers/gradeController.js
+@@ -11,11 +11,7 @@
+ exports.saveGrades = async (req, res) => {
+   try {
+     const ctx = await resolveContext(req);
+-    if (!requirePermission(ctx, "manageGrades")) {
+-      return res
+-        .status(403)
+-        .json({ success: false, error: "Baho qo'yish huquqi yo'q" });
+-    }
++    requirePermission(ctx, "manageGrades"); // ✅ TUZATILDI — throw qiladi, endi to'g'ri 403 qaytaradi
+ 
+     const {
+       classId,
+@@ -25,12 +21,12 @@
+       maxScore = 100,
+       grades,
+     } = req.body;
+-    if (!classId || !subject || !date || !grades?.length) {
++    if (!classId || !date || !grades?.length) {
+       return res
+         .status(400)
+         .json({
+           success: false,
+-          error: "classId, subject, date, grades majburiy",
++          error: "classId, date, grades majburiy",
+         });
+     }
+     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+@@ -39,7 +35,10 @@
+         .json({ success: false, error: "date: YYYY-MM-DD formatida" });
+     }
+ 
+-    const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId });
++    const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId }).populate(
++      "subject",
++      "name",
++    );
+     if (!cls)
+       return res.status(404).json({ success: false, error: "Guruh topilmadi" });
+     if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
+@@ -51,6 +50,18 @@
+         });
+     }
+ 
++    // ✅ YANGI — fan har safar qo'lda kiritilmasin: guruhga biriktirilgan
++    // fan avtomatik ishlatiladi, faqat kerak bo'lsa qo'lda ustidan yozish
++    // mumkin (masalan aralash guruhlarda).
++    const resolvedSubject = (subject || cls.subject?.name || "").trim();
++    if (!resolvedSubject) {
++      return res.status(400).json({
++        success: false,
++        error:
++          "Fan aniqlanmadi — avval guruhga fan biriktiring yoki 'subject' yuboring",
++      });
++    }
++
+     const [year, month] = date.split("-").map(Number);
+     let saved = 0;
+ 
+@@ -58,7 +69,7 @@
+       if (g.score === undefined || g.score === null) continue;
+       const score = Math.max(0, Math.min(Number(maxScore), Number(g.score)));
+       await Grade.findOneAndUpdate(
+-        { class: classId, student: g.studentId, subject, date, type },
++        { class: classId, student: g.studentId, subject: resolvedSubject, date, type },
+         {
+           teacher: ctx.directorId,
+           month,
+@@ -74,7 +85,7 @@
+ 
+     res.json({ success: true, message: `${saved} ta baho saqlandi`, saved });
+   } catch (e) {
+-    res.status(500).json({ success: false, error: e.message });
++    res.status(e.status || 500).json({ success: false, error: e.message });
+   }
+ };
+ 
+@@ -264,9 +275,7 @@
+ exports.deleteGrade = async (req, res) => {
+   try {
+     const ctx = await resolveContext(req);
+-    if (!requirePermission(ctx, "manageGrades")) {
+-      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+-    }
++    requirePermission(ctx, "manageGrades"); // ✅ TUZATILDI
+     const { gradeId } = req.params;
+     const grade = await Grade.findOneAndDelete({
+       _id: gradeId,
+@@ -276,6 +285,6 @@
+       return res.status(404).json({ success: false, error: "Baho topilmadi" });
+     res.json({ success: true, message: "Baho o'chirildi" });
+   } catch (e) {
+-    res.status(500).json({ success: false, error: e.message });
++    res.status(e.status || 500).json({ success: false, error: e.message });
+   }
+ };
+--- a/src/routes/lc.js
++++ b/src/routes/lc.js
+@@ -8,6 +8,7 @@
+ const staffCtrl = require("../controllers/staffController");
+ const salaryCtrl = require("../controllers/salaryController");
+ const subjectCtrl = require("../controllers/subjectController"); // ✅ YANGI
++const groupCtrl = require("../controllers/groupController"); // ✅ YANGI
+ 
+ // ✅ TUZATILDI — /api/lc/* butunlay O'quv markazi (LC) rejimiga qulflandi.
+ // Avval bu yerda hech qanday mode tekshiruvi yo'q edi.
+@@ -51,4 +52,24 @@
+ router.put("/subjects/:id", allowTeacherOrStaff, subjectCtrl.updateSubject);
+ router.delete("/subjects/:id", allowTeacherOrStaff, subjectCtrl.deleteSubject);
+ 
++// ─── GROUPS (Guruhlar) — ✅ YANGI ────────────────────────────────────────────
++// ✅ Fond'ning /teacher/classes'idan ENDI mustaqil — LC o'z API'siga ega.
++// Ichkarida (bugungacha) Class kolleksiyasi ishlatiladi, lekin bu shunchaki
++// ichki tafsilot — tashqi contract endi to'liq "Group" shaklida.
++router.get(
++  "/groups/available-teachers",
++  allowTeacherOrStaff,
++  groupCtrl.getAvailableTeachers,
++);
++router.post(
++  "/groups/check-availability",
++  allowTeacherOrStaff,
++  groupCtrl.checkAvailability,
++);
++router.get("/groups", allowTeacherOrStaff, groupCtrl.getGroups);
++router.post("/groups", allowTeacherOrStaff, groupCtrl.createGroup);
++router.get("/groups/:groupId", allowTeacherOrStaff, groupCtrl.getGroupById);
++router.put("/groups/:groupId", allowTeacherOrStaff, groupCtrl.updateGroup);
++router.delete("/groups/:groupId", allowTeacherOrStaff, groupCtrl.deleteGroup);
++
+ module.exports = router;

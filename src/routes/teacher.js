@@ -11,6 +11,7 @@ const attCtrl = require("../controllers/attendanceController");
 const prCtrl = require("../controllers/paymentRequestController");
 const auth = require("../middleware/auth");
 const { onlyTeacher, allowTeacherOrStaff } = require("../middleware/roles"); // ✅ TUZATILDI: destructure
+const { requireLCMode } = require("../middleware/mode"); // ✅ YANGI
 
 const {
   exportPreviousYear,
@@ -70,25 +71,37 @@ router.post("/cleanup-previous-year", onlyTeacher, cleanupPreviousYear);
 // ✅ /classes/list AVVAL yozilishi shart — /classes/:id bilan conflict bo'lmasin
 router.get("/classes/list", allowTeacherOrStaff, ctrl.getClassesForStaff);
 
-// Qolgan class route'lar — faqat Director
-router.post("/classes", onlyTeacher, ctrl.createClass);
-router.get("/classes", onlyTeacher, ctrl.getMyClasses);
+// ✅ TUZATILDI — Director VA Staff (manageGroups huquqi bilan, ichkarida
+// requirePermission tekshiradi). Avval faqat onlyTeacher edi — shu sabab
+// "manageGroups" huquqi berilgan Administration/Manager roli guruh ochish
+// u yoqda tursin, guruhlar ro'yxatini ko'rishda ham 403 olardi.
+router.post("/classes", allowTeacherOrStaff, ctrl.createClass);
+router.get("/classes", allowTeacherOrStaff, ctrl.getMyClasses);
 router.put(
   "/classes/:classId/amount",
-  onlyTeacher,
+  allowTeacherOrStaff,
   ctrl.updateClassDefaultAmount,
 );
+// Boshlang'ich balans — faqat Direktor (tizimdan oldingi tarixiy summa)
 router.put(
   "/classes/:classId/initial-balance",
   onlyTeacher,
   ctrl.updateInitialBalance,
 );
-router.delete("/classes/:classId", onlyTeacher, ctrl.deleteClass);
+router.delete("/classes/:classId", allowTeacherOrStaff, ctrl.deleteClass);
 
-// ══ STUDENTS — faqat Director ═══════════════════════════════
-router.post("/classes/:classId/students", onlyTeacher, ctrl.addStudent);
-router.get("/classes/:classId/students", onlyTeacher, ctrl.getClassStudents);
-router.delete("/students/:studentId", onlyTeacher, ctrl.deleteStudent);
+// ══ STUDENTS — Director VA Staff (manageStudents huquqi bilan) ══
+router.post(
+  "/classes/:classId/students",
+  allowTeacherOrStaff,
+  ctrl.addStudent,
+);
+router.get(
+  "/classes/:classId/students",
+  allowTeacherOrStaff,
+  ctrl.getClassStudents,
+);
+router.delete("/students/:studentId", allowTeacherOrStaff, ctrl.deleteStudent);
 
 // ══ PAYMENTS — faqat Director ═══════════════════════════════
 router.post(
@@ -149,69 +162,102 @@ router.put(
   branchCtrl.becomeManagerToo,
 );
 
-// ══ SCHEDULE — ✅ Director VA Staff (ruxsat ichkarida tekshiriladi) ══
-router.post("/schedule", allowTeacherOrStaff, schedCtrl.createSchedule);
+// ══ SCHEDULE — ✅ FAQAT O'quv markazi (LC) rejimi ════════════
+// ✅ TUZATILDI — bu Fond'da umuman bo'lmasligi kerak edi (Fond = faqat
+// fond puli yig'ish). requireLCMode qo'shildi.
+router.post(
+  "/schedule",
+  allowTeacherOrStaff,
+  requireLCMode,
+  schedCtrl.createSchedule,
+);
 router.get(
   "/schedule/weekly",
   allowTeacherOrStaff,
+  requireLCMode,
   schedCtrl.getWeeklyOverview,
 );
 router.get(
   "/schedule/class/:classId",
   allowTeacherOrStaff,
+  requireLCMode,
   schedCtrl.getClassSchedule,
 );
 router.put(
   "/schedule/:scheduleId",
   allowTeacherOrStaff,
+  requireLCMode,
   schedCtrl.updateSchedule,
 );
 router.delete(
   "/schedule/:scheduleId",
   allowTeacherOrStaff,
+  requireLCMode,
   schedCtrl.deleteSchedule,
 );
 
-// ══ ATTENDANCE — ✅ Director VA Staff ════════════════════════
-router.post("/attendance", allowTeacherOrStaff, attCtrl.saveAttendance);
+// ══ ATTENDANCE — ✅ FAQAT O'quv markazi (LC) rejimi ═══════════
+router.post(
+  "/attendance",
+  allowTeacherOrStaff,
+  requireLCMode,
+  attCtrl.saveAttendance,
+);
 router.get(
   "/attendance/class/:classId",
   allowTeacherOrStaff,
+  requireLCMode,
   attCtrl.getDayAttendance,
 );
 router.get(
   "/attendance/class/:classId/monthly",
   allowTeacherOrStaff,
+  requireLCMode,
   attCtrl.getMonthlyStats,
 );
 router.get(
   "/attendance/student/:studentId/history",
   allowTeacherOrStaff,
+  requireLCMode,
   attCtrl.getStudentHistory,
 );
 
-// ══ GRADES — ✅ Director VA Staff ═════════════════════════════
-router.post("/grades", allowTeacherOrStaff, gradeCtrl.saveGrades);
+// ══ GRADES — ✅ FAQAT O'quv markazi (LC) rejimi ═══════════════
+router.post(
+  "/grades",
+  allowTeacherOrStaff,
+  requireLCMode,
+  gradeCtrl.saveGrades,
+);
 router.get(
   "/grades/class/:classId",
   allowTeacherOrStaff,
+  requireLCMode,
   gradeCtrl.getDayGrades,
 );
 router.get(
   "/grades/class/:classId/subjects",
   allowTeacherOrStaff,
+  requireLCMode,
   gradeCtrl.getSubjects,
 );
 router.get(
   "/grades/class/:classId/monthly",
   allowTeacherOrStaff,
+  requireLCMode,
   gradeCtrl.getMonthlyAverage,
 );
 router.get(
   "/grades/student/:studentId",
   allowTeacherOrStaff,
+  requireLCMode,
   gradeCtrl.getStudentGrades,
 );
-router.delete("/grades/:gradeId", allowTeacherOrStaff, gradeCtrl.deleteGrade);
+router.delete(
+  "/grades/:gradeId",
+  allowTeacherOrStaff,
+  requireLCMode,
+  gradeCtrl.deleteGrade,
+);
 
 module.exports = router;

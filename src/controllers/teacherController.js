@@ -39,6 +39,28 @@ const completeOnboarding = async (req, res) => {
     const { institutionType, institutionName, city, studentCountRange } =
       req.body || {};
 
+    // ✅ YANGI — QULF: bir marta tanlangan institutionType'ni ilova ichida
+    // boshqa hech qanday yo'l bilan o'zgartirib bo'lmaydi (avval sidebar'dagi
+    // "mode-switch" tugmasi shu endpoint'ni qayta chaqirib, Fond<->LC
+    // orasida hech narsa so'ramasdan almashtirib yuborardi — shu "chalkashlik"
+    // va sahifalar almashib ketishining asosiy sababi shu edi).
+    const existingTeacher = await Teacher.findById(teacherId).select(
+      "onboardingCompleted institutionType",
+    );
+    if (!existingTeacher) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Teacher topilmadi" });
+    }
+    if (existingTeacher.onboardingCompleted && existingTeacher.institutionType) {
+      return res.status(403).json({
+        success: false,
+        error:
+          "Muassasa turi (Fond / O'quv markazi) allaqachon tanlangan va uni ilova ichida o'zgartirib bo'lmaydi. Yordam kerak bo'lsa, qo'llab-quvvatlash xizmatiga murojaat qiling.",
+        locked: true,
+      });
+    }
+
     if (
       !institutionType ||
       !["school", "learning_center"].includes(institutionType)
@@ -161,9 +183,12 @@ const getProfile = async (req, res) => {
 // ============================================================
 const createClass = async (req, res) => {
   try {
-    const { name, defaultAmount, initialBalance, initialBalanceNote } =
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageGroups");
+
+    const { name, defaultAmount, initialBalance, initialBalanceNote, branch } =
       req.body;
-    const teacherId = req.user.id;
+    const teacherId = ctx.directorId;
 
     if (!name || defaultAmount === undefined) {
       return res
@@ -208,6 +233,11 @@ const createClass = async (req, res) => {
       });
     }
 
+    // ✅ Staff filialga bog'langan bo'lsa (ctx.branchFilter), yangi
+    // guruh avtomatik o'sha filialga tegishli bo'ladi. Direktor esa
+    // istalgan filialni (yoki hech qaysisini) tanlashi mumkin.
+    const resolvedBranch = ctx.branchFilter || branch || null;
+
     const activePlan = teacher.isPlanActive() ? teacher.plan : "free";
     const newClass = new Class({
       name: name.trim(),
@@ -216,6 +246,7 @@ const createClass = async (req, res) => {
       plan: activePlan,
       initialBalance: initialBalance !== undefined ? Number(initialBalance) : 0,
       initialBalanceNote: (initialBalanceNote || "").trim(),
+      branch: resolvedBranch,
     });
     await newClass.save();
 
@@ -226,14 +257,17 @@ const createClass = async (req, res) => {
     });
   } catch (err) {
     console.error("createClass error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.status || 500).json({ success: false, error: err.message });
   }
 };
 
 const getMyClasses = async (req, res) => {
   try {
-    const teacherId = req.user.id;
-    const classes = await Class.find({ teacher: teacherId }).sort({
+    const ctx = await resolveContext(req);
+    const teacherId = ctx.directorId;
+    const query = { teacher: teacherId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+    const classes = await Class.find(query).sort({
       createdAt: -1,
     });
 
@@ -264,7 +298,7 @@ const getMyClasses = async (req, res) => {
     return res.json({ success: true, classes: classesWithStats });
   } catch (err) {
     console.error("getMyClasses error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.status || 500).json({ success: false, error: err.message });
   }
 };
 
@@ -366,9 +400,10 @@ const updateInitialBalance = async (req, res) => {
 
 const updateClassDefaultAmount = async (req, res) => {
   try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageGroups");
     const { classId } = req.params;
     const { defaultAmount } = req.body;
-    const teacherId = req.user.id;
 
     if (defaultAmount === undefined || Number(defaultAmount) <= 0) {
       return res
@@ -376,7 +411,9 @@ const updateClassDefaultAmount = async (req, res) => {
         .json({ success: false, error: "Summa 0 dan katta bo'lishi kerak" });
     }
 
-    const cls = await Class.findOne({ _id: classId, teacher: teacherId });
+    const query = { _id: classId, teacher: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+    const cls = await Class.findOne(query);
     if (!cls)
       return res
         .status(404)
@@ -392,16 +429,19 @@ const updateClassDefaultAmount = async (req, res) => {
     });
   } catch (err) {
     console.error("updateClassDefaultAmount error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.status || 500).json({ success: false, error: err.message });
   }
 };
 
 const deleteClass = async (req, res) => {
   try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageGroups");
     const { classId } = req.params;
-    const teacherId = req.user.id;
 
-    const cls = await Class.findOne({ _id: classId, teacher: teacherId });
+    const query = { _id: classId, teacher: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+    const cls = await Class.findOne(query);
     if (!cls)
       return res
         .status(404)
@@ -418,7 +458,7 @@ const deleteClass = async (req, res) => {
     });
   } catch (err) {
     console.error("deleteClass error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.status || 500).json({ success: false, error: err.message });
   }
 };
 
@@ -427,9 +467,10 @@ const deleteClass = async (req, res) => {
 // ============================================================
 const addStudent = async (req, res) => {
   try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageStudents");
     const { classId } = req.params;
     const { name, parentPhone } = req.body;
-    const teacherId = req.user.id;
 
     if (!name || !name.trim()) {
       return res
@@ -437,7 +478,9 @@ const addStudent = async (req, res) => {
         .json({ success: false, error: "O'quvchi ismi majburiy" });
     }
 
-    const cls = await Class.findOne({ _id: classId, teacher: teacherId });
+    const classQuery = { _id: classId, teacher: ctx.directorId };
+    if (ctx.branchFilter) classQuery.branch = ctx.branchFilter;
+    const cls = await Class.findOne(classQuery);
     if (!cls)
       return res
         .status(404)
@@ -466,16 +509,18 @@ const addStudent = async (req, res) => {
       .json({ success: true, message: "O'quvchi qo'shildi", student });
   } catch (err) {
     console.error("addStudent error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.status || 500).json({ success: false, error: err.message });
   }
 };
 
 const getClassStudents = async (req, res) => {
   try {
+    const ctx = await resolveContext(req);
     const { classId } = req.params;
-    const teacherId = req.user.id;
 
-    const cls = await Class.findOne({ _id: classId, teacher: teacherId });
+    const query = { _id: classId, teacher: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+    const cls = await Class.findOne(query);
     if (!cls)
       return res
         .status(404)
@@ -487,7 +532,7 @@ const getClassStudents = async (req, res) => {
     return res.json({ success: true, students });
   } catch (err) {
     console.error("getClassStudents error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.status || 500).json({ success: false, error: err.message });
   }
 };
 
@@ -560,8 +605,9 @@ const updateStudent = async (req, res) => {
 
 const deleteStudent = async (req, res) => {
   try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageStudents");
     const { studentId } = req.params;
-    const teacherId = req.user.id;
 
     const student = await Student.findById(studentId);
     if (!student)
@@ -569,7 +615,9 @@ const deleteStudent = async (req, res) => {
         .status(404)
         .json({ success: false, error: "O'quvchi topilmadi" });
 
-    const cls = await Class.findOne({ _id: student.class, teacher: teacherId });
+    const classQuery = { _id: student.class, teacher: ctx.directorId };
+    if (ctx.branchFilter) classQuery.branch = ctx.branchFilter;
+    const cls = await Class.findOne(classQuery);
     if (!cls)
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
 
@@ -579,7 +627,7 @@ const deleteStudent = async (req, res) => {
     return res.json({ success: true, message: "O'quvchi o'chirildi" });
   } catch (err) {
     console.error("deleteStudent error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.status || 500).json({ success: false, error: err.message });
   }
 };
 
