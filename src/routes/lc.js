@@ -72,4 +72,8 @@ router.get("/groups/:groupId", allowTeacherOrStaff, groupCtrl.getGroupById);
 router.put("/groups/:groupId", allowTeacherOrStaff, groupCtrl.updateGroup);
 router.delete("/groups/:groupId", allowTeacherOrStaff, groupCtrl.deleteGroup);
 
+// ─── DASHBOARD & HISOBOTLAR — ✅ YANGI ───────────────────────────────────────
+router.get("/dashboard-stats", allowTeacherOrStaff, groupCtrl.getDashboardStats);
+router.get("/reports/export", allowTeacherOrStaff, groupCtrl.exportGroupsReport);
+
 module.exports = router;

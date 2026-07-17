@@ -15,8 +15,11 @@ const Attendance = require("../models/Attendance");
 const Grade = require("../models/Grade");
 const MonthlyPayment = require("../models/MonthlyPayment");
 const Expense = require("../models/Expense");
+const Teacher = require("../models/Teacher"); // ✅ YANGI
+const XLSX = require("xlsx"); // ✅ YANGI
 const { resolveContext, requirePermission } = require("../utils/resolveContext");
 const { findTeacherConflicts } = require("../utils/teacherAvailability");
+const { hasFeature } = require("../utils/planHelper"); // ✅ YANGI
 
 const DAY_NAMES = [
   "Dushanba",
@@ -224,14 +227,24 @@ exports.getGroups = async (req, res) => {
 
     const withDetails = await Promise.all(
       groups.map(async (g) => {
-        const studentCount = await Student.countDocuments({ class: g._id });
-        const schedule = await Schedule.find({
-          class: g._id,
-          isActive: { $ne: false },
-        }).sort({ dayOfWeek: 1 });
+        const now = new Date();
+        const [studentCount, schedule, monthPayments] = await Promise.all([
+          Student.countDocuments({ class: g._id }),
+          Schedule.find({ class: g._id, isActive: { $ne: false } }).sort({
+            dayOfWeek: 1,
+          }),
+          MonthlyPayment.find({
+            class: g._id,
+            month: now.getMonth() + 1,
+            year: now.getFullYear(),
+            status: "paid",
+          }),
+        ]);
+        const collectedThisMonth = monthPayments.reduce((s, p) => s + p.amount, 0);
         return {
           ...g.toObject(),
           studentCount,
+          collectedThisMonth,
           schedule: schedule.map((s) => ({
             id: s._id,
             day: DAY_NAMES[s.dayOfWeek],
@@ -399,7 +412,181 @@ exports.updateGroup = async (req, res) => {
   }
 };
 
-// ── Guruhni o'chirish ─────────────────────────────────────────────
+// ── Dashboard uchun REAL statistika ──────────────────────────────
+// ✅ YANGI — avval frontend /teacher/dashboard (Fond'ga mo'ljallangan)
+// javobidan foydalanardi va bugungi davomat/o'qituvchilar soni kabi
+// maydonlar UMUMAN kelmagani uchun 0 / qattiq yozilgan 1 ko'rsatilardi.
+exports.getDashboardStats = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    const query = { teacher: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+
+    const groups = await Class.find(query);
+    const groupIds = groups.map((g) => g._id);
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const staffQuery = { director: ctx.directorId, isActive: true };
+    if (ctx.branchFilter) staffQuery.branch = ctx.branchFilter;
+
+    const [totalStudents, totalTeachers, todayAtt] = await Promise.all([
+      Student.countDocuments({ class: { $in: groupIds } }),
+      Staff.countDocuments(staffQuery),
+      Attendance.find({ class: { $in: groupIds }, date: todayStr }),
+    ]);
+
+    const attended = (recs) =>
+      recs.filter((a) => a.status === "present" || a.status === "late").length;
+
+    const perGroupAttendance = {};
+    for (const g of groups) {
+      const recs = todayAtt.filter((a) => String(a.class) === String(g._id));
+      perGroupAttendance[g._id] = recs.length
+        ? Math.round((attended(recs) / recs.length) * 100)
+        : null;
+    }
+
+    res.json({
+      success: true,
+      stats: {
+        totalStudents,
+        totalGroups: groups.length,
+        activeGroups: groups.length, // ✅ hozircha Class'da isActive maydoni yo'q — hammasi faol hisoblanadi
+        totalTeachers,
+        todayAttendancePercent: todayAtt.length
+          ? Math.round((attended(todayAtt) / todayAtt.length) * 100)
+          : null,
+        presentToday: attended(todayAtt),
+        totalTodayMarked: todayAtt.length,
+        perGroupAttendance,
+      },
+    });
+  } catch (err) {
+    console.error("getDashboardStats error:", err);
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
+// ── Barcha guruhlar bo'yicha hisobot (Excel) ─────────────────────
+// ✅ YANGI — avval Reports.vue faqat BIRINCHI guruhni eksport qilardi
+// ("to'liq hisobot" deb ko'rsatilsa ham). Endi har bir guruh alohida
+// varaqqa, ustiga umumiy ko'rinish varag'i bilan.
+exports.exportGroupsReport = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    const { month, year } = req.query;
+
+    const teacher = await Teacher.findById(ctx.directorId);
+    if (!teacher)
+      return res.status(404).json({ success: false, error: "Topilmadi" });
+    if (!hasFeature(teacher, "export")) {
+      return res.status(403).json({
+        success: false,
+        error: "Export faqat Premium uchun",
+        requiresUpgrade: true,
+      });
+    }
+
+    const query = { teacher: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+    const groups = await Class.find(query).populate("subject", "name");
+    if (!groups.length) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Hali guruh yo'q" });
+    }
+
+    const m = Number(month) || new Date().getMonth() + 1;
+    const y = Number(year) || new Date().getFullYear();
+
+    const wb = XLSX.utils.book_new();
+    const overviewRows = [
+      ["Guruh", "Fan", "O'quvchilar", "To'lagan", "Yig'ilgan (so'm)", "Kutilgan (so'm)"],
+    ];
+
+    const usedSheetNames = new Set();
+    const safeSheetName = (name) => {
+      let base = (name || "Guruh").replace(/[\\/?*[\]:]/g, "").slice(0, 28) || "Guruh";
+      let candidate = base;
+      let i = 2;
+      while (usedSheetNames.has(candidate)) {
+        candidate = `${base} (${i++})`.slice(0, 31);
+      }
+      usedSheetNames.add(candidate);
+      return candidate;
+    };
+
+    for (const g of groups) {
+      const students = await Student.find({ class: g._id }).sort({ rollNumber: 1 });
+      const payments = await MonthlyPayment.find({
+        class: g._id,
+        month: m,
+        year: y,
+      }).populate("student", "name parentPhone rollNumber");
+
+      const rows = students.map((s) => {
+        const p = payments.find((x) => String(x.student?._id) === String(s._id));
+        return {
+          "№": s.rollNumber,
+          "O'quvchi ismi": s.name,
+          "Ota-ona telefoni": s.parentPhone || "—",
+          "Summa (so'm)": p ? p.amount : g.defaultAmount,
+          Holati: p?.status === "paid" ? "To'lagan" : "To'lamagan",
+          "To'lagan sanasi": p?.paidDate
+            ? new Date(p.paidDate).toLocaleDateString("uz-UZ")
+            : "—",
+        };
+      });
+
+      const paidCount = rows.filter((r) => r.Holati === "To'lagan").length;
+      const collected = payments
+        .filter((p) => p.status === "paid")
+        .reduce((s, p) => s + p.amount, 0);
+      const expected = students.length * g.defaultAmount;
+
+      overviewRows.push([
+        g.name,
+        g.subject?.name || "—",
+        students.length,
+        `${paidCount}/${students.length}`,
+        collected,
+        expected,
+      ]);
+
+      const wsData = [
+        ["№", "O'quvchi ismi", "Ota-ona telefoni", "Summa (so'm)", "Holati", "To'lagan sanasi"],
+        ...rows.map((r) => Object.values(r)),
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      ws["!cols"] = [{ wch: 5 }, { wch: 25 }, { wch: 18 }, { wch: 15 }, { wch: 14 }, { wch: 18 }];
+      XLSX.utils.book_append_sheet(wb, ws, safeSheetName(g.name));
+    }
+
+    const wsOverview = XLSX.utils.aoa_to_sheet(overviewRows);
+    wsOverview["!cols"] = [{ wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, wsOverview, "Umumiy");
+    // "Umumiy" varag'ini birinchi qilib qo'yamiz
+    wb.SheetNames.unshift(wb.SheetNames.pop());
+
+    const buf = XLSX.write(wb, { bookType: "xlsx", type: "buffer", compression: true });
+    const fileName = encodeURIComponent(`hisobot_${m}_${y}.xlsx`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${fileName}"; filename*=UTF-8''${fileName}`,
+    );
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Length", buf.length);
+    return res.end(buf);
+  } catch (err) {
+    console.error("exportGroupsReport error:", err);
+    if (!res.headersSent) {
+      res.status(err.status || 500).json({ success: false, error: err.message });
+    }
+  }
+};
 exports.deleteGroup = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
