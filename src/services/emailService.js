@@ -216,7 +216,7 @@ const sendStaffWelcomeEmail = async ({
                 <td style="padding:20px 32px;border-top:1px solid rgba(255,255,255,0.07);">
                   <p style="margin:0;color:#4a5568;font-size:12px;text-align:center;">
                     © FondSchool &nbsp;•&nbsp;
-                    <a href="${process.env.FRONTEND_URL}"
+                    <a href="${(process.env.FRONTEND_URL || 'https://schoolfonds.netlify.app').split(',')[0].trim()}"
                        style="color:#718096;text-decoration:none;">
                       schoolfonds.netlify.app
                     </a>

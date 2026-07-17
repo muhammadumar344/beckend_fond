@@ -262,7 +262,8 @@ exports.staffLogin = async (req, res) => {
     res.json({
       token,
       user: {
-        _id:           staff._id,
+        id:            staff._id, // ✅ YANGI — Teacher/Admin javobi bilan bir xillik uchun
+        _id:           staff._id, // eski kod uchun saqlab qolindi
         name:          staff.name,
         email:         staff.email,
         role:          'staff',
@@ -338,7 +339,8 @@ exports.unifiedLogin = async (req, res) => {
       return res.json({
         token,
         user: {
-          _id:           staff._id,
+          id:            staff._id, // ✅ YANGI — Teacher/Admin javobi bilan bir xillik uchun
+          _id:           staff._id, // eski kod uchun saqlab qolindi
           name:          staff.name,
           email:         staff.email,
           role:          'staff',
