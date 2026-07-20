@@ -57,13 +57,19 @@ const createStaff = async (req, res) => {
     }
 
     const tempPassword      = generateTempPassword();
-    const hashedPassword    = await bcrypt.hash(tempPassword, 10);
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
+    // ✅ TUZATILDI — MUHIM BUG: bu yerda parol qo'lda bcrypt bilan hash
+    // qilinib, keyin Staff modelidagi pre('save') hook YANA hash qilib
+    // yuborardi ("hash'ning hash'i"). Natijada emailga ketgan vaqtinchalik
+    // parol hech qachon saqlangan parolga to'g'ri kelmasdi — YANGI
+    // qo'shilgan HAR BIR xodim "email yoki parol xato" bilan kirolmasdi.
+    // Endi parol PLAIN holida beriladi, hash qilishni FAQAT model hook'i
+    // bajaradi (bir marta).
     const staff = new Staff({
       name,
       email:            email.toLowerCase(),
-      password:         hashedPassword,
+      password:         tempPassword,
       role:             roleId,
       branch:           assignedBranch,
       director:         ctx.directorId,
@@ -329,7 +335,9 @@ const resetStaffPassword = async (req, res) => {
     if (!staff) return res.status(404).json({ message: 'Xodim topilmadi' });
 
     const newPassword   = generateTempPassword();
-    staff.password      = await bcrypt.hash(newPassword, 10);
+    // ✅ TUZATILDI — xuddi createStaff'dagi bug: qo'lda hash + pre('save')
+    // hook yana hash qilib, "hash'ning hash'i" chiqarardi.
+    staff.password       = newPassword;
     staff.emailVerified = false;
     await staff.save();
 

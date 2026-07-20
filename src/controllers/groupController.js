@@ -218,6 +218,11 @@ exports.getGroups = async (req, res) => {
     const ctx = await resolveContext(req);
     const query = { teacher: ctx.directorId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
+    // ✅ YANGI — ?mine=true: faqat shu xodim ustoz sifatida tayinlangan
+    // guruhlar ("Ustoz o'z guruhlarini ko'ra olishi kerak")
+    if (req.query.mine === "true" && req.user.role === "staff") {
+      query.assignedTeacher = req.user.id;
+    }
 
     const groups = await Class.find(query)
       .populate("subject", "name color")

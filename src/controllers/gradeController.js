@@ -176,6 +176,14 @@ exports.getMonthlyAverage = async (req, res) => {
       const studentGrades = grades.filter(
         (g) => g.student.toString() === s._id.toString(),
       );
+      // ✅ YANGI — har bir baho normallashtirilib (score/maxScore*100)
+      // "ochko" sifatida qo'shiladi. Reyting shu umumiy ochko bo'yicha
+      // tuziladi — shunchaki o'rtacha emas, ko'proq ishlagan
+      // (ko'proq baho olgan) o'quvchi ko'proq ochko to'playdi, xuddi
+      // Cambridge ilovasidagi "earn points" mantig'iga o'xshab.
+      const totalPoints = Math.round(
+        studentGrades.reduce((sum, g) => sum + (g.score / g.maxScore) * 100, 0),
+      );
       const avg =
         studentGrades.length > 0
           ? Math.round(
@@ -191,6 +199,7 @@ exports.getMonthlyAverage = async (req, res) => {
         rollNumber: s.rollNumber,
         gradeCount: studentGrades.length,
         average: avg,
+        totalPoints,
         grades: studentGrades.map((g) => ({
           subject: g.subject,
           date: g.date,
@@ -199,6 +208,14 @@ exports.getMonthlyAverage = async (req, res) => {
           type: g.type,
         })),
       };
+    });
+
+    // ✅ YANGI — reyting: ko'proq ochko to'plagan o'quvchi tepada.
+    // Baho olmagan o'quvchilar (0 ochko) reytingda pastda, lekin
+    // ro'yxatdan tushib qolmaydi (hali ulgurmagan bo'lishi mumkin).
+    const ranked = [...result].sort((a, b) => b.totalPoints - a.totalPoints);
+    ranked.forEach((r, i) => {
+      r.rank = r.gradeCount > 0 ? i + 1 : null;
     });
 
     const classAvg =
@@ -216,10 +233,10 @@ exports.getMonthlyAverage = async (req, res) => {
       month: m,
       year: y,
       classAverage: classAvg,
-      students: result,
+      students: ranked,
     });
   } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+    res.status(e.status || 500).json({ success: false, error: e.message });
   }
 };
 

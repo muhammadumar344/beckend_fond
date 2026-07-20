@@ -153,7 +153,7 @@ exports.getClassSchedule = async (req, res) => {
       total: schedules.length,
     });
   } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+    res.status(e.status || 500).json({ success: false, error: e.message });
   }
 };
 
@@ -169,10 +169,17 @@ exports.getWeeklyOverview = async (req, res) => {
     const classes = await Class.find(classQuery).select("name");
     const classIds = classes.map((c) => c._id);
 
-    const schedules = await Schedule.find({
+    const scheduleQuery = {
       class: { $in: classIds },
       isActive: true,
-    })
+    };
+    // ✅ YANGI — ?mine=true bo'lsa, faqat shu xodim ustoz bo'lgan
+    // darslarni qaytaradi ("Ustoz o'z guruhlarini ko'ra olishi kerak")
+    if (req.query.mine === "true" && req.user.role === "staff") {
+      scheduleQuery.teacher = req.user.id;
+    }
+
+    const schedules = await Schedule.find(scheduleQuery)
       .populate("class", "name")
       .sort({ dayOfWeek: 1, startTime: 1 });
 
@@ -184,6 +191,7 @@ exports.getWeeklyOverview = async (req, res) => {
         .map((s) => ({
           _id: s._id,
           class: s.class,
+          teacher: s.teacher, // ✅ TUZATILDI — avval umuman qaytmasdi, edit rejimida ustoz tanlovi doim bo'sh chiqardi
           startTime: s.startTime,
           endTime: s.endTime,
           subject: s.subject,
@@ -193,7 +201,7 @@ exports.getWeeklyOverview = async (req, res) => {
 
     res.json({ success: true, weekly });
   } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+    res.status(e.status || 500).json({ success: false, error: e.message });
   }
 };
 
