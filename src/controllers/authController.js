@@ -7,7 +7,13 @@ const Teacher = require('../models/Teacher')
 const Staff   = require('../models/Staff')
 const { sendVerificationCode } = require('../services/emailService')
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fond-school-secret-2024'
+// ✅ TUZATILDI — MUHIM XAVFSIZLIK: avval bu yerda zaxira (fallback) qiymat
+// qattiq yozilgan edi ('fond-school-secret-2024'). Agar muhitda JWT_SECRET
+// sozlanmasa, tizim SHU ma'lum qiymat bilan token imzolab, ishlashda davom
+// etardi — bu qiymatni bilgan har kim istalgan hisob (hatto Admin) uchun
+// soxta token yasashi mumkin edi. Endi zaxira YO'Q: JWT_SECRET sozlanmasa,
+// server umuman ishga tushmaydi (server.js'dagi tekshiruvga qarang).
+const JWT_SECRET = process.env.JWT_SECRET
 
 const generateToken = (id, role) => jwt.sign({ id, role }, JWT_SECRET, { expiresIn: '30d' })
 
@@ -262,8 +268,7 @@ exports.staffLogin = async (req, res) => {
     res.json({
       token,
       user: {
-        id:            staff._id, // ✅ YANGI — Teacher/Admin javobi bilan bir xillik uchun
-        _id:           staff._id, // eski kod uchun saqlab qolindi
+        _id:           staff._id,
         name:          staff.name,
         email:         staff.email,
         role:          'staff',
@@ -339,8 +344,7 @@ exports.unifiedLogin = async (req, res) => {
       return res.json({
         token,
         user: {
-          id:            staff._id, // ✅ YANGI — Teacher/Admin javobi bilan bir xillik uchun
-          _id:           staff._id, // eski kod uchun saqlab qolindi
+          _id:           staff._id,
           name:          staff.name,
           email:         staff.email,
           role:          'staff',

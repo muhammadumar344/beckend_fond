@@ -12,12 +12,6 @@ const teacherSchema = new mongoose.Schema({
   emailVerified:           { type: Boolean, default: false },
   verificationCode:        { type: String, select: false },
   verificationCodeExpires: { type: Date,   select: false },
-  // ✅ YANGI — parol tiklash uchun. Avval bu maydonlar umuman yo'q edi,
-  // shu sabab Direktor parolini unutsa, "Parolni unutdim" formasi
-  // "Xat yuborildi" deb ko'rsatsa ham, hech qachon email kelmasdi
-  // (chunki forgotPassword faqat Staff kolleksiyasini qidirardi).
-  resetPasswordToken:   { type: String, default: null, select: false },
-  resetPasswordExpires: { type: Date,   default: null, select: false },
 
   plan:             { type: String, enum: ['free','pro','premium'], default: 'free' },
   planExpiresAt:    { type: Date, default: null },

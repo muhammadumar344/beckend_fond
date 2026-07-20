@@ -82,21 +82,11 @@ const createStaff = async (req, res) => {
 
     try {
       const teacher = await Teacher.findById(ctx.directorId).lean();
-      // ✅ TUZATILDI — FRONTEND_URL bir nechta vergul bilan ajratilgan
-      // domenni saqlashi mumkin (masalan staging+production birga) — bu
-      // yerda hisobga olinmagani uchun havola buzuq bo'lib chiqishi mumkin
-      // edi. forgotPassword'dagi kabi faqat birinchisini olamiz.
-      const baseUrl = (process.env.FRONTEND_URL || 'https://schoolfonds.netlify.app')
-        .split(',')[0]
-        .trim();
-      const verificationLink = `${baseUrl}/verify-email/${verificationToken}`;
+      const verificationLink = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
       await sendStaffWelcomeEmail({
         toEmail:         staff.email,
         staffName:       staff.name,
-        // ✅ TUZATILDI — Teacher modelida "fullName" emas, "name" maydoni bor;
-        // shu sabab direktor ismi hech qachon chiqmasdi, doim muassasa
-        // nomi yoki "Direktor" ko'rsatilardi.
-        directorName:    teacher?.name || teacher?.institutionName || 'Direktor',
+        directorName:    teacher?.fullName || teacher?.institutionName || 'Direktor',
         institutionName: teacher?.institutionName || 'FondSchool',
         tempPassword,
         verificationLink,
@@ -383,36 +373,33 @@ const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: 'Email majburiy' });
-    const normalizedEmail = email.toLowerCase().trim();
 
-    // ✅ TUZATILDI — avval faqat Staff qidirilardi. Direktor (Teacher)
-    // shu formadan foydalansa, "Xat yuborildi" ko'rsatilardi-yu, lekin
-    // hech qachon email kelmasdi, chunki uning hisobi bu yerda umuman
-    // qidirilmasdi. Endi ikkalasi ham tekshiriladi.
-    const genericResponse = () =>
-      res.json({ success: true, message: "Agar email mavjud bo'lsa, tiklash xati yuborildi" });
+    const staff = await Staff.findOne({ email: email.toLowerCase() });
 
-    const teacher = await Teacher.findOne({ email: normalizedEmail });
-    const account = teacher || (await Staff.findOne({ email: normalizedEmail }));
-
-    if (!account) return genericResponse(); // xavfsizlik: email mavjudligini bildirmaymiz
+    // Xavfsizlik: email mavjud bo'lmasa ham bir xil javob qaytaramiz
+    if (!staff) {
+      return res.json({ success: true, message: "Agar email mavjud bo'lsa, tiklash xati yuborildi" });
+    }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
-    account.resetPasswordToken   = resetToken;
-    account.resetPasswordExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 soat
-    await account.save();
+
+    // ✅ TUZATILDI: Staff.js modelida bu fieldlar endi mavjud
+    staff.resetPasswordToken   = resetToken;
+    staff.resetPasswordExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 soat
+    await staff.save();
 
     try {
+      // ✅ FRONTEND_URL dan faqat birinchi domenni olamiz (vergul bo'lsa)
       const baseUrl = (process.env.FRONTEND_URL || 'https://schoolfonds.netlify.app')
         .split(',')[0]
         .trim();
       const resetLink = `${baseUrl}/reset-password/${resetToken}`;
-      await sendPasswordResetEmail({ toEmail: account.email, name: account.name, resetLink });
+      await sendPasswordResetEmail({ toEmail: staff.email, name: staff.name, resetLink });
     } catch (emailErr) {
       console.error('[Email] Parol tiklash xati ketmadi:', emailErr.message);
     }
 
-    return genericResponse();
+    res.json({ success: true, message: "Agar email mavjud bo'lsa, tiklash xati yuborildi" });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
   }
@@ -423,6 +410,8 @@ const forgotPassword = async (req, res) => {
 const resetPasswordByToken = async (req, res) => {
   try {
     const { token } = req.params;
+
+    // ✅ TUZATILDI: frontend { password } yuboradi, { newPassword } emas
     const newPassword = req.body.password || req.body.newPassword;
 
     if (!token || !newPassword) {
@@ -432,31 +421,24 @@ const resetPasswordByToken = async (req, res) => {
       return res.status(400).json({ message: "Parol kamida 6 ta belgi bo'lishi kerak" });
     }
 
-    // ✅ TUZATILDI — endi ikkala jadvaldan (Teacher, Staff) ham qidiradi
-    const tokenQuery = {
-      resetPasswordToken: token,
+    // ✅ TUZATILDI: resetPasswordToken select:false — .select('+resetPasswordToken') kerak
+    const staff = await Staff.findOne({
+      resetPasswordToken:   token,
       resetPasswordExpires: { $gt: new Date() },
-    };
-    let account = await Teacher.findOne(tokenQuery).select(
-      '+resetPasswordToken +resetPasswordExpires',
-    );
-    if (!account) {
-      account = await Staff.findOne(tokenQuery).select(
-        '+resetPasswordToken +resetPasswordExpires',
-      );
-    }
+    }).select('+resetPasswordToken +resetPasswordExpires');
 
-    if (!account) {
+    if (!staff) {
       return res.status(400).json({
         success: false,
         message: "Token noto'g'ri yoki muddati o'tgan (24 soat)",
       });
     }
 
-    account.password             = newPassword;
-    account.resetPasswordToken   = undefined;
-    account.resetPasswordExpires = undefined;
-    await account.save();
+    // Parol yangilash (pre-save hook hash qiladi)
+    staff.password             = newPassword;
+    staff.resetPasswordToken   = undefined;
+    staff.resetPasswordExpires = undefined;
+    await staff.save();
 
     res.json({
       success: true,
