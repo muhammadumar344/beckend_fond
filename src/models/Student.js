@@ -10,4 +10,8 @@ const studentSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// ✅ Loyihadagi eng ko'p ishlatiladigan so'rov — Student.find({ class })
+// va uning ustiga .sort({ rollNumber }). Ikkalasini bitta indeks qoplaydi.
+studentSchema.index({ class: 1, rollNumber: 1 });
+
 module.exports = mongoose.model('Student', studentSchema);

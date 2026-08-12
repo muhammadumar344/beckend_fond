@@ -12,4 +12,8 @@ const expenseSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// ✅ Xarajatlar sinf va davr bo'yicha so'raladi
+expenseSchema.index({ class: 1, month: 1, year: 1 });
+expenseSchema.index({ teacher: 1 });
+
 module.exports = mongoose.model('Expense', expenseSchema);

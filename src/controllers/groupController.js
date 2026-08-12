@@ -16,6 +16,7 @@ const Grade = require("../models/Grade");
 const MonthlyPayment = require("../models/MonthlyPayment");
 const Expense = require("../models/Expense");
 const Teacher = require("../models/Teacher"); // ✅ YANGI
+const Lead = require("../models/Lead"); // ✅ YANGI — dashboard voronkasi uchun
 const XLSX = require("xlsx"); // ✅ YANGI
 const { resolveContext, requirePermission } = require("../utils/resolveContext");
 const { findTeacherConflicts } = require("../utils/teacherAvailability");
@@ -451,6 +452,92 @@ exports.getDashboardStats = async (req, res) => {
         : null;
     }
 
+    // ══ ANALITIKA ═══════════════════════════════════════════════
+    const now = new Date();
+    const MONTH_SHORT = ["Yan","Fev","Mar","Apr","May","Iyn","Iyl","Avg","Sen","Okt","Noy","Dek"];
+
+    // ── 1. Tushum dinamikasi — oxirgi 6 oy ────────────────────
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ month: d.getMonth() + 1, year: d.getFullYear() });
+    }
+
+    const trendPayments = await MonthlyPayment.find({
+      class: { $in: groupIds },
+      $or: months.map((m) => ({ month: m.month, year: m.year })),
+    }).select("month year amount status");
+
+    const revenueTrend = months.map((m) => {
+      const rows = trendPayments.filter(
+        (p) => p.month === m.month && p.year === m.year,
+      );
+      return {
+        month: m.month,
+        year: m.year,
+        label: MONTH_SHORT[m.month - 1],
+        collected: rows
+          .filter((p) => p.status === "paid")
+          .reduce((s, p) => s + p.amount, 0),
+        expected: rows.reduce((s, p) => s + p.amount, 0),
+      };
+    });
+
+    // ── 2. Davomat dinamikasi — oxirgi 14 kun ─────────────────
+    const days = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      days.push(d.toISOString().slice(0, 10));
+    }
+
+    const trendAtt = await Attendance.find({
+      class: { $in: groupIds },
+      date: { $in: days },
+    }).select("date status");
+
+    const attendanceTrend = days.map((date) => {
+      const recs = trendAtt.filter((a) => a.date === date);
+      return {
+        date,
+        total: recs.length,
+        present: attended(recs),
+        percent: recs.length
+          ? Math.round((attended(recs) / recs.length) * 100)
+          : null,
+      };
+    });
+
+    // ── 3. Qarzdorlar — shu oy to'lamaganlar ──────────────────
+    const curMonth = now.getMonth() + 1;
+    const curYear = now.getFullYear();
+    const debtQuery = {
+      class: { $in: groupIds },
+      month: curMonth,
+      year: curYear,
+      status: "not_paid",
+    };
+
+    const [allDebts, topDebtors] = await Promise.all([
+      MonthlyPayment.find(debtQuery).select("amount"),
+      MonthlyPayment.find(debtQuery)
+        .populate("student", "name parentPhone")
+        .populate("class", "name")
+        .sort({ amount: -1 })
+        .limit(8),
+    ]);
+
+    // ── 4. Lidlar voronkasi ───────────────────────────────────
+    const leadQuery = { director: ctx.directorId };
+    if (ctx.branchFilter) leadQuery.branch = ctx.branchFilter;
+    const allLeads = await Lead.find(leadQuery).select("status");
+
+    const leadFunnel = Lead.STATUSES.reduce((acc, s) => {
+      acc[s] = allLeads.filter((l) => l.status === s).length;
+      return acc;
+    }, {});
+    const closedLeads = leadFunnel.won + leadFunnel.lost;
+
     res.json({
       success: true,
       stats: {
@@ -464,10 +551,165 @@ exports.getDashboardStats = async (req, res) => {
         presentToday: attended(todayAtt),
         totalTodayMarked: todayAtt.length,
         perGroupAttendance,
+
+        // ✅ YANGI — analitika
+        revenueTrend,
+        attendanceTrend,
+        debt: {
+          count: allDebts.length,
+          total: allDebts.reduce((s, p) => s + p.amount, 0),
+          top: topDebtors.map((p) => ({
+            id: p._id,
+            studentName: p.student?.name || "—",
+            phone: p.student?.parentPhone || "",
+            groupName: p.class?.name || "—",
+            amount: p.amount,
+          })),
+        },
+        leads: {
+          funnel: leadFunnel,
+          total: allLeads.length,
+          conversionRate:
+            closedLeads > 0
+              ? Math.round((leadFunnel.won / closedLeads) * 100)
+              : 0,
+        },
       },
     });
   } catch (err) {
     console.error("getDashboardStats error:", err);
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
+// ── Oylik hisobot xulosasi ───────────────────────────────────────
+// GET /api/lc/reports/summary?month=&year=
+// ⚠️ Avval Reports.vue /teacher/dashboard'ni chaqirardi — u oy/yil
+// parametrini umuman qabul qilmaydi, shuning uchun sahifadagi oy
+// tanlagichi hech narsa qilmasdi. Bu endpoint aynan tanlangan davrni
+// hisoblaydi.
+exports.getReportSummary = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "viewReports");
+
+    const now = new Date();
+    const month = Number(req.query.month) || now.getMonth() + 1;
+    const year = Number(req.query.year) || now.getFullYear();
+
+    if (month < 1 || month > 12) {
+      return res.status(400).json({ success: false, error: "Oy 1–12 orasida" });
+    }
+
+    const query = { teacher: ctx.directorId };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+
+    const groups = await Class.find(query)
+      .populate("subject", "name")
+      .sort({ name: 1 });
+    const groupIds = groups.map((g) => g._id);
+
+    const [payments, expenses, students] = await Promise.all([
+      MonthlyPayment.find({ class: { $in: groupIds }, month, year }).select(
+        "class amount status",
+      ),
+      Expense.find({ class: { $in: groupIds }, month, year }).select(
+        "class amount",
+      ),
+      Student.find({ class: { $in: groupIds } }).select("class"),
+    ]);
+
+    const sum = (arr) => arr.reduce((s, x) => s + (x.amount || 0), 0);
+
+    const groupRows = groups.map((g) => {
+      const gid = String(g._id);
+      const p = payments.filter((x) => String(x.class) === gid);
+      const e = expenses.filter((x) => String(x.class) === gid);
+      const studentCount = students.filter((x) => String(x.class) === gid).length;
+
+      const collected = sum(p.filter((x) => x.status === "paid"));
+      // To'lov varaqasi hali yaratilmagan bo'lsa, kutilganini o'quvchi
+      // soni × guruh narxidan hisoblaymiz
+      const expected = p.length ? sum(p) : studentCount * (g.defaultAmount || 0);
+
+      return {
+        id: g._id,
+        name: g.name,
+        subject: g.subject?.name || null,
+        studentCount,
+        paidCount: p.filter((x) => x.status === "paid").length,
+        unpaidCount: p.filter((x) => x.status !== "paid").length,
+        collected,
+        expected,
+        expenses: sum(e),
+        percent: expected > 0 ? Math.round((collected / expected) * 100) : 0,
+      };
+    });
+
+    // ── 6 oylik dinamika ──────────────────────────────────────
+    const trendMonths = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(year, month - 1 - i, 1);
+      trendMonths.push({ month: d.getMonth() + 1, year: d.getFullYear() });
+    }
+    const MONTH_SHORT = ["Yan","Fev","Mar","Apr","May","Iyn","Iyl","Avg","Sen","Okt","Noy","Dek"];
+    const periodFilter = trendMonths.map((m) => ({ month: m.month, year: m.year }));
+
+    const [trendPay, trendExp] = await Promise.all([
+      MonthlyPayment.find({
+        class: { $in: groupIds },
+        $or: periodFilter,
+      }).select("month year amount status"),
+      Expense.find({ class: { $in: groupIds }, $or: periodFilter }).select(
+        "month year amount",
+      ),
+    ]);
+
+    const trend = trendMonths.map((m) => {
+      const pick = (arr) =>
+        arr.filter((x) => x.month === m.month && x.year === m.year);
+      const collected = sum(pick(trendPay).filter((x) => x.status === "paid"));
+      const spent = sum(pick(trendExp));
+      return {
+        month: m.month,
+        year: m.year,
+        label: MONTH_SHORT[m.month - 1],
+        collected,
+        expenses: spent,
+        profit: collected - spent,
+      };
+    });
+
+    const totalCollected = groupRows.reduce((s, g) => s + g.collected, 0);
+    const totalExpected = groupRows.reduce((s, g) => s + g.expected, 0);
+    const totalExpenses = sum(expenses);
+    const initialBalance = groups.reduce((s, g) => s + (g.initialBalance || 0), 0);
+
+    res.json({
+      success: true,
+      period: { month, year, label: MONTH_SHORT[month - 1] },
+      summary: {
+        collected: totalCollected,
+        expected: totalExpected,
+        remaining: Math.max(totalExpected - totalCollected, 0),
+        expenses: totalExpenses,
+        profit: totalCollected - totalExpenses,
+        initialBalance,
+        balance: initialBalance + totalCollected - totalExpenses,
+        studentCount: students.length,
+        groupCount: groups.length,
+        paidCount: groupRows.reduce((s, g) => s + g.paidCount, 0),
+        unpaidCount: groupRows.reduce((s, g) => s + g.unpaidCount, 0),
+        collectRate:
+          totalExpected > 0
+            ? Math.round((totalCollected / totalExpected) * 100)
+            : 0,
+      },
+      groups: groupRows,
+      trend,
+    });
+  } catch (err) {
+    console.error("getReportSummary error:", err);
     res.status(err.status || 500).json({ success: false, error: err.message });
   }
 };

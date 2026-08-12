@@ -13,11 +13,8 @@ exports.saveAttendance = async (req, res) => {
     const ctx = await resolveContext(req);
 
     // ✅ Ruxsat tekshirish — faqat manageAttendance bo'lganlar belgilashi mumkin
-    if (!requirePermission(ctx, "manageAttendance")) {
-      return res
-        .status(403)
-        .json({ success: false, error: "Davomat belgilash huquqi yo'q" });
-    }
+    // (ruxsat yo'q bo'lsa o'zi 403 xato tashlaydi, pastdagi catch uni tutadi)
+    requirePermission(ctx, "manageAttendance");
 
     const { classId, date, records } = req.body;
     if (!classId || !date || !records?.length) {
@@ -34,7 +31,7 @@ exports.saveAttendance = async (req, res) => {
     const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId });
     if (!cls)
       return res.status(404).json({ success: false, error: "Sinf topilmadi" });
-    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
       return res
         .status(403)
         .json({
@@ -75,7 +72,7 @@ exports.saveAttendance = async (req, res) => {
       errors,
     });
   } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+    res.status(e.status || 500).json({ success: false, error: e.message });
   }
 };
 
@@ -92,7 +89,7 @@ exports.getDayAttendance = async (req, res) => {
     const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId });
     if (!cls)
       return res.status(404).json({ success: false, error: "Sinf topilmadi" });
-    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
     }
 
@@ -131,7 +128,7 @@ exports.getDayAttendance = async (req, res) => {
       summary,
     });
   } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+    res.status(e.status || 500).json({ success: false, error: e.message });
   }
 };
 
@@ -145,7 +142,7 @@ exports.getMonthlyStats = async (req, res) => {
     const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId });
     if (!cls)
       return res.status(404).json({ success: false, error: "Sinf topilmadi" });
-    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
     }
 
@@ -222,7 +219,7 @@ exports.getMonthlyStats = async (req, res) => {
       students: studentStats,
     });
   } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+    res.status(e.status || 500).json({ success: false, error: e.message });
   }
 };
 
@@ -245,7 +242,7 @@ exports.getStudentHistory = async (req, res) => {
     });
     if (!cls)
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
-    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
     }
 
@@ -265,6 +262,6 @@ exports.getStudentHistory = async (req, res) => {
       records,
     });
   } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+    res.status(e.status || 500).json({ success: false, error: e.message });
   }
 };

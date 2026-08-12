@@ -35,7 +35,7 @@ async function resolveContext(req) {
 
     return {
       directorId: staff.director,       // Teacher._id
-      branchFilter: staff.branch,       // Branch._id
+      branchFilter: staff.branch ? String(staff.branch) : null,  // Branch._id (string)
       isDirector: false,
       permissions: staff.role?.permissions || [],
       staffId: userId,

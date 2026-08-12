@@ -78,4 +78,9 @@ const classSchema = new mongoose.Schema({
   },
 });
 
+// ✅ Har bir so'rov direktor bo'yicha cheklanadi, filialli xodimlarda
+// ustiga branch qo'shiladi — bitta compound indeks ikkalasini qoplaydi
+// (teacher prefiks sifatida ham ishlaydi).
+classSchema.index({ teacher: 1, branch: 1 });
+
 module.exports = mongoose.model("Class", classSchema);

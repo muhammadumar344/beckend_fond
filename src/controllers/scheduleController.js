@@ -48,7 +48,7 @@ exports.createSchedule = async (req, res) => {
       return res.status(404).json({ success: false, error: "Sinf topilmadi" });
 
     // ✅ Staff faqat o'z filialidagi sinflarga kira oladi
-    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
       return res
         .status(403)
         .json({
@@ -130,7 +130,7 @@ exports.getClassSchedule = async (req, res) => {
     const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId });
     if (!cls)
       return res.status(404).json({ success: false, error: "Sinf topilmadi" });
-    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
     }
 
@@ -225,7 +225,7 @@ exports.updateSchedule = async (req, res) => {
     const cls = await Class.findOne({ _id: schedule.class, teacher: ctx.directorId });
     if (!cls)
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
-    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
     }
 
@@ -288,7 +288,7 @@ exports.deleteSchedule = async (req, res) => {
     const cls = await Class.findOne({ _id: schedule.class, teacher: ctx.directorId });
     if (!cls)
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
-    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
     }
 

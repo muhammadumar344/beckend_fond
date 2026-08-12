@@ -5,6 +5,12 @@ const Student = require("../models/Student");
 const Staff = require("../models/Staff");
 const MonthlyPayment = require("../models/MonthlyPayment");
 const Expense = require("../models/Expense");
+const Attendance = require("../models/Attendance"); // ✅ LC statistikasi uchun
+const Lead = require("../models/Lead");
+const {
+  resolveContext,
+  requirePermission,
+} = require("../utils/resolveContext");
 
 // ── Filial yaratish ──────────────────────────────────────────
 exports.createBranch = async (req, res) => {
@@ -138,6 +144,152 @@ exports.getBranches = async (req, res) => {
     });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
+  }
+};
+
+// ── LC: filiallar bo'yicha to'liq statistika ─────────────────
+// GET /api/lc/branches/stats?month=&year=
+// Fond'dagi getBranches faqat moliyani beradi. LC uchun xodimlar, davomat
+// va lidlar ham kerak — filiallarni solishtirish shu yerdan.
+exports.getBranchStats = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "viewBranchStats");
+
+    const now = new Date();
+    const month = Number(req.query.month) || now.getMonth() + 1;
+    const year = Number(req.query.year) || now.getFullYear();
+
+    // Filialga biriktirilgan xodim faqat o'z filialini ko'radi
+    const branchQuery = { teacher: ctx.directorId, isActive: true };
+    if (ctx.branchFilter) branchQuery._id = ctx.branchFilter;
+
+    const branches = await Branch.find(branchQuery).sort({ createdAt: 1 });
+
+    // Oyning davomat yozuvlari uchun sana oralig'i (YYYY-MM-DD matn)
+    const mm = String(month).padStart(2, "0");
+    const monthPrefix = `${year}-${mm}`;
+
+    const stats = await Promise.all(
+      branches.map(async (b) => {
+        const classes = await Class.find({
+          teacher: ctx.directorId,
+          branch: b._id,
+        }).select("_id capacity");
+        const classIds = classes.map((c) => c._id);
+
+        const [studentCount, staffCount, payments, expenses, attendance, leads] =
+          await Promise.all([
+            Student.countDocuments({ class: { $in: classIds } }),
+            Staff.countDocuments({
+              director: ctx.directorId,
+              branch: b._id,
+              isActive: true,
+            }),
+            MonthlyPayment.find({
+              class: { $in: classIds },
+              month,
+              year,
+            }).select("amount status"),
+            Expense.find({ class: { $in: classIds }, month, year }).select(
+              "amount",
+            ),
+            Attendance.find({
+              class: { $in: classIds },
+              date: { $regex: `^${monthPrefix}` },
+            }).select("status"),
+            Lead.countDocuments({
+              director: ctx.directorId,
+              branch: b._id,
+              status: { $nin: ["won", "lost"] },
+            }),
+          ]);
+
+        const collected = payments
+          .filter((p) => p.status === "paid")
+          .reduce((s, p) => s + p.amount, 0);
+        const expected = payments.reduce((s, p) => s + p.amount, 0);
+        const spent = expenses.reduce((s, e) => s + e.amount, 0);
+
+        const present = attendance.filter(
+          (a) => a.status === "present" || a.status === "late",
+        ).length;
+
+        // Sig'im belgilangan guruhlar bo'yicha to'ldirilish
+        const withCapacity = classes.filter((c) => c.capacity > 0);
+        const totalCapacity = withCapacity.reduce(
+          (s, c) => s + (c.capacity || 0),
+          0,
+        );
+
+        return {
+          id: b._id,
+          name: b.name,
+          address: b.address || "",
+          phone: b.phone || "",
+          color: b.color || "#4299e1",
+          groupCount: classes.length,
+          studentCount,
+          staffCount,
+          activeLeads: leads,
+          collected,
+          expected,
+          expenses: spent,
+          profit: collected - spent,
+          collectRate:
+            expected > 0 ? Math.round((collected / expected) * 100) : 0,
+          attendanceRate: attendance.length
+            ? Math.round((present / attendance.length) * 100)
+            : null,
+          // Sig'im belgilanmagan bo'lsa null — 0% deb ko'rsatish yolg'on bo'lardi
+          fillRate:
+            totalCapacity > 0
+              ? Math.round(
+                  (studentCount / totalCapacity) * 100,
+                )
+              : null,
+        };
+      }),
+    );
+
+    // Filialsiz guruhlar — Direktor uchun ko'rinadi
+    let unassigned = null;
+    if (!ctx.branchFilter) {
+      const orphanClasses = await Class.find({
+        teacher: ctx.directorId,
+        branch: null,
+      }).select("_id");
+      if (orphanClasses.length) {
+        unassigned = {
+          groupCount: orphanClasses.length,
+          studentCount: await Student.countDocuments({
+            class: { $in: orphanClasses.map((c) => c._id) },
+          }),
+        };
+      }
+    }
+
+    const totals = stats.reduce(
+      (acc, s) => ({
+        groupCount: acc.groupCount + s.groupCount,
+        studentCount: acc.studentCount + s.studentCount,
+        staffCount: acc.staffCount + s.staffCount,
+        collected: acc.collected + s.collected,
+        expenses: acc.expenses + s.expenses,
+      }),
+      { groupCount: 0, studentCount: 0, staffCount: 0, collected: 0, expenses: 0 },
+    );
+
+    res.json({
+      success: true,
+      period: { month, year },
+      branches: stats,
+      unassigned,
+      totals: { ...totals, profit: totals.collected - totals.expenses },
+    });
+  } catch (err) {
+    console.error("getBranchStats error:", err);
+    res.status(err.status || 500).json({ success: false, error: err.message });
   }
 };
 

@@ -9,6 +9,8 @@ const staffCtrl = require("../controllers/staffController");
 const salaryCtrl = require("../controllers/salaryController");
 const subjectCtrl = require("../controllers/subjectController"); // ✅ YANGI
 const groupCtrl = require("../controllers/groupController"); // ✅ YANGI
+const leadCtrl = require("../controllers/leadController"); // ✅ YANGI — CRM
+const hwCtrl = require("../controllers/homeworkController"); // ✅ YANGI — uy vazifasi
 
 // ✅ TUZATILDI — /api/lc/* butunlay O'quv markazi (LC) rejimiga qulflandi.
 // Avval bu yerda hech qanday mode tekshiruvi yo'q edi.
@@ -72,8 +74,47 @@ router.get("/groups/:groupId", allowTeacherOrStaff, groupCtrl.getGroupById);
 router.put("/groups/:groupId", allowTeacherOrStaff, groupCtrl.updateGroup);
 router.delete("/groups/:groupId", allowTeacherOrStaff, groupCtrl.deleteGroup);
 
+// ─── LEADS (CRM voronkasi) — ✅ YANGI ────────────────────────────────────────
+// Ruxsat ichkarida: o'qish uchun viewLeads|manageLeads, yozish uchun manageLeads
+router.get("/leads", allowTeacherOrStaff, leadCtrl.getLeads);
+router.post("/leads", allowTeacherOrStaff, leadCtrl.createLead);
+router.post("/leads/:leadId/convert", allowTeacherOrStaff, leadCtrl.convertLead);
+router.put("/leads/:leadId", allowTeacherOrStaff, leadCtrl.updateLead);
+router.delete("/leads/:leadId", allowTeacherOrStaff, leadCtrl.deleteLead);
+
+// ─── FILIALLAR STATISTIKASI — ✅ YANGI ───────────────────────────────────────
+// Filiallarni yaratish/tahrirlash /teacher/branches'da qoladi (Direktor).
+// Bu yerda faqat LC uchun kengaytirilgan statistika.
+const branchCtrl = require("../controllers/branchController");
+router.get("/branches/stats", allowTeacherOrStaff, branchCtrl.getBranchStats);
+
+// ─── UY VAZIFALARI — ✅ YANGI ────────────────────────────────────────────────
+// Ruxsat ichkarida: o'qish uchun viewHomework|manageHomework, yozish uchun
+// manageHomework. /leaderboard :homeworkId dan OLDIN turishi shart.
+router.get("/homework/leaderboard", allowTeacherOrStaff, hwCtrl.getLeaderboard);
+router.post(
+  "/homework/notify-parents",
+  allowTeacherOrStaff,
+  hwCtrl.notifyParents,
+);
+router.get("/homework", allowTeacherOrStaff, hwCtrl.getHomeworks);
+router.post("/homework", allowTeacherOrStaff, hwCtrl.createHomework);
+router.get(
+  "/homework/:homeworkId/results",
+  allowTeacherOrStaff,
+  hwCtrl.getHomeworkResults,
+);
+router.post(
+  "/homework/:homeworkId/results",
+  allowTeacherOrStaff,
+  hwCtrl.saveHomeworkResults,
+);
+router.put("/homework/:homeworkId", allowTeacherOrStaff, hwCtrl.updateHomework);
+router.delete("/homework/:homeworkId", allowTeacherOrStaff, hwCtrl.deleteHomework);
+
 // ─── DASHBOARD & HISOBOTLAR — ✅ YANGI ───────────────────────────────────────
 router.get("/dashboard-stats", allowTeacherOrStaff, groupCtrl.getDashboardStats);
+router.get("/reports/summary", allowTeacherOrStaff, groupCtrl.getReportSummary);
 router.get("/reports/export", allowTeacherOrStaff, groupCtrl.exportGroupsReport);
 
 module.exports = router;

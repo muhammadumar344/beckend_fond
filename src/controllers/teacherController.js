@@ -636,8 +636,11 @@ const deleteStudent = async (req, res) => {
 // ============================================================
 const createMonthlyPayments = async (req, res) => {
   try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "managePayments");
+
     const { classId, month, year } = req.body;
-    const teacherId = req.user.id;
+    const teacherId = ctx.directorId;
 
     if (!classId || !month || !year) {
       return res
@@ -655,6 +658,11 @@ const createMonthlyPayments = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" });
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
+      return res
+        .status(403)
+        .json({ success: false, error: "Bu sinf sizning filialingizga tegishli emas" });
+    }
 
     const students = await Student.find({ class: classId });
     if (students.length === 0) {
@@ -704,16 +712,22 @@ const createMonthlyPayments = async (req, res) => {
     });
   } catch (err) {
     console.error("createMonthlyPayments error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.status || 500).json({ success: false, error: err.message });
   }
 };
 
 const getMonthlyPayments = async (req, res) => {
   try {
-    const teacherId = req.user.id;
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "managePayments");
+
     const { month, year } = req.query;
 
-    const classes = await Class.find({ teacher: teacherId });
+    // Filialga biriktirilgan xodim faqat o'z filiali sinflarini ko'radi
+    const classQuery = { teacher: ctx.directorId };
+    if (ctx.branchFilter) classQuery.branch = ctx.branchFilter;
+
+    const classes = await Class.find(classQuery);
     const classIds = classes.map((c) => c._id);
 
     const query = { class: { $in: classIds } };
@@ -765,19 +779,24 @@ const getMonthlyPayments = async (req, res) => {
     });
   } catch (err) {
     console.error("getMonthlyPayments error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.status || 500).json({ success: false, error: err.message });
   }
 };
 
 const getClassPayments = async (req, res) => {
   try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "managePayments");
+
     const { classId } = req.params;
     const { month, year } = req.query;
-    const teacherId = req.user.id;
 
-    const cls = await Class.findOne({ _id: classId, teacher: teacherId });
+    const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId });
     if (!cls)
       return res.status(404).json({ success: false, error: "Sinf topilmadi" });
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+    }
 
     const students = await Student.find({ class: classId });
     const query = { class: classId };
@@ -827,15 +846,17 @@ const getClassPayments = async (req, res) => {
     });
   } catch (err) {
     console.error("getClassPayments error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.status || 500).json({ success: false, error: err.message });
   }
 };
 
 const updatePaymentStatus = async (req, res) => {
   try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "managePayments");
+
     const { paymentId } = req.params;
     const { status } = req.body;
-    const teacherId = req.user.id;
 
     if (!["paid", "not_paid"].includes(status)) {
       return res.status(400).json({
@@ -851,8 +872,15 @@ const updatePaymentStatus = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, error: "To'lov topilmadi" });
-    if (payment.class.teacher.toString() !== teacherId)
+    if (String(payment.class.teacher) !== String(ctx.directorId))
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+    if (
+      ctx.branchFilter &&
+      payment.class.branch &&
+      String(payment.class.branch) !== ctx.branchFilter
+    ) {
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+    }
 
     payment.status = status;
     payment.paidDate = status === "paid" ? new Date() : null;
@@ -896,7 +924,7 @@ const updatePaymentStatus = async (req, res) => {
     return res.json({ success: true, message: "Status yangilandi", payment });
   } catch (err) {
     console.error("updatePaymentStatus error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.status || 500).json({ success: false, error: err.message });
   }
 };
 

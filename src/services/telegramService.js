@@ -111,6 +111,54 @@ const sendUnfreezeNotification = async (chatId, teacherName, daysLeft) => {
   }
 }
 
+// ── Uy vazifalari va reyting hisoboti (ota-onaga) ───────────
+// data: { studentName, className, period, done, late, missed,
+//         points, maxPoints, percent, rank, totalStudents }
+const sendHomeworkReport = async (chatId, data) => {
+  const bot = getBot()
+  if (!bot) return false
+
+  const lines = [
+    `⭐ *Uy vazifalari hisoboti*`,
+    ``,
+    `👤 *${data.studentName}* (${data.className})`,
+    `📅 ${data.period}`,
+    ``,
+    `✅ Bajardi: *${data.done}*`,
+  ]
+
+  // Nol bo'lgan qatorlarni ko'rsatmaymiz — xabar qisqaroq bo'lsin
+  if (data.late > 0) lines.push(`⏳ Kech topshirdi: *${data.late}*`)
+  if (data.missed > 0) lines.push(`❌ Bajarmadi: *${data.missed}*`)
+
+  lines.push(
+    ``,
+    `⭐ To'plangan ochko: *${data.points}* / ${data.maxPoints} (${data.percent}%)`,
+  )
+
+  if (data.rank && data.totalStudents) {
+    lines.push(`🏆 Guruhdagi o'rni: *${data.rank}* / ${data.totalStudents}`)
+  }
+
+  // Natijaga qarab tabriklash yoki qo'llab-quvvatlash
+  lines.push(``)
+  if (data.percent >= 90) {
+    lines.push(`🎉 Ajoyib natija! Tabriklaymiz!`)
+  } else if (data.percent >= 60) {
+    lines.push(`👍 Yaxshi ketmoqda. Shu ruhda davom etsin!`)
+  } else {
+    lines.push(`📌 Farzandingizga uy vazifalarida yordam bering.`)
+  }
+
+  try {
+    await bot.sendMessage(chatId, lines.join('\n'), { parse_mode: 'Markdown' })
+    return true
+  } catch (e) {
+    console.error(`Reyting xabari xatosi (chatId: ${chatId}):`, e.message)
+    return false
+  }
+}
+
 // ── Umumiy xabar ────────────────────────────────────────────
 const sendMessage = async (chatId, message) => {
   const bot = getBot()
@@ -129,5 +177,6 @@ module.exports = {
   sendPaymentConfirmation,
   sendFreezeNotification,
   sendUnfreezeNotification,
+  sendHomeworkReport,
   sendMessage,
 }

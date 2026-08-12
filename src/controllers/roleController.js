@@ -113,13 +113,14 @@ const createDefaultRoles = async (directorId) => {
       permissions: [
         'manageStaff', 'manageGroups', 'manageStudents', 'manageAttendance',
         'manageGrades', 'managePayments', 'viewBranchStats', 'manageSubjects',
+        'manageLeads',
       ],
     },
     {
       name: 'Administration',
       slug: 'administration',
       color: '#4299e1',
-      permissions: ['manageGroups', 'manageStudents', 'managePayments'],
+      permissions: ['manageGroups', 'manageStudents', 'managePayments', 'manageLeads'],
     },
     {
       name: 'Teacher',
@@ -127,7 +128,7 @@ const createDefaultRoles = async (directorId) => {
       // bilan atash chalkashmasligi uchun. Frontend'da nom baribir "Teacher" ko'rinadi.
       slug: 'teacher_staff',
       color: '#48bb78',
-      permissions: ['manageAttendance', 'manageGrades'],
+      permissions: ['manageAttendance', 'manageGrades', 'manageHomework'],
     },
     {
       name: 'Support Teacher',

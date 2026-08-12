@@ -103,17 +103,23 @@ router.get(
 );
 router.delete("/students/:studentId", allowTeacherOrStaff, ctrl.deleteStudent);
 
-// ══ PAYMENTS — faqat Director ═══════════════════════════════
+// ══ PAYMENTS — Director + 'managePayments' huquqli xodim ════
+// Ruxsat controller ichida requirePermission(ctx, 'managePayments') bilan
+// tekshiriladi; xodim faqat o'z filiali sinflarini ko'radi/o'zgartiradi.
 router.post(
   "/payments/create-monthly",
-  onlyTeacher,
+  allowTeacherOrStaff,
   ctrl.createMonthlyPayments,
 );
-router.get("/payments/class/:classId", onlyTeacher, ctrl.getClassPayments);
-router.get("/payments", onlyTeacher, ctrl.getMonthlyPayments);
+router.get(
+  "/payments/class/:classId",
+  allowTeacherOrStaff,
+  ctrl.getClassPayments,
+);
+router.get("/payments", allowTeacherOrStaff, ctrl.getMonthlyPayments);
 router.put(
   "/payments/:paymentId/status",
-  onlyTeacher,
+  allowTeacherOrStaff,
   ctrl.updatePaymentStatus,
 );
 

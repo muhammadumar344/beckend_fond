@@ -23,6 +23,8 @@ const app = express();
 // to'xtab qolmaydi.
 const allowedOrigins = [
   process.env.FRONTEND_URL,        // Render muhitidagi qiymat
+  'https://schoolfonds.uz',        // ✅ Asosiy domen — env buzilsa ham ishlaydi
+  'https://www.schoolfonds.uz',    // ✅ www varianti
   'https://schoolfonds.netlify.app', // ✅ Fallback — har doim ishlaydi
   'http://localhost:3000',         // local dev
   'http://localhost:5173',         // Vite default port
@@ -41,7 +43,9 @@ app.use(cors({
     }
   },
   methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','Accept'],
+  // X-Lang — javob xabarlari qaysi tilda qaytishini belgilaydi.
+  // CORS ro'yxatida bo'lmasa brauzer sarlavhani umuman yubormaydi.
+  allowedHeaders: ['Content-Type','Authorization','Accept','X-Lang'],
   credentials: true,
 }));
 
@@ -49,6 +53,12 @@ app.options('*', cors());
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// ✅ Til: javobdagi error/message maydonlarini foydalanuvchi tiliga
+// o'giradi. Barcha route'lardan OLDIN turishi shart. O'zbekcha
+// so'rovlarda umuman ishlamaydi (qo'shimcha yuk yo'q).
+const { langMiddleware } = require('./middleware/lang');
+app.use(langMiddleware);
 
 app.use((req, res, next) => {
   console.log(`[REQ] ${new Date().toISOString()} ${req.method} ${req.originalUrl} Origin=${req.headers.origin || '-'} Auth=${!!req.headers.authorization}`);

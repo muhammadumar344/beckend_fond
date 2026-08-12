@@ -41,7 +41,7 @@ exports.saveGrades = async (req, res) => {
     );
     if (!cls)
       return res.status(404).json({ success: false, error: "Guruh topilmadi" });
-    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
       return res
         .status(403)
         .json({
@@ -102,7 +102,7 @@ exports.getDayGrades = async (req, res) => {
     const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId });
     if (!cls)
       return res.status(404).json({ success: false, error: "Guruh topilmadi" });
-    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
     }
 
@@ -158,7 +158,7 @@ exports.getMonthlyAverage = async (req, res) => {
     const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId });
     if (!cls)
       return res.status(404).json({ success: false, error: "Guruh topilmadi" });
-    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
     }
 
@@ -259,7 +259,7 @@ exports.getStudentGrades = async (req, res) => {
     });
     if (!cls)
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
-    if (ctx.branchFilter && String(cls.branch) !== ctx.branchFilter) {
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
     }
 

@@ -45,6 +45,9 @@ const PERMISSION_TYPES = [
   // Hisobotlar
   'viewReports',
   'exportData',
+  // Lidlar (CRM voronkasi)
+  'manageLeads',       // lid qo'shadi/tahrirlaydi/o'quvchiga aylantiradi
+  'viewLeads',         // faqat ko'radi
   // Vazifalar (kelgusi funksiya uchun zamin)
   'manageHomework',
   'viewHomework',

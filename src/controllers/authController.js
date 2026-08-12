@@ -240,6 +240,43 @@ exports.teacherLogin = async (req, res) => {
   }
 }
 
+// ══ TEACHER — O'Z PAROLINI O'ZGARTIRISH (tizimga kirgan holda) ══════════════
+// Avval direktor faqat "parolni unutdim" (email orqali) qila olardi.
+// Xodimlardagi staffCtrl.changeOwnPassword bilan bir xil naqsh.
+exports.teacherChangePassword = async (req, res) => {
+  try {
+    if (req.user.role !== 'teacher') {
+      return res.status(403).json({ error: 'Faqat direktor uchun' })
+    }
+
+    const { currentPassword, newPassword } = req.body
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Joriy va yangi parol majburiy' })
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Yangi parol kamida 6 ta belgi bo\'lishi kerak' })
+    }
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ error: 'Yangi parol joriysidan farq qilishi kerak' })
+    }
+
+    const teacher = await Teacher.findById(req.user.id).select('+password')
+    if (!teacher) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' })
+
+    if (!(await teacher.comparePassword(currentPassword))) {
+      return res.status(400).json({ error: "Joriy parol noto'g'ri" })
+    }
+
+    // Model'dagi pre('save') hook parolni o'zi hash qiladi
+    teacher.password = newPassword
+    await teacher.save()
+
+    res.json({ success: true, message: "Parol muvaffaqiyatli o'zgartirildi" })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
 // ══ STAFF — LOGIN (alohida, backward-compat uchun saqlanadi) ═════════════════
 exports.staffLogin = async (req, res) => {
   try {

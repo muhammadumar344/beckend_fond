@@ -1,6 +1,14 @@
+const mongoose = require('mongoose');
 const Salary = require('../models/Salary');
 const Staff  = require('../models/Staff');
 const { resolveContext, requirePermission } = require('../utils/resolveContext');
+
+// aggregate() Mongoose sxemasidan o'tmaydi — string ID'ni o'zi ObjectId'ga
+// o'girmaydi. Shuning uchun $match'ga berishdan oldin qo'lda cast qilamiz.
+const toObjectId = (v) =>
+  v && mongoose.Types.ObjectId.isValid(String(v))
+    ? new mongoose.Types.ObjectId(String(v))
+    : v;
 
 // ─── SET / UPDATE OYLIK MAOSH ─────────────────────────────────────────────────
 // POST /api/lc/salaries
@@ -210,8 +218,8 @@ const getSalarySummary = async (req, res) => {
     const month = req.query.month;
     if (!month) return res.status(400).json({ message: "month parametri majburiy" });
 
-    const matchQuery = { director: ctx.directorId, month };
-    if (ctx.branchFilter) matchQuery.branch = ctx.branchFilter;
+    const matchQuery = { director: toObjectId(ctx.directorId), month };
+    if (ctx.branchFilter) matchQuery.branch = toObjectId(ctx.branchFilter);
 
     const summary = await Salary.aggregate([
       { $match: matchQuery },
@@ -232,7 +240,7 @@ const getSalarySummary = async (req, res) => {
           as:           'branch',
         },
       },
-      { $unwind: { path: '$branch', preserveNullAndEmpty: true } },
+      { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
       {
         $project: {
           branchName:   { $ifNull: ['$branch.name', "Filialsiz"] },
