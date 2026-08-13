@@ -12,7 +12,7 @@ const brevoHeaders = {
 const sendEmail = async ({ toEmail, toName, subject, htmlContent }) => {
   const payload = {
     sender: {
-      name:  process.env.EMAIL_FROM_NAME || 'FondSchool',
+      name:  process.env.EMAIL_FROM_NAME || 'Lumo',
       email: process.env.EMAIL_FROM,
     },
     to: [{ email: toEmail, name: toName || toEmail }],
@@ -26,7 +26,7 @@ const sendEmail = async ({ toEmail, toName, subject, htmlContent }) => {
 
 // ══ Ro'yxatdan o'tish — tasdiqlash kodi (YANGI) ══════════════════════════════
 const sendVerificationCode = async ({ toEmail, name, code }) => {
-  const subject = 'FondSchool — Emailni tasdiqlash kodi'
+  const subject = 'Lumo — Emailni tasdiqlash kodi'
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -43,7 +43,7 @@ const sendVerificationCode = async ({ toEmail, name, code }) => {
                 <td style="background:linear-gradient(135deg,#f6ad55,#ed8936);
                             padding:28px 32px;">
                   <h1 style="margin:0;color:#0a0f1e;font-size:22px;font-weight:700;">
-                    FondSchool
+                    Lumo
                   </h1>
                 </td>
               </tr>
@@ -81,7 +81,7 @@ const sendVerificationCode = async ({ toEmail, name, code }) => {
               <tr>
                 <td style="padding:20px 32px;border-top:1px solid rgba(255,255,255,0.07);">
                   <p style="margin:0;color:#4a5568;font-size:12px;text-align:center;">
-                    © FondSchool &nbsp;•&nbsp; schoolfonds.netlify.app
+                    © Lumo &nbsp;•&nbsp; schoolfonds.uz
                   </p>
                 </td>
               </tr>
@@ -105,7 +105,7 @@ const sendStaffWelcomeEmail = async ({
   tempPassword,
   verificationLink,
 }) => {
-  const subject = `${institutionName || 'FondSchool'} — Xodim hisobi yaratildi`
+  const subject = `${institutionName || 'Lumo'} — Xodim hisobi yaratildi`
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -127,7 +127,7 @@ const sendStaffWelcomeEmail = async ({
                 <td style="background:linear-gradient(135deg,#f6ad55,#ed8936);
                             padding:28px 32px;">
                   <h1 style="margin:0;color:#0a0f1e;font-size:22px;font-weight:700;">
-                    FondSchool
+                    Lumo
                   </h1>
                   <p style="margin:6px 0 0;color:#0a0f1e;opacity:0.7;font-size:13px;">
                     O'quv markazi boshqaruv tizimi
@@ -215,10 +215,10 @@ const sendStaffWelcomeEmail = async ({
               <tr>
                 <td style="padding:20px 32px;border-top:1px solid rgba(255,255,255,0.07);">
                   <p style="margin:0;color:#4a5568;font-size:12px;text-align:center;">
-                    © FondSchool &nbsp;•&nbsp;
+                    © Lumo &nbsp;•&nbsp;
                     <a href="${process.env.FRONTEND_URL}"
                        style="color:#718096;text-decoration:none;">
-                      schoolfonds.netlify.app
+                      schoolfonds.uz
                     </a>
                     <br>
                     <span style="color:#2d3748;">
@@ -241,7 +241,7 @@ const sendStaffWelcomeEmail = async ({
 
 // ══ Parol tiklash ═════════════════════════════════════════════════════════════
 const sendPasswordResetEmail = async ({ toEmail, name, resetLink }) => {
-  const subject = 'FondSchool — Parolni tiklash'
+  const subject = 'Lumo — Parolni tiklash'
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -258,7 +258,7 @@ const sendPasswordResetEmail = async ({ toEmail, name, resetLink }) => {
                 <td style="background:linear-gradient(135deg,#f6ad55,#ed8936);
                             padding:28px 32px;">
                   <h1 style="margin:0;color:#0a0f1e;font-size:22px;font-weight:700;">
-                    FondSchool
+                    Lumo
                   </h1>
                 </td>
               </tr>
@@ -297,7 +297,7 @@ const sendPasswordResetEmail = async ({ toEmail, name, resetLink }) => {
               <tr>
                 <td style="padding:20px 32px;border-top:1px solid rgba(255,255,255,0.07);">
                   <p style="margin:0;color:#4a5568;font-size:12px;text-align:center;">
-                    © FondSchool &nbsp;•&nbsp; schoolfonds.netlify.app
+                    © Lumo &nbsp;•&nbsp; schoolfonds.uz
                   </p>
                 </td>
               </tr>

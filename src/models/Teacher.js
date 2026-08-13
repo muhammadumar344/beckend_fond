@@ -24,6 +24,19 @@ const teacherSchema = new mongoose.Schema({
   institutionType:     { type: String, enum: ['school','learning_center', null], default: null },
   institutionName:     { type: String, default: '' },
   city:                { type: String, default: '' },
+
+  // ✅ Muassasa brendi (white-label) — o'quv markazi o'z logotipini
+  // qo'yadi va sidebar'da Lumo nomi o'rniga o'zi ko'rinadi.
+  //
+  // base64 data URL sifatida saqlanadi (PaymentRequest.screenshot bilan
+  // bir xil yondashuv). NEGA fayl xizmati emas: loyihada hech qanday
+  // S3/Cloudinary yo'q va logotip kichik — bitta qo'shimcha xizmatga
+  // bog'lanishdan ko'ra 300KB ni bazada saqlash arzonroq va soddaroq.
+  // Cheklov controller'da: 300KB va faqat image/*.
+  logo:      { type: String, default: '' },
+  logoSize:  { type: Number, default: 0 },   // bytes
+  // Brend rangi — sidebar sarlavhasi va urg'u elementlari uchun
+  brandColor: { type: String, default: '' },
   studentCountRange:   { type: String, enum: ['1-50','51-150','151-300','300+', null], default: null },
 
   referralCode:        { type: String, default: null, sparse: true },

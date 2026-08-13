@@ -87,7 +87,7 @@ const createStaff = async (req, res) => {
         toEmail:         staff.email,
         staffName:       staff.name,
         directorName:    teacher?.fullName || teacher?.institutionName || 'Direktor',
-        institutionName: teacher?.institutionName || 'FondSchool',
+        institutionName: teacher?.institutionName || 'Lumo',
         tempPassword,
         verificationLink,
       });

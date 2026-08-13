@@ -101,7 +101,7 @@ const sendUnfreezeNotification = async (chatId, teacherName, daysLeft) => {
       `Hurmatli *${teacherName}* ustoz!\n\n` +
       `✅ Muzlatish bekor qilindi — obunangiz davom etmoqda.\n` +
       `📅 Obunada qolgan kunlar: *${daysLeft} kun*\n\n` +
-      `_Fond School bilan samarali ishlashingizni tilaymiz!_`,
+      `_Lumo bilan samarali ishlashingizni tilaymiz!_`,
       { parse_mode: 'Markdown' }
     )
     return true

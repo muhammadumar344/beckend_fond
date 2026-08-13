@@ -21,11 +21,15 @@ const app = express();
 // ✅ TUZATILDI: agar FRONTEND_URL muhitda sozlanmagan/xato bo'lsa ham,
 // production domen qattiq yozilgan — sayt CORS sababli butunlay
 // to'xtab qolmaydi.
+//
+// Yangi domenga o'tganda uni shu ro'yxatga qo'shing va eskisini
+// KAMIDA bir necha oy qoldiring — 301 redirect davrida foydalanuvchilar
+// ikkala manzilga ham kirib turadi.
 const allowedOrigins = [
   process.env.FRONTEND_URL,        // Render muhitidagi qiymat
   'https://schoolfonds.uz',        // ✅ Asosiy domen — env buzilsa ham ishlaydi
   'https://www.schoolfonds.uz',    // ✅ www varianti
-  'https://schoolfonds.netlify.app', // ✅ Fallback — har doim ishlaydi
+  'https://schoolfonds.netlify.app', // ✅ Netlify manzili — har doim ishlaydi
   'http://localhost:3000',         // local dev
   'http://localhost:5173',         // Vite default port
 ].filter(Boolean);
@@ -65,7 +69,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/', (req, res) => res.json({ status: 'ok', app: 'Fond School API' }));
+app.get('/', (req, res) => res.json({ status: 'ok', app: 'Lumo API' }));
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
  const staffCtrl = require('./controllers/staffController')
   app.get('/api/staff/verify/:token', staffCtrl.verifyEmail)
@@ -90,6 +94,21 @@ try {
   console.log('✅ /api/lc router mounted');
 } catch (e) {
   console.warn('⚠️  routes/lc topilmadi yoki xato:', e.message || e);
+}
+
+// To'lov tizimlari. Kalitlar sozlanmagan bo'lsa route'lar 503
+// qaytaradi — batafsil src/config/payments.js
+try {
+  app.use('/api/payments', require('./routes/payments'));
+  const { enabledProviders } = require('./config/payments');
+  const list = enabledProviders().map((p) => p.label);
+  console.log(
+    list.length
+      ? `✅ /api/payments mounted — yoqilgan: ${list.join(', ')}`
+      : 'ℹ️ /api/payments mounted — hech qaysi provayder sozlanmagan (o\'chiq)',
+  );
+} catch (e) {
+  console.warn('⚠️  routes/payments topilmadi yoki xato:', e.message || e);
 }
 
 try {

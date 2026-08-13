@@ -22,6 +22,11 @@ const {
 router.use(auth);
 
 // ══ DASHBOARD — faqat Director ══════════════════════════════
+// Brendlash (white-label): o'qishni xodim ham qiladi (sidebar uchun),
+// o'zgartirishni faqat direktor — tekshiruv controller ichida.
+router.get("/branding", allowTeacherOrStaff, ctrl.getBranding);
+router.put("/branding", onlyTeacher, ctrl.updateBranding);
+
 router.get("/dashboard", onlyTeacher, ctrl.getDashboard);
 router.get("/subscription", onlyTeacher, ctrl.getSubscriptionInfo);
 router.put("/onboarding", onlyTeacher, ctrl.completeOnboarding);

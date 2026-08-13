@@ -397,7 +397,7 @@ const exportWord = async (res, teacher, year, monthlyData, classes, grandPaid, g
   children.push(
     new Paragraph({
       children: [new TextRun({
-        text: `Fond School Management | schoolfonds.netlify.app`,
+        text: `Lumo | schoolfonds.uz`,
         size: 16, color: '718096', italics: true
       })],
       alignment: AlignmentType.CENTER,

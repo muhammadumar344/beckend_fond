@@ -1,8 +1,38 @@
 # LC guruhini Fond sinfidan ajratish (reja 1.2)
 
-> **Holat: tayyorgarlik.** Kod hali `Class` ni ishlatadi. Bu hujjat
-> ko'chirishni qanday qilish kerakligini va nimaga ehtiyot bo'lish
-> kerakligini yozadi. Skriptlar tayyor, lekin ishga tushirilmagan.
+> **Holat: A varianti bajarildi.** LC kodi endi `Group` modelini
+> ishlatadi (`src/models/Group.js`), lekin u `classes` kolleksiyasiga
+> bog'langan — ya'ni **ma'lumot ko'chirilmagan**. Quyidagi "Uch yo'l"
+> bo'limi nima uchun aynan A tanlanganini tushuntiradi.
+>
+> C variantiga o'tish uchun kerakli skriptlar tayyor va o'zgarmagan.
+
+## A varianti nima berdi
+
+- LC kodi `Class` emas, `Group` deb yozilgan — niyat aniq
+- `Group` sxemasida **faqat LC maydonlari** bor. `initialBalance` va
+  `initialBalanceNote` yo'q, shu sabab LC kodi ularga tasodifan ham
+  teg olmaydi
+- `director` / `monthlyPrice` alias'lari — LC atamalari bilan o'qish
+- Ma'lumotga umuman tegilmagan: orqaga qaytarish = kodni qaytarish
+
+**Nima bermadi:** jismoniy ajralish. Ikkala rejim hujjatlari hamon
+bitta kolleksiyada. Bu C variantining vazifasi.
+
+⚠️ **Alias tuzog'i** — `models/Group.js` dagi izohni o'qing.
+`.sort({ monthlyPrice: 1 })` va `updateOne({}, { monthlyPrice: 5 })`
+**ishlamaydi** (birinchisi tartiblamaydi, ikkinchisi yangi maydon
+yozadi). So'rov filtrida alias ishlaydi — `pre` hook tarjima qiladi.
+
+## Keyingi qadam (C varianti) endi arzonroq
+
+A bajarilgani uchun quyidagi 4-qadamning katta qismi tayyor: LC kodi
+allaqachon `Group` deb yozilgan. C ga o'tish uchun qoladi:
+
+1. `models/Group.js` dagi 3-argumentni (`"classes"`) olib tashlash
+2. Alias'larni haqiqiy nomga aylantirish (`director`, `monthlyPrice`)
+3. `migrateGroups.js --apply` bilan ma'lumotni nusxalash
+4. `populate("class")` ni LC yo'llarida qo'lda birlashtirishga o'tkazish
 
 ## Hozirgi holat
 
@@ -89,18 +119,30 @@ o'rniga guruhlarni alohida so'rab, xotirada birlashtiriladi.
 - ✅ 13 ta `populate` ning faqat LC'ga tegishlilari o'zgaradi
 - ❌ Bir nechta joyda qo'lda birlashtirish kodi paydo bo'ladi
 
-### Tavsiya
+### Tanlangan yo'l: A (2026-08, bajarildi)
 
-**C variant.** `_id` saqlanishi tufayli ma'lumot ko'chirish deyarli
-tekin, ajralish esa haqiqiy. `populate` o'rniga qo'lda birlashtirish —
-bu allaqachon loyihada bor naqsh (`getHomeworks` da statistika xuddi
-shunday birlashtiriladi).
+Avvalgi tavsiya **C** edi. Amalda **A** tanlandi — sabab texnik emas,
+sharoitga bog'liq:
 
-**A variant** ham to'liq mantiqiy — agar maqsad faqat kodni tozalash
-bo'lsa va jismoniy ajralish shart bo'lmasa, u eng arzoni.
+| | A | C |
+|---|---|---|
+| Staging muhit kerakmi | yo'q | ha (yo'q) |
+| Jonli bazaga tegadimi | yo'q | ha |
+| Migratsiya + deploy bir vaqtda | yo'q | **ha** |
+| Orqaga qaytarish | kodni qaytarish | skript + tekshirish |
+| Jismoniy ajralish | yo'q | ha |
+
+C ning eng katta xavfi — 5-qadam: ma'lumot ko'chirish va yangi kod
+deploy'i **bir daqiqa ichida** bo'lishi kerak. Oraliqda LC direktorlari
+guruhlarini umuman ko'rmaydi. Staging muhit yo'q, ya'ni bu qadam
+birinchi marta jonli saytda sinaladi.
+
+A esa ma'lumotga tegmaydi va **C ning boshlang'ich qismi**: eng katta
+mehnat (LC kodini `Group` ga o'tkazish) A da bajarildi. Keyinchalik C
+qilinsa, u endi katta-portlash emas, kichik qadam bo'ladi.
 
 **B variantdan qochish** tavsiya etiladi: u eng ko'p ish talab qiladi
-va migratsiyaning asosiy yutug'ini yo'qotadi.
+va migratsiyaning asosiy yutug'ini (`_id` o'zgarmasligi) yo'qotadi.
 
 ## Tartib (C variant uchun)
 

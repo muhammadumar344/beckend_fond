@@ -4,6 +4,7 @@ const Homework = require("../models/Homework");
 const HomeworkResult = require("../models/HomeworkResult");
 const Class = require("../models/Class");
 const Student = require("../models/Student");
+const { getGroupStudents } = require("../utils/enrollment");
 const TelegramParent = require("../models/TelegramParent");
 const { sendHomeworkReport } = require("../services/telegramService");
 const {
@@ -150,7 +151,7 @@ exports.createHomework = async (req, res) => {
 
     // Guruhdagi barcha o'quvchiga "kutilmoqda" yozuvi ochamiz —
     // shunda ustoz keyin faqat belgilashi kifoya.
-    const students = await Student.find({ class: classId }).select("_id");
+    const students = await getGroupStudents(classId);
     if (students.length) {
       await HomeworkResult.insertMany(
         students.map((s) => ({
@@ -251,9 +252,7 @@ exports.getHomeworkResults = async (req, res) => {
     if (!hw)
       return res.status(404).json({ success: false, error: "Vazifa topilmadi" });
 
-    const students = await Student.find({ class: hw.class._id }).sort({
-      rollNumber: 1,
-    });
+    const students = await getGroupStudents(hw.class._id);
     const results = await HomeworkResult.find({ homework: hw._id });
 
     const map = {};

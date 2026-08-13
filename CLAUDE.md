@@ -1,4 +1,4 @@
-# FondSchool — Backend (school_fond)
+# Lumo — Backend (school_fond)
 
 Node.js / Express / MongoDB (Mongoose 7). Frontend alohida repoda:
 `Desktop/font_front/font` (Vue 3 + Vite).
@@ -20,6 +20,20 @@ npm start       # production
 > Telegram botning ikkinchi nusxasini polling'ga qo'shadi — bu production botni
 > buzadi. Sintaksis tekshirish uchun `node --check <fayl>` yoki route
 > modullarini `require()` qilish kifoya.
+>
+> 🚨 **`require('./src/server.js')` ham serverni KO'TARADI.** Faylning
+> oxirida `app.listen()`, `mongoose.connect()` va `initBot()` bor —
+> ular import paytida darhol ishga tushadi. Bu tekshiruv emas, deploy.
+>
+> Bir marta shunday bo'lgan: "modullar yuklanadimi" degan tekshiruvga
+> `server.js` qo'shilgan → production bazaga ulanib, bot ikkinchi
+> nusxasi polling'ga kirgan va Telegram `409 Conflict` bera boshlagan
+> (`terminated by other getUpdates request`). Ishlab turgan bot ~2 daqiqa
+> xabarlarni uzuq-yuluq qabul qilgan.
+>
+> **Tekshiruv ro'yxatiga `server.js` ni QO'SHMANG** — faqat
+> `routes/*`, `controllers/*`, `models/*`, `utils/*`, `services/*`.
+> Ular sof modullar, yon ta'siri yo'q.
 
 ## Testlar
 
@@ -34,6 +48,9 @@ bazaga ulanmaydi**. Faqat sof mantiq sinovdan o'tadi:
 - `test/permissions.test.js` — `requirePermission` xatti-harakati
 - `test/schedule.test.js` — dars vaqtlari kesishuvi
 - `test/lang.test.js` — til aniqlash, tarjima, lug'at butunligi
+- `test/group.test.js` — `Group` alias'lari va `Class` bilan moslik
+- `test/enrollment.test.js` — guruh ro'yxatini birlashtirish (takror sanash)
+- `test/payments.test.js` — Payme/Click imzo va kalitsiz holat
 
 Yangi sof funksiya yozsangiz shu yerga test qo'shing. Bazaga tegadigan
 oqimlar (controller'lar) hozircha qo'lda sinaladi — staging muhit
@@ -221,6 +238,103 @@ kerak emas. Asosiy qiyinchilik — 13 joydagi `populate("class")`;
 batafsili hujjatda.
 
 ⚠️ Skriptlarni ishga tushirishdan oldin bazadan nusxa oling.
+
+## Group va Class — bitta kolleksiya, ikkita model
+
+LC guruhlari `Group` modeli orqali o'qiladi, lekin u **`classes`
+kolleksiyasiga** bog'langan — `Class` bilan aynan bir xil hujjatlar.
+Ma'lumot ko'chirilmagan (reja 1.2, A varianti).
+
+```js
+mongoose.model("Group", groupSchema, "classes")  // ← 3-argument
+```
+
+**Aralashib ketmaydi**, chunki har bir so'rov `teacher: ctx.directorId`
+bilan cheklanadi va direktor faqat bitta rejimda bo'ladi.
+
+`Group` sxemasida `initialBalance` / `initialBalanceNote` **ataylab
+yo'q** — LC kodi Fond maydonlariga teg olmaydi.
+
+### ⚠️ Alias tuzog'i
+
+`director` → `teacher`, `monthlyPrice` → `defaultAmount`.
+
+| Ishlaydi | Ishlamaydi |
+|---|---|
+| `doc.monthlyPrice` | `.sort({ monthlyPrice: 1 })` |
+| `new Group({ director })` | `.select("director")` |
+| `Group.find({ director })` * | `updateOne({}, { monthlyPrice: 5 })` ← yangi maydon yozadi |
+| | `aggregate([...])` |
+
+\* faqat sxemadagi `pre` hook tufayli. Hook bo'lmasa `find()` **xato
+bermaydi** — jimgina bo'sh massiv qaytaradi.
+
+Shu sabab `groupController` so'rov filtrlarida **haqiqiy nomlarni**
+ishlatadi: kod hook'siz ham to'g'ri, hook esa kelajakdagi xatoni
+ushlaydi. Sort/select/update-payload/aggregate da har doim `teacher`
+va `defaultAmount` yozing.
+
+## Guruh ro'yxati — `Student.find({ class })` YETARLI EMAS
+
+Bitta o'quvchi bir nechta guruhda o'qishi mumkin (reja 1.3).
+U guruhga ikki xil yo'l bilan tegishli bo'ladi:
+
+| Manba | Nima |
+|---|---|
+| `Student.class` | asosiy guruh — eski kodning tayanchi, 23 joyda |
+| `Enrollment` | qo'shimcha guruhlar |
+
+Shuning uchun ro'yxat **har doim** `utils/enrollment.js` orqali:
+
+```js
+getGroupStudents(classId)      // ro'yxat (rollNumber bo'yicha)
+countGroupStudents(classId)    // BITTA guruh soni
+countUniqueStudents(classIds)  // KO'P guruh — noyob o'quvchilar
+buildGroupStudentMap(classIds) // N+1 oldini olish
+```
+
+⚠️ **`countGroupStudents` ni yig'MANG.** Ikki guruhda o'qiydigan
+bola ikki marta sanaladi. Filial/markaz umumiy soni uchun
+`countUniqueStudents`.
+
+⚠️ Asosiy guruh uchun `Enrollment` yozuvi **yaratilmaydi** — aks
+holda takror bo'lardi. `enrollmentController` faqat qo'shimcha
+guruhlar bilan ishlaydi va `Student.class` ga hech qachon tegmaydi.
+
+**Migratsiya kerak emas:** mavjud o'quvchilar avtomatik "asosiy
+guruhda" hisoblanadi.
+
+## To'lov tizimlari — o'chiq turibdi
+
+Payme va Click kodi yozilgan, lekin **kalitlar yo'q → 503**.
+Merchant olingach `config/payments.js` dagi env o'zgaruvchilarini
+qo'ying, kod o'zgarmaydi. Batafsil: **`docs/PAYMENTS.md`**.
+
+⚠️ Jonli sinalmagan — sandbox tekshiruv ro'yxati o'sha hujjatda.
+
+⚠️ Payme summani **tiyinda**, Click **so'mda** yuboradi.
+
+## Tarif limitlari — `effectivePlan`
+
+`Class.plan` — sinf ochilgandagi tarifning nusxasi. O'quvchi limiti
+endi **undan va direktorning hozirgi tarifidan kattarog'i** bo'yicha
+hisoblanadi:
+
+```js
+canAddStudent(cls.plan, count, directorDoc)   // ✅ teacher bering
+canAddStudent(cls.plan, count)                // eski xatti-harakat
+```
+
+Bu ikkita to'lovchi mijozga tegadigan xatoni tuzatdi:
+
+1. `groupController.createGroup` `plan` ni **umuman yozmasdi** →
+   sxema `"free"` qo'yardi → Premium LC hisobi ham guruhiga 30 tadan
+   ortiq o'quvchi qo'sha olmasdi. (Fond tomonida yozilardi.)
+2. Tarifni **ko'targan** foydalanuvchi eski sinflarida eski limitda
+   qolardi — to'lagan puli ish bermasdi.
+
+Eski, yuqoriroq tarif saqlanadi (premiumda ochilgan sinf, free'ga
+tushsangiz ham katta limitini yo'qotmaydi).
 
 ## Xabarlar tili (ru / en)
 

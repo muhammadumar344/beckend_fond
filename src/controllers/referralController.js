@@ -3,6 +3,18 @@ const Teacher        = require('../models/Teacher')
 const PaymentRequest = require('../models/PaymentRequest')
 const crypto         = require('crypto')
 
+// Taklif havolasi FRONTEND_URL dan olinadi. Ilgari netlify domeni
+// qattiq yozilgan edi — .uz ga o'tilgandan keyin ham eski manzilni
+// ulashib yuboraverardi.
+//
+// ⚠️ Zaxira qiymat ataylab netlify manzili — u HAR DOIM ishlaydi.
+//    Bu yerga hali sotib olinmagan domenni yozmang: env buzilgan
+//    kunda taklif havolalari umuman ochilmay qoladi.
+const FRONTEND = (process.env.FRONTEND_URL || 'https://schoolfonds.netlify.app')
+  .split(',')[0]
+  .trim()
+  .replace(/\/+$/, '')   // oxiridagi "/" olib tashlanadi
+
 const REFERRAL_BONUS_DAYS = 15   // Ikkalasiga beriladigan bonus
 
 // ── Referral kod generatsiya ─────────────────────────────────
@@ -38,7 +50,7 @@ exports.getMyReferral = async (req, res) => {
     res.json({
       success: true,
       referralCode:   teacher.referralCode,
-      referralLink:   `https://schoolfonds.netlify.app?ref=${teacher.referralCode}`,
+      referralLink:   `${FRONTEND}?ref=${teacher.referralCode}`,
       bonusDays:      teacher.referralBonusDays || 0,
       referralCount:  referredTeachers.length,
       paidReferrals,

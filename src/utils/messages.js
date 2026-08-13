@@ -240,6 +240,23 @@ const MESSAGES = {
   "Teacher muvaffaqiyatli bloklandi": { ru: "Учитель заблокирован", en: "Teacher blocked" },
   "Teacher faollandi": { ru: "Учитель активирован", en: "Teacher activated" },
 
+  // ── Guruhga yozish (bir o'quvchi — bir nechta guruh) ────
+  "studentId va classId majburiy": { ru: "studentId и classId обязательны", en: "studentId and classId are required" },
+  "O'quvchi allaqachon shu guruhda": { ru: "Ученик уже в этой группе", en: "The student is already in this group" },
+  "O'quvchi bu guruhda emas": { ru: "Ученика нет в этой группе", en: "The student is not in this group" },
+  "Guruh to'lgan": { ru: "Группа заполнена", en: "The group is full" },
+  "O'quvchi guruhga yozildi": { ru: "Ученик записан в группу", en: "Student enrolled in the group" },
+  "O'quvchi guruhdan chiqarildi": { ru: "Ученик убран из группы", en: "Student removed from the group" },
+  "Asosiy guruhdan chiqarib bo'lmaydi — o'quvchini o'chiring": { ru: "Из основной группы убрать нельзя — удалите ученика", en: "Cannot remove from the primary group — delete the student instead" },
+  "Saqlandi": { ru: "Сохранено", en: "Saved" },
+
+  // ── Muassasa brendi (white-label) ───────────────────────
+  "Logotip rasm bo'lishi kerak": { ru: "Логотип должен быть изображением", en: "The logo must be an image" },
+  "Logotip hajmi 300KB dan oshmasligi kerak": { ru: "Размер логотипа не должен превышать 300КБ", en: "The logo must be under 300KB" },
+  "Rang formati noto'g'ri": { ru: "Неверный формат цвета", en: "Invalid colour format" },
+  "Brend saqlandi": { ru: "Бренд сохранён", en: "Branding saved" },
+  "Muassasa nomi majburiy": { ru: "Название учреждения обязательно", en: "Institution name is required" },
+
   // ── Telegram / SMS ──────────────────────────────────────
   "Bot ishlamayapti": { ru: "Бот не работает", en: "The bot is not running" },
   "Eslatmalar yuborildi": { ru: "Напоминания отправлены", en: "Reminders sent" },

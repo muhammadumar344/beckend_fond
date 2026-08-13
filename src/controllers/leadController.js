@@ -3,11 +3,17 @@
 const Lead = require("../models/Lead");
 const Class = require("../models/Class");
 const Student = require("../models/Student");
+const Teacher = require("../models/Teacher");
+const { countGroupStudents } = require("../utils/enrollment");
 const {
   resolveContext,
   requirePermission,
 } = require("../utils/resolveContext");
-const { PLAN_LIMITS, canAddStudent } = require("../utils/planHelper");
+const {
+  PLAN_LIMITS,
+  canAddStudent,
+  effectivePlan,
+} = require("../utils/planHelper");
 
 const STATUSES = Lead.STATUSES;
 
@@ -267,10 +273,13 @@ const convertLead = async (req, res) => {
         .json({ success: false, error: "Guruh topilmadi yoki ruxsat yo'q" });
     }
 
-    // Tarif limitini o'quvchi qo'shish bilan bir xil tekshiramiz
-    const studentCount = await Student.countDocuments({ class: classId });
-    if (!canAddStudent(cls.plan, studentCount)) {
-      const limit = PLAN_LIMITS[cls.plan] || PLAN_LIMITS.free;
+    // Tarif limitini o'quvchi qo'shish bilan bir xil tekshiramiz —
+    // guruhdagi eski `plan` va direktorning hozirgi tarifidan kattarog'i
+    const director = await Teacher.findById(ctx.directorId);
+    const studentCount = await countGroupStudents(classId);
+    if (!canAddStudent(cls.plan, studentCount, director)) {
+      const limit =
+        PLAN_LIMITS[effectivePlan(cls.plan, director)] || PLAN_LIMITS.free;
       return res.status(403).json({
         success: false,
         error: `Bu guruhga maksimal ${limit.students} ta o'quvchi qo'shish mumkin`,

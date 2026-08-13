@@ -1,13 +1,24 @@
 // src/controllers/groupController.js
-// ✅ YANGI — O'quv markazi (LC) uchun "Guruh" API'si.
-// Ichkarida Class kolleksiyasidan foydalanadi (Fond bilan bir xil jadval,
-// lekin bu route'lar requireLCMode orqali faqat LC muassasalarga ochiq —
-// routes/lc.js'da), shu sabab hech qanday ma'lumot ko'chirish (migration)
-// shart emas. Class'dagi subject/assignedTeacher/capacity maydonlari
-// FAQAT shu controller orqali to'ldiriladi.
+// ✅ O'quv markazi (LC) uchun "Guruh" API'si.
+//
+// `Group` modeli — `classes` kolleksiyasining LC ko'rinishi: bir xil
+// hujjatlar, lekin sxemada FAQAT LC maydonlari bor (`initialBalance`
+// kabi Fond maydonlari yo'q, shu sabab bu yerdan ularga teg olinmaydi).
+// Ma'lumot ko'chirilmagan — batafsil: models/Group.js va
+// docs/GROUP_MIGRATION.md.
+//
+// ⚠️ So'rov FILTRLARIDA haqiqiy maydon nomlari ishlatiladi
+//    (`teacher`, `defaultAmount`) — `director`/`monthlyPrice` emas.
+//    Sabab models/Group.js dagi "ALIAS TUZOG'I" izohida.
 
-const Class = require("../models/Class");
+const Group = require("../models/Group");
 const Student = require("../models/Student");
+const {
+  getGroupStudents,
+  countGroupStudents,
+  countUniqueStudents,
+  buildGroupStudentMap,
+} = require("../utils/enrollment");
 const Subject = require("../models/Subject");
 const Staff = require("../models/Staff");
 const Schedule = require("../models/Schedule");
@@ -168,10 +179,20 @@ exports.createGroup = async (req, res) => {
 
     const resolvedBranch = ctx.branchFilter || branchId || null;
 
-    const newGroup = new Class({
+    // ✅ TUZATILDI: `plan` ilgari umuman yozilmasdi va sxema "free"
+    // qo'yardi. Natijada Premium LC hisobi ham guruhiga 30 tadan ortiq
+    // o'quvchi qo'sha olmasdi (Fond tomonida bu maydon yozilardi).
+    // planHelper endi hozirgi tarif bilan solishtiradi, shu sabab eski
+    // guruhlar ham tuzaladi — lekin yangilarini manbada to'g'ri yozamiz.
+    const director = await Teacher.findById(ctx.directorId);
+    const activePlan =
+      director && director.isPlanActive() ? director.plan : "free";
+
+    const newGroup = new Group({
       name: name.trim(),
       teacher: ctx.directorId,
       defaultAmount: Number(price),
+      plan: activePlan,
       subject: subjectDoc?._id || null,
       assignedTeacher: assignedTeacherId || null,
       capacity: capacity ? Number(capacity) : null,
@@ -225,7 +246,7 @@ exports.getGroups = async (req, res) => {
       query.assignedTeacher = req.user.id;
     }
 
-    const groups = await Class.find(query)
+    const groups = await Group.find(query)
       .populate("subject", "name color")
       .populate("assignedTeacher", "name")
       .populate("branch", "name color")
@@ -235,7 +256,7 @@ exports.getGroups = async (req, res) => {
       groups.map(async (g) => {
         const now = new Date();
         const [studentCount, schedule, monthPayments] = await Promise.all([
-          Student.countDocuments({ class: g._id }),
+          countGroupStudents(g._id),
           Schedule.find({ class: g._id, isActive: { $ne: false } }).sort({
             dayOfWeek: 1,
           }),
@@ -278,7 +299,7 @@ exports.getGroupById = async (req, res) => {
     const query = { _id: groupId, teacher: ctx.directorId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
 
-    const group = await Class.findOne(query)
+    const group = await Group.findOne(query)
       .populate("subject", "name color")
       .populate("assignedTeacher", "name email")
       .populate("branch", "name color");
@@ -288,7 +309,7 @@ exports.getGroupById = async (req, res) => {
         .json({ success: false, error: "Guruh topilmadi" });
 
     const [studentCount, schedule] = await Promise.all([
-      Student.countDocuments({ class: group._id }),
+      countGroupStudents(group._id),
       Schedule.find({ class: group._id, isActive: { $ne: false } }).sort({
         dayOfWeek: 1,
       }),
@@ -325,7 +346,7 @@ exports.updateGroup = async (req, res) => {
 
     const query = { _id: groupId, teacher: ctx.directorId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
-    const group = await Class.findOne(query);
+    const group = await Group.findOne(query);
     if (!group)
       return res
         .status(404)
@@ -428,7 +449,7 @@ exports.getDashboardStats = async (req, res) => {
     const query = { teacher: ctx.directorId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
 
-    const groups = await Class.find(query);
+    const groups = await Group.find(query);
     const groupIds = groups.map((g) => g._id);
     const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -436,7 +457,7 @@ exports.getDashboardStats = async (req, res) => {
     if (ctx.branchFilter) staffQuery.branch = ctx.branchFilter;
 
     const [totalStudents, totalTeachers, todayAtt] = await Promise.all([
-      Student.countDocuments({ class: { $in: groupIds } }),
+      countUniqueStudents(groupIds),
       Staff.countDocuments(staffQuery),
       Attendance.find({ class: { $in: groupIds }, date: todayStr }),
     ]);
@@ -604,19 +625,22 @@ exports.getReportSummary = async (req, res) => {
     const query = { teacher: ctx.directorId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
 
-    const groups = await Class.find(query)
+    const groups = await Group.find(query)
       .populate("subject", "name")
       .sort({ name: 1 });
     const groupIds = groups.map((g) => g._id);
 
-    const [payments, expenses, students] = await Promise.all([
+    // ⚠️ Bu yerda har bir guruh uchun alohida so'rov yubormaymiz —
+    // `buildGroupStudentMap` hammasini ikkita so'rovda yig'adi
+    // (qo'shimcha guruhlar ham hisobga olinadi).
+    const [payments, expenses, studentMap] = await Promise.all([
       MonthlyPayment.find({ class: { $in: groupIds }, month, year }).select(
         "class amount status",
       ),
       Expense.find({ class: { $in: groupIds }, month, year }).select(
         "class amount",
       ),
-      Student.find({ class: { $in: groupIds } }).select("class"),
+      buildGroupStudentMap(groupIds),
     ]);
 
     const sum = (arr) => arr.reduce((s, x) => s + (x.amount || 0), 0);
@@ -625,7 +649,7 @@ exports.getReportSummary = async (req, res) => {
       const gid = String(g._id);
       const p = payments.filter((x) => String(x.class) === gid);
       const e = expenses.filter((x) => String(x.class) === gid);
-      const studentCount = students.filter((x) => String(x.class) === gid).length;
+      const studentCount = studentMap.get(gid)?.size || 0;
 
       const collected = sum(p.filter((x) => x.status === "paid"));
       // To'lov varaqasi hali yaratilmagan bo'lsa, kutilganini o'quvchi
@@ -736,7 +760,7 @@ exports.exportGroupsReport = async (req, res) => {
 
     const query = { teacher: ctx.directorId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
-    const groups = await Class.find(query).populate("subject", "name");
+    const groups = await Group.find(query).populate("subject", "name");
     if (!groups.length) {
       return res
         .status(400)
@@ -764,7 +788,7 @@ exports.exportGroupsReport = async (req, res) => {
     };
 
     for (const g of groups) {
-      const students = await Student.find({ class: g._id }).sort({ rollNumber: 1 });
+      const students = await getGroupStudents(g._id);
       const payments = await MonthlyPayment.find({
         class: g._id,
         month: m,
@@ -842,7 +866,7 @@ exports.deleteGroup = async (req, res) => {
 
     const query = { _id: groupId, teacher: ctx.directorId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
-    const group = await Class.findOne(query);
+    const group = await Group.findOne(query);
     if (!group)
       return res
         .status(404)
@@ -856,7 +880,7 @@ exports.deleteGroup = async (req, res) => {
       Attendance.deleteMany({ class: groupId }),
       Grade.deleteMany({ class: groupId }),
     ]);
-    await Class.findByIdAndDelete(groupId);
+    await Group.findByIdAndDelete(groupId);
 
     res.json({ success: true, message: "Guruh va bog'liq barcha ma'lumotlar o'chirildi" });
   } catch (err) {

@@ -4,6 +4,10 @@ const Student = require("../models/Student");
 const MonthlyPayment = require("../models/MonthlyPayment");
 const Expense = require("../models/Expense");
 const Teacher = require("../models/Teacher");
+const {
+  getGroupStudents,
+  countGroupStudents,
+} = require("../utils/enrollment");
 const TelegramParent = require("../models/TelegramParent");
 const XLSX = require("xlsx");
 const {
@@ -22,6 +26,7 @@ const {
   hasFeature,
   canOpenNewClass,
   canAddStudent,
+  effectivePlan,
 } = require("../utils/planHelper");
 const smsService = require("../services/smsService");
 const { sendPaymentConfirmation } = require("../services/telegramService");
@@ -179,6 +184,122 @@ const getProfile = async (req, res) => {
 };
 
 // ============================================================
+//  BRENDLASH (white-label) — muassasa o'z logotipini qo'yadi
+// ============================================================
+// Logotip base64 data URL sifatida Teacher hujjatida saqlanadi.
+// Sabab va cheklovlar: models/Teacher.js dagi `logo` izohi.
+const LOGO_MAX_BYTES = 300 * 1024; // 300KB — sidebar uchun yetarlidan ortiq
+
+const updateBranding = async (req, res) => {
+  try {
+    // Faqat direktorning o'zi — xodim muassasa brendini o'zgartira olmaydi
+    if (req.user.role !== "teacher") {
+      return res
+        .status(403)
+        .json({ success: false, error: "Faqat direktor uchun" });
+    }
+
+    const { logo, brandColor, institutionName } = req.body;
+    const teacher = await Teacher.findById(req.user.id);
+    if (!teacher) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Teacher topilmadi" });
+    }
+
+    if (logo !== undefined) {
+      if (logo === null || logo === "") {
+        // Logotipni olib tashlash
+        teacher.logo = "";
+        teacher.logoSize = 0;
+      } else {
+        if (typeof logo !== "string" || !logo.startsWith("data:image/")) {
+          return res
+            .status(400)
+            .json({ success: false, error: "Logotip rasm bo'lishi kerak" });
+        }
+        // base64 uzunligidan taxminiy bayt hajmi (screenshot bilan bir xil)
+        const sizeBytes = Math.round((logo.length * 3) / 4);
+        if (sizeBytes > LOGO_MAX_BYTES) {
+          return res.status(400).json({
+            success: false,
+            error: "Logotip hajmi 300KB dan oshmasligi kerak",
+          });
+        }
+        teacher.logo = logo;
+        teacher.logoSize = sizeBytes;
+      }
+    }
+
+    if (brandColor !== undefined) {
+      const c = String(brandColor || "").trim();
+      // Faqat #RGB / #RRGGBB — boshqa qiymat CSS'ga tushib ketmasin
+      if (c && !/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(c)) {
+        return res
+          .status(400)
+          .json({ success: false, error: "Rang formati noto'g'ri" });
+      }
+      teacher.brandColor = c;
+    }
+
+    if (institutionName !== undefined) {
+      const n = String(institutionName || "").trim();
+      if (!n) {
+        return res
+          .status(400)
+          .json({ success: false, error: "Muassasa nomi majburiy" });
+      }
+      teacher.institutionName = n;
+    }
+
+    await teacher.save();
+
+    return res.json({
+      success: true,
+      message: "Brend saqlandi",
+      branding: {
+        logo: teacher.logo || "",
+        brandColor: teacher.brandColor || "",
+        institutionName: teacher.institutionName || "",
+      },
+    });
+  } catch (err) {
+    console.error("updateBranding error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+/**
+ * Brendni O'QISH — xodimlar ham chaqiradi (sidebar'da ko'rsatish uchun),
+ * shu sabab `resolveContext` orqali direktor topiladi.
+ */
+const getBranding = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    const director = await Teacher.findById(ctx.directorId).select(
+      "logo brandColor institutionName institutionType",
+    );
+    if (!director) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Teacher topilmadi" });
+    }
+    return res.json({
+      success: true,
+      branding: {
+        logo: director.logo || "",
+        brandColor: director.brandColor || "",
+        institutionName: director.institutionName || "",
+        institutionType: director.institutionType || null,
+      },
+    });
+  } catch (err) {
+    console.error("getBranding error:", err);
+    return res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
+// ============================================================
 //  CLASSES — School Fund (Director only, plan limitlar bilan)
 // ============================================================
 const createClass = async (req, res) => {
@@ -273,7 +394,7 @@ const getMyClasses = async (req, res) => {
 
     const classesWithStats = await Promise.all(
       classes.map(async (cls) => {
-        const studentCount = await Student.countDocuments({ class: cls._id });
+        const studentCount = await countGroupStudents(cls._id);
         const payments = await MonthlyPayment.find({ class: cls._id });
         const paidPayments = payments.filter((p) => p.status === "paid");
         const paidCount = paidPayments.length;
@@ -486,9 +607,14 @@ const addStudent = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" });
 
-    const studentCount = await Student.countDocuments({ class: classId });
-    if (!canAddStudent(cls.plan, studentCount)) {
-      const limit = PLAN_LIMITS[cls.plan] || PLAN_LIMITS.free;
+    // ✅ Limit sinfdagi eski `plan` va direktorning HOZIRGI tarifidan
+    // kattarog'i bo'yicha hisoblanadi — aks holda tarifni ko'targan
+    // foydalanuvchi eski sinflarida eski limitda qolib ketardi.
+    const director = await Teacher.findById(ctx.directorId);
+    const studentCount = await countGroupStudents(classId);
+    if (!canAddStudent(cls.plan, studentCount, director)) {
+      const limit =
+        PLAN_LIMITS[effectivePlan(cls.plan, director)] || PLAN_LIMITS.free;
       return res.status(403).json({
         success: false,
         error: `Bu sinfga maksimal ${limit.students} ta o'quvchi qo'shish mumkin`,
@@ -526,9 +652,7 @@ const getClassStudents = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" });
 
-    const students = await Student.find({ class: classId }).sort({
-      rollNumber: 1,
-    });
+    const students = await getGroupStudents(classId);
     return res.json({ success: true, students });
   } catch (err) {
     console.error("getClassStudents error:", err);
@@ -741,7 +865,7 @@ const getMonthlyPayments = async (req, res) => {
 
     const classStats = {};
     for (const cls of classes) {
-      const studentCount = await Student.countDocuments({ class: cls._id });
+      const studentCount = await countGroupStudents(cls._id);
       classStats[cls._id.toString()] = {
         className: cls.name,
         defaultAmount: cls.defaultAmount,
@@ -1888,6 +2012,8 @@ const getSubscriptionInfo = async (req, res) => {
 module.exports = {
   completeOnboarding,
   getProfile,
+  updateBranding,
+  getBranding,
 
   getDashboard,
   getSubscriptionInfo,

@@ -82,6 +82,27 @@ router.post("/leads/:leadId/convert", allowTeacherOrStaff, leadCtrl.convertLead)
 router.put("/leads/:leadId", allowTeacherOrStaff, leadCtrl.updateLead);
 router.delete("/leads/:leadId", allowTeacherOrStaff, leadCtrl.deleteLead);
 
+// ─── GURUHGA YOZISH (bitta o'quvchi — bir nechta guruh) ─────────────────────
+// Ruxsat ichkarida: manageStudents. Asosiy guruh (Student.class) bu
+// yerda o'zgarmaydi — batafsil models/Enrollment.js
+const enrollCtrl = require("../controllers/enrollmentController");
+router.get(
+  "/students/:studentId/groups",
+  allowTeacherOrStaff,
+  enrollCtrl.getStudentGroups,
+);
+router.post("/enrollments", allowTeacherOrStaff, enrollCtrl.enroll);
+router.put(
+  "/enrollments/:studentId/:classId",
+  allowTeacherOrStaff,
+  enrollCtrl.updateEnrollment,
+);
+router.delete(
+  "/enrollments/:studentId/:classId",
+  allowTeacherOrStaff,
+  enrollCtrl.unenroll,
+);
+
 // ─── FILIALLAR STATISTIKASI — ✅ YANGI ───────────────────────────────────────
 // Filiallarni yaratish/tahrirlash /teacher/branches'da qoladi (Direktor).
 // Bu yerda faqat LC uchun kengaytirilgan statistika.

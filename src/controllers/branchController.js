@@ -2,6 +2,7 @@
 const Branch = require("../models/Branch");
 const Class = require("../models/Class");
 const Student = require("../models/Student");
+const { countUniqueStudents } = require("../utils/enrollment");
 const Staff = require("../models/Staff");
 const MonthlyPayment = require("../models/MonthlyPayment");
 const Expense = require("../models/Expense");
@@ -180,7 +181,7 @@ exports.getBranchStats = async (req, res) => {
 
         const [studentCount, staffCount, payments, expenses, attendance, leads] =
           await Promise.all([
-            Student.countDocuments({ class: { $in: classIds } }),
+            countUniqueStudents(classIds),
             Staff.countDocuments({
               director: ctx.directorId,
               branch: b._id,

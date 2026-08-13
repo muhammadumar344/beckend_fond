@@ -2,6 +2,7 @@
 const Grade = require("../models/Grade");
 const Class = require("../models/Class");
 const Student = require("../models/Student");
+const { getGroupStudents } = require("../utils/enrollment");
 const {
   resolveContext,
   requirePermission,
@@ -106,9 +107,7 @@ exports.getDayGrades = async (req, res) => {
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
     }
 
-    const students = await Student.find({ class: classId }).sort({
-      rollNumber: 1,
-    });
+    const students = await getGroupStudents(classId);
     const query = { class: classId, date, type };
     if (subject) query.subject = subject;
     const grades = await Grade.find(query);
@@ -165,9 +164,7 @@ exports.getMonthlyAverage = async (req, res) => {
     const m = Number(month) || new Date().getMonth() + 1;
     const y = Number(year) || new Date().getFullYear();
 
-    const students = await Student.find({ class: classId }).sort({
-      rollNumber: 1,
-    });
+    const students = await getGroupStudents(classId);
     const query = { class: classId, month: m, year: y };
     if (subject) query.subject = subject;
     const grades = await Grade.find(query);

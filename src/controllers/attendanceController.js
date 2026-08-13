@@ -2,6 +2,7 @@
 const Attendance = require("../models/Attendance");
 const Class = require("../models/Class");
 const Student = require("../models/Student");
+const { getGroupStudents } = require("../utils/enrollment");
 const {
   resolveContext,
   requirePermission,
@@ -93,9 +94,7 @@ exports.getDayAttendance = async (req, res) => {
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
     }
 
-    const students = await Student.find({ class: classId }).sort({
-      rollNumber: 1,
-    });
+    const students = await getGroupStudents(classId);
     const attendance = await Attendance.find({ class: classId, date });
 
     const attMap = {};
@@ -149,9 +148,7 @@ exports.getMonthlyStats = async (req, res) => {
     const m = Number(month) || new Date().getMonth() + 1;
     const y = Number(year) || new Date().getFullYear();
 
-    const students = await Student.find({ class: classId }).sort({
-      rollNumber: 1,
-    });
+    const students = await getGroupStudents(classId);
     const attendance = await Attendance.find({
       class: classId,
       month: m,

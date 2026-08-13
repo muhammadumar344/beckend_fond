@@ -9,6 +9,7 @@ const {
   hasFeature,
   canOpenNewClass,
   canAddStudent,
+  effectivePlan,
 } = require("../src/utils/planHelper");
 
 /** Teacher hujjatining soddalashtirilgan modeli */
@@ -81,4 +82,59 @@ test("PLAN_LIMITS o'zgarmagan — narx/limitlar tasodifan buzilmasin", () => {
   assert.deepEqual(PLAN_LIMITS.free, { classes: 1, students: 30 });
   assert.deepEqual(PLAN_LIMITS.pro, { classes: 3, students: 60 });
   assert.deepEqual(PLAN_LIMITS.premium, { classes: 10, students: 999 });
+});
+
+// ── effectivePlan ─────────────────────────────────────────────
+// Ikkita to'lovchi mijozga tegadigan xato shu yerda qulflanadi:
+//   1. LC guruhlari `plan` ni yozmasdi → Premium ham 30 tada qolardi
+//   2. Tarifni ko'targan foydalanuvchi eski sinflarida eski limitda
+//      qolib ketardi — to'lagan puli ish bermasdi
+
+test("effectivePlan — hozirgi tarif yuqori bo'lsa u tanlanadi", () => {
+  // LC guruhi: plan yozilmagan (free), direktor premium
+  assert.equal(effectivePlan("free", teacher("premium")), "premium");
+  assert.equal(effectivePlan(undefined, teacher("premium")), "premium");
+  assert.equal(effectivePlan("free", teacher("pro")), "pro");
+});
+
+test("effectivePlan — eski yuqori tarif saqlanadi (grandfathering)", () => {
+  // Premiumda ochilgan sinf, keyin free'ga tushgan → katta limit qoladi
+  assert.equal(effectivePlan("premium", teacher("free")), "premium");
+  assert.equal(effectivePlan("pro", teacher("free")), "pro");
+});
+
+test("effectivePlan — obuna tugagan bo'lsa hozirgi tarif free", () => {
+  assert.equal(effectivePlan("free", teacher("premium", false)), "free");
+  // lekin sinfdagi eski tarif baribir saqlanadi
+  assert.equal(effectivePlan("pro", teacher("premium", false)), "pro");
+});
+
+test("effectivePlan — teacher berilmasa sinf tarifi ishlatiladi", () => {
+  assert.equal(effectivePlan("pro", undefined), "pro");
+  assert.equal(effectivePlan("nomalum", undefined), "free");
+});
+
+test("canAddStudent — teacher berilsa hozirgi tarif hisobga olinadi", () => {
+  const premium = teacher("premium");
+
+  // ⚠️ ASOSIY HOLAT: LC guruhi "free" deb yozilgan, direktor premium.
+  // Ilgari 30-o'quvchida to'xtardi — endi to'xtamaydi.
+  assert.equal(canAddStudent("free", 30, premium), true);
+  assert.equal(canAddStudent("free", 998, premium), true);
+  assert.equal(canAddStudent("free", 999, premium), false);
+
+  // Tarifni ko'targan Fond foydalanuvchisi ham eski sinfida yutadi
+  assert.equal(canAddStudent("free", 30, teacher("pro")), true);
+  assert.equal(canAddStudent("free", 60, teacher("pro")), false);
+});
+
+test("canAddStudent — teacher berilmasa eski xatti-harakat saqlanadi", () => {
+  assert.equal(canAddStudent("free", 29), true);
+  assert.equal(canAddStudent("free", 30), false);
+});
+
+test("canAddStudent — obunasi tugagan premium free limitida qoladi", () => {
+  const expired = teacher("premium", false);
+  assert.equal(canAddStudent("free", 29, expired), true);
+  assert.equal(canAddStudent("free", 30, expired), false);
 });
