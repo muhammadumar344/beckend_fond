@@ -10,7 +10,11 @@ const Group = require("../models/Group");
 const Teacher = require("../models/Teacher");
 const { resolveContext, requirePermission } = require("../utils/resolveContext");
 const { countGroupStudents, getStudentGroupIds } = require("../utils/enrollment");
-const { PLAN_LIMITS, canAddStudent, effectivePlan } = require("../utils/planHelper");
+const {
+  limitsFor,
+  canAddStudent,
+  effectivePlan,
+} = require("../utils/planHelper");
 
 /**
  * O'quvchi va guruh shu direktorga tegishlimi — ikkalasini ham
@@ -91,7 +95,7 @@ exports.enroll = async (req, res) => {
     const count = await countGroupStudents(group._id);
     if (!canAddStudent(group.plan, count, director)) {
       const limit =
-        PLAN_LIMITS[effectivePlan(group.plan, director)] || PLAN_LIMITS.free;
+        limitsFor(effectivePlan(group.plan, director), director);
       return res.status(403).json({
         success: false,
         error: `Bu guruhga maksimal ${limit.students} ta o'quvchi qo'shish mumkin`,

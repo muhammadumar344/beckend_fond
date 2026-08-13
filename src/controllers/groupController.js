@@ -446,6 +446,16 @@ exports.updateGroup = async (req, res) => {
 exports.getDashboardStats = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
+
+    // ⚠️ Bu javobda markazning DAROMADI, QARZI va lidlari bor.
+    // Ilgari hech qanday tekshiruv yo'q edi: faqat davomat uchun
+    // qo'shilgan ustoz ham o'z tokeni bilan to'g'ridan-to'g'ri
+    // so'rov yuborib butun moliyani ko'ra olardi. Interfeys buni
+    // ko'rsatmasdi, lekin API ochiq turardi.
+    //
+    // Direktorga har doim ochiq — requirePermission uni o'tkazadi.
+    requirePermission(ctx, "viewPayments");
+
     const query = { teacher: ctx.directorId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
 
@@ -745,6 +755,12 @@ exports.getReportSummary = async (req, res) => {
 exports.exportGroupsReport = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
+
+    // ⚠️ To'liq moliyaviy hisobotni Excel fayl qilib beradi —
+    // dashboard'dan ham sezgirroq. Ruxsatsiz har qanday xodim
+    // yuklab olardi.
+    requirePermission(ctx, "viewPayments");
+
     const { month, year } = req.query;
 
     const teacher = await Teacher.findById(ctx.directorId);

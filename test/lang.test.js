@@ -21,8 +21,17 @@ function mkReq({ query = {}, headers = {} } = {}) {
 }
 
 /** Soxta res — res.json() ga kelgan tanani saqlab qoladi */
+/**
+ * Soxta res — Express'ga o'xshab `statusCode` va `status()` bor.
+ * Bu shart: middleware xato javobini `res.statusCode >= 400`
+ * bo'yicha aniqlaydi.
+ */
 function mkRes() {
-  const res = { sent: null };
+  const res = { sent: null, statusCode: 200 };
+  res.status = (c) => {
+    res.statusCode = c;
+    return res;
+  };
   res.json = (body) => {
     res.sent = body;
     return res;
@@ -121,11 +130,71 @@ test("null / matn tana yiqilmaydi", () => {
   assert.doesNotThrow(() => res.json("oddiy matn"));
 });
 
-test("o'zbekchada res.json umuman o'ralmaydi", () => {
+test("o'zbekchada ham res.json o'raladi (shakl tenglashtirish uchun)", () => {
+  // ⚠️ Ilgari o'zbekchada umuman o'ralmasdi. Endi o'raladi, chunki
+  // `error`/`message` tenglashtirish TILDAN QAT'I NAZAR kerak.
   const res = mkRes();
   const before = res.json;
   langMiddleware(mkReq(), res, () => {});
-  assert.equal(res.json, before); // ortiqcha yuk yo'q
+  assert.notEqual(res.json, before);
+});
+
+// ── Xato shakli: error ↔ message ──────────────────────────────
+// Backend bir xil emas: 81 ta joyda xato `message` da, qolganida
+// `error` da. Frontend esa 92 ta joyda faqat `.error` o'qiydi —
+// natijada xato sababi ko'rinmasdi.
+
+test("4xx: message → error ga ko'chiriladi", () => {
+  const res = run(mkReq());
+  res.status(400);
+  res.json({ message: "Rol nomi majburiy" });
+
+  assert.equal(res.sent.error, "Rol nomi majburiy");
+  assert.equal(res.sent.message, "Rol nomi majburiy");
+});
+
+test("4xx: error → message ga ko'chiriladi", () => {
+  const res = run(mkReq());
+  res.status(404);
+  res.json({ success: false, error: "Sinf topilmadi" });
+
+  assert.equal(res.sent.message, "Sinf topilmadi");
+  assert.equal(res.sent.error, "Sinf topilmadi");
+});
+
+test("5xx da ham ishlaydi", () => {
+  const res = run(mkReq());
+  res.status(500);
+  res.json({ message: "Server xatosi" });
+  assert.equal(res.sent.error, "Server xatosi");
+});
+
+test("⚠️ 2xx da KO'CHIRILMAYDI — 'Saqlandi' xato bo'lib chiqmasin", () => {
+  const res = run(mkReq());
+  res.status(200);
+  res.json({ success: true, message: "Guruh yaratildi" });
+
+  assert.equal(res.sent.message, "Guruh yaratildi");
+  assert.equal(res.sent.error, undefined, "muvaffaqiyatda error paydo bo'lmasin");
+});
+
+test("ikkalasi ham bo'lsa o'zgarmaydi", () => {
+  const res = run(mkReq());
+  res.status(400);
+  res.json({ error: "A", message: "B" });
+
+  assert.equal(res.sent.error, "A");
+  assert.equal(res.sent.message, "B");
+});
+
+test("tenglashtirilgan maydon ham tarjima qilinadi", () => {
+  const res = run(mkReq({ headers: { "X-Lang": "ru" } }));
+  res.status(404);
+  res.json({ message: "Sinf topilmadi" });
+
+  // message → error ko'chadi, keyin IKKALASI ham tarjima bo'ladi
+  assert.equal(res.sent.error, "Класс не найден");
+  assert.equal(res.sent.message, "Класс не найден");
 });
 
 test("req.lang o'rnatiladi", () => {

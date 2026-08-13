@@ -111,6 +111,32 @@ bo'lib chiqadi va hammani bloklaydi. Direktor uchun har doim o'tadi.
 Shu sabab har bir `catch` bloki `res.status(err.status || 500)` yozishi shart —
 aks holda 403 xatolar 500 bo'lib chiqadi.
 
+### Ruxsatsiz ochiq endpoint'lar — ataylab
+
+`npm run check:perms` (frontend loyihasida) uch qatlamni solishtiradi:
+menyu → route `meta.permission` → `requirePermission`.
+
+Xodimga ochiq va `requirePermission` yo'q **9 ta** GET bor. Hammasi
+ko'rib chiqilgan va **ataylab shunday** — ularsiz xodim sahifalari
+umuman ishlamaydi:
+
+| Endpoint | Nega ochiq |
+|---|---|
+| `/lc/roles/my`, `/lc/salaries/my` | o'z ma'lumoti |
+| `/lc/roles` | StaffManagement uchun (sahifa `manageStaff` bilan yopiq) |
+| `/lc/subjects` | davomat/baho/jadval sahifalari o'qiydi |
+| `/lc/groups`, `/lc/groups/:id` | ustoz o'z guruhlarini ko'rishi kerak |
+| `/teacher/branding` | sidebar muassasa logotipini ko'rsatadi |
+| `/teacher/classes`, `/classes/list` | xodim sahifalarining asosi |
+
+⚠️ Bularni "xavfsizlik uchun" yopmang — xodim paneli ishdan chiqadi.
+
+**Yopilganlari** (2026-08 auditda topilgan): `/lc/dashboard-stats` va
+`/lc/reports/export` — ikkalasi ham markazning **daromadi va qarzini**
+qaytarardi. Interfeys ularni xodimga ko'rsatmasdi, lekin API ochiq
+edi: davomat uchun qo'shilgan ustoz o'z tokeni bilan butun moliyani
+ko'ra olardi. Endi `viewPayments` talab qilinadi.
+
 ### Filial cheklovi
 
 ```js
@@ -169,8 +195,31 @@ haqiqiy `res.json(...)` ni tekshiring:
 | `GET /lc/branches/stats` | `{ success, period, branches, unassigned, totals }` |
 | `GET /lc/dashboard-stats` | `{ success, stats }` — ichida `revenueTrend`, `attendanceTrend`, `debt`, `leads` |
 
-Xato javoblari ham bir xil emas: `staffController`/`salaryController`/
-`roleController` → `{ message }`, qolganlari → `{ success: false, error }`.
+### Xato javoblari — `error` va `message` HAR DOIM teng
+
+Kodda bir xil emas: `staffController`, `roleController`,
+`salaryController` va `staffLogin` xatoni `{ message }` da
+qaytaradi (81 ta joy), qolgan hamma joy `{ error }` da. Frontend
+esa 92 ta joyda faqat `.error` o'qiydi.
+
+Natijada rol yaratishda *"Bu nomli rol allaqachon mavjud"* o'rniga
+umumiy *"Xatolik yuz berdi"* chiqardi — sabab yetib bormasdi.
+
+81 ta call site'ni tahrirlash o'rniga `middleware/lang.js` chiqishda
+tenglashtiradi: **4xx/5xx** javobida biri bo'lsa ikkinchisi ham
+qo'yiladi.
+
+```js
+res.status(400).json({ message: "Rol nomi majburiy" })
+// → { message: "Rol nomi majburiy", error: "Rol nomi majburiy" }
+```
+
+⚠️ **Faqat 4xx/5xx da.** Muvaffaqiyatli javobdagi `message` — bu
+"Saqlandi" kabi matn; uni `error` ga ko'chirish frontend'ga "xato
+bo'ldi" deb ko'rsatardi.
+
+Yangi kod yozayotganda **`{ success: false, error }`** shaklini
+ishlating — tenglashtirish eski kod uchun, yangi qarz uchun emas.
 
 ## Uy vazifasi va reyting (ochko)
 

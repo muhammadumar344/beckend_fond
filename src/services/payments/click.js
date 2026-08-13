@@ -20,7 +20,7 @@ const crypto = require("crypto");
 const { click: cfg } = require("../../config/payments");
 const Transaction = require("../../models/Transaction");
 const Teacher = require("../../models/Teacher");
-const { PLAN_PRICES } = require("../../utils/planHelper");
+const { priceFor } = require("../../utils/planHelper");
 
 // Click xato kodlari — hujjatda belgilangan
 const ERR = {
@@ -101,12 +101,15 @@ async function validateOrder(p) {
     return { error: ERR.USER_NOT_FOUND, note: "Tarif noto'g'ri" };
   }
 
-  const teacher = await Teacher.findById(teacherId).select("_id isActive");
+  const teacher = await Teacher.findById(teacherId).select(
+    "_id isActive institutionType plan planExpiresAt",
+  );
   if (!teacher || !teacher.isActive) {
     return { error: ERR.USER_NOT_FOUND, note: "Hisob topilmadi" };
   }
 
-  const expected = (PLAN_PRICES[plan]?.monthly || 0) * months;
+  // ⚠️ Narx REJIMGA bog'liq — LC va Fond narxlari boshqa
+  const expected = (priceFor(plan, teacher)?.monthly || 0) * months;
   if (Number(p.amount) !== expected) {
     return { error: ERR.INCORRECT_AMOUNT, note: "Summa noto'g'ri" };
   }

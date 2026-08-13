@@ -17,7 +17,7 @@ const { PROVIDERS, enabledProviders } = require("../config/payments");
 const payme = require("../services/payments/payme");
 const click = require("../services/payments/click");
 const Teacher = require("../models/Teacher");
-const { PLAN_PRICES } = require("../utils/planHelper");
+const { priceFor } = require("../utils/planHelper");
 const { onlyTeacher } = require("../middleware/roles");
 
 /**
@@ -122,7 +122,10 @@ router.post("/checkout", onlyTeacher, async (req, res) => {
     }
 
     const m = Math.max(1, Math.min(12, Number(months) || 1));
-    const amountSum = (PLAN_PRICES[plan]?.monthly || 0) * m;
+
+    // ⚠️ Narx REJIMGA bog'liq — LC va Fond narxlari boshqa
+    const teacher = await Teacher.findById(req.user.id).select("institutionType");
+    const amountSum = (priceFor(plan, teacher)?.monthly || 0) * m;
 
     const build =
       provider === "payme" ? payme.buildCheckoutUrl : click.buildCheckoutUrl;

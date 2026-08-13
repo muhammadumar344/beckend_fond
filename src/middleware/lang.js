@@ -54,20 +54,51 @@ function translate(text, lang) {
 /**
  * Express middleware: res.json ni o'rab oladi.
  */
+/**
+ * Xato javobida `error` va `message` maydonlarini teng qiladi.
+ *
+ * ⚠️ NEGA KERAK: backend bir xil emas. `staffController`,
+ * `roleController`, `salaryController` va `staffLogin` xatoni
+ * `{ message }` da qaytaradi, qolgan hamma joy `{ error }` da —
+ * jami 81 ta joy. Frontend esa 92 ta joyda faqat `.error` o'qiydi.
+ *
+ * Natijada rol yaratishda "Bu nomli rol allaqachon mavjud" o'rniga
+ * umumiy "Xatolik yuz berdi" chiqardi — sabab foydalanuvchiga
+ * yetib bormasdi.
+ *
+ * 81 ta call site'ni tahrirlash o'rniga chiqishda tenglashtiramiz.
+ *
+ * ⚠️ FAQAT 4xx/5xx da. Muvaffaqiyatli javobda `message` — bu
+ *    "Saqlandi" kabi matn; uni `error` ga ko'chirish frontend'ga
+ *    "xato bo'ldi" deb ko'rsatardi.
+ */
+function mirrorErrorFields(res, body) {
+  if (res.statusCode < 400) return;
+
+  if (typeof body.message === "string" && body.error === undefined) {
+    body.error = body.message;
+  } else if (typeof body.error === "string" && body.message === undefined) {
+    body.message = body.error;
+  }
+}
+
 function langMiddleware(req, res, next) {
   const lang = detectLang(req);
   req.lang = lang;
 
-  // O'zbekcha bo'lsa hech narsa qilmaymiz — ortiqcha ish yo'q
-  if (lang === DEFAULT_LANG) return next();
-
   const originalJson = res.json.bind(res);
+  const needsTranslation = lang !== DEFAULT_LANG;
 
   res.json = (body) => {
     if (body && typeof body === "object" && !Array.isArray(body)) {
-      for (const field of FIELDS) {
-        if (typeof body[field] === "string") {
-          body[field] = translate(body[field], lang);
+      // Shakl tenglashtirish — TILDAN QAT'I NAZAR har doim
+      mirrorErrorFields(res, body);
+
+      if (needsTranslation) {
+        for (const field of FIELDS) {
+          if (typeof body[field] === "string") {
+            body[field] = translate(body[field], lang);
+          }
         }
       }
     }
@@ -77,4 +108,11 @@ function langMiddleware(req, res, next) {
   next();
 }
 
-module.exports = { langMiddleware, detectLang, translate, SUPPORTED, DEFAULT_LANG };
+module.exports = {
+  langMiddleware,
+  mirrorErrorFields,
+  detectLang,
+  translate,
+  SUPPORTED,
+  DEFAULT_LANG,
+};

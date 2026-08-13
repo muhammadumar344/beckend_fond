@@ -10,7 +10,7 @@ const {
   requirePermission,
 } = require("../utils/resolveContext");
 const {
-  PLAN_LIMITS,
+  limitsFor,
   canAddStudent,
   effectivePlan,
 } = require("../utils/planHelper");
@@ -279,7 +279,7 @@ const convertLead = async (req, res) => {
     const studentCount = await countGroupStudents(classId);
     if (!canAddStudent(cls.plan, studentCount, director)) {
       const limit =
-        PLAN_LIMITS[effectivePlan(cls.plan, director)] || PLAN_LIMITS.free;
+        limitsFor(effectivePlan(cls.plan, director), director);
       return res.status(403).json({
         success: false,
         error: `Bu guruhga maksimal ${limit.students} ta o'quvchi qo'shish mumkin`,

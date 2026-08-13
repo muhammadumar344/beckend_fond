@@ -1,93 +1,248 @@
 // src/utils/planHelper.js
+// ════════════════════════════════════════════════════════════
+// Tariflar IKKI REJIM UCHUN ALOHIDA.
+//
+// Fond va LC — butunlay boshqa mijozlar:
+//   • Fond — bitta sinf rahbari, oyiga ~15 000 so'm yig'adi.
+//     Pul kichik, narxga juda sezgir.
+//   • LC — biznes. Xodimlari, filiallari, oylik aylanmasi bor.
+//     To'lash qobiliyati bir necha barobar yuqori.
+//
+// Bitta narx jadvali ikkalasiga ham to'g'ri kelmaydi: LC uchun
+// arzon, Fond uchun qimmat bo'lib qoladi.
+//
+// ⚠️ TILLAR (uz/ru/en) BARCHA TARIFDA BEPUL. Ilgari `multi_lang`
+//    faqat Premium'da edi — bu noto'g'ri edi: ruszabon direktor
+//    mahsulotni umuman sinab ko'ra olmasdi. Til — kirish to'sig'i
+//    emas, kirish yo'li.
+// ════════════════════════════════════════════════════════════
 
+const SCHOOL = "school";
+const LC = "learning_center";
+
+// ── Limitlar ──────────────────────────────────────────────────
 const PLAN_LIMITS = {
-  free:    { classes: 1,  students: 30  },
-  pro:     { classes: 3,  students: 60  },
-  premium: { classes: 10, students: 999 },
-}
+  [SCHOOL]: {
+    free: { classes: 1, students: 30, staff: 0, branches: 0 },
+    pro: { classes: 3, students: 60, staff: 0, branches: 0 },
+    premium: { classes: 10, students: 999, staff: 0, branches: 5 },
+  },
+  [LC]: {
+    // LC'da "classes" = guruhlar
+    free: { classes: 2, students: 30, staff: 1, branches: 1, leads: 20 },
+    pro: { classes: 15, students: 300, staff: 10, branches: 3, leads: 9999 },
+    premium: {
+      classes: 9999,
+      students: 9999,
+      staff: 9999,
+      branches: 9999,
+      leads: 9999,
+    },
+  },
+};
 
+// ── Narxlar (so'm/oy) ─────────────────────────────────────────
 const PLAN_PRICES = {
-  free:    { monthly: 0     },
-  pro:     { monthly: 29000 },
-  premium: { monthly: 59000 },
-}
+  [SCHOOL]: {
+    free: { monthly: 0 },
+    pro: { monthly: 29000 },
+    premium: { monthly: 59000 },
+  },
+  [LC]: {
+    free: { monthly: 0 },
+    pro: { monthly: 199000 },
+    premium: { monthly: 449000 },
+  },
+};
 
+// ── Funksiyalar ───────────────────────────────────────────────
+// `multi_lang` hamma joyda true — yuqoridagi izohga qarang.
 const PLAN_FEATURES = {
-  free:    { monthly_reminder: false, export: false, multi_lang: false, sms_reminder: false, telegram: false },
-  pro:     { monthly_reminder: true,  export: false, multi_lang: false, sms_reminder: false, telegram: true  },
-  premium: { monthly_reminder: true,  export: true,  multi_lang: true,  sms_reminder: true,  telegram: true  },
-}
+  [SCHOOL]: {
+    free: {
+      multi_lang: true,
+      monthly_reminder: false,
+      telegram: false,
+      export: false,
+      import: false,
+      sms_reminder: false,
+      branches: false,
+    },
+    pro: {
+      multi_lang: true,
+      monthly_reminder: true,
+      telegram: true,
+      export: false,
+      import: false,
+      sms_reminder: false,
+      branches: false,
+    },
+    premium: {
+      multi_lang: true,
+      monthly_reminder: true,
+      telegram: true,
+      export: true,
+      import: true,
+      sms_reminder: true,
+      branches: true,
+    },
+  },
+  [LC]: {
+    free: {
+      multi_lang: true,
+      monthly_reminder: false,
+      telegram: false,
+      export: false,
+      import: false,
+      sms_reminder: false,
+      branches: false,
+      homework: false,
+      salaries: false,
+      roles: false,
+      branch_stats: false,
+      reports: false,
+      white_label: false,
+    },
+    pro: {
+      multi_lang: true,
+      monthly_reminder: true,
+      telegram: true,
+      export: true,
+      import: true,
+      sms_reminder: false,
+      branches: true,
+      homework: true,
+      salaries: true,
+      roles: true,
+      branch_stats: false,
+      reports: true,
+      white_label: false,
+    },
+    premium: {
+      multi_lang: true,
+      monthly_reminder: true,
+      telegram: true,
+      export: true,
+      import: true,
+      sms_reminder: true,
+      branches: true,
+      homework: true,
+      salaries: true,
+      roles: true,
+      branch_stats: true,
+      reports: true,
+      white_label: true,
+    },
+  },
+};
+
+const PLAN_RANK = { free: 0, pro: 1, premium: 2 };
+
+/** institutionType ni normallashtiradi — noma'lum qiymat Fond deb olinadi */
+const modeOf = (t) => (t === LC || t?.institutionType === LC ? LC : SCHOOL);
+
+/** Tarif nomini tekshiradi */
+const planOf = (p) => (PLAN_RANK[p] !== undefined ? p : "free");
 
 /**
- * Teacher ning hozirgi aktiv planida ma'lum funksiya bormi?
+ * Rejimga mos limitlar.
+ * @param {string} plan
+ * @param {string|object} mode  institutionType yoki Teacher hujjati
+ */
+const limitsFor = (plan, mode) =>
+  PLAN_LIMITS[modeOf(mode)][planOf(plan)] || PLAN_LIMITS[SCHOOL].free;
+
+/** Rejimga mos narx */
+const priceFor = (plan, mode) =>
+  PLAN_PRICES[modeOf(mode)][planOf(plan)] || PLAN_PRICES[SCHOOL].free;
+
+/** Rejimga mos funksiyalar to'plami */
+const featuresFor = (plan, mode) =>
+  PLAN_FEATURES[modeOf(mode)][planOf(plan)] || PLAN_FEATURES[SCHOOL].free;
+
+/** Teacher hujjatidan hozirgi AKTIV tarifni oladi */
+const activePlanOf = (teacher) => {
+  if (!teacher) return "free";
+  if (typeof teacher.isPlanActive === "function") {
+    return teacher.isPlanActive() ? planOf(teacher.plan) : "free";
+  }
+  return planOf(teacher.plan);
+};
+
+/**
+ * Teacher ning hozirgi aktiv tarifida ma'lum funksiya bormi?
+ * Rejim `teacher.institutionType` dan olinadi.
  */
 const hasFeature = (teacher, feature) => {
-  const activePlan = teacher.isPlanActive() ? teacher.plan : 'free'
-  return PLAN_FEATURES[activePlan]?.[feature] || false
-}
+  const f = featuresFor(activePlanOf(teacher), teacher);
+  return f?.[feature] || false;
+};
 
-/**
- * Yangi sinf ocha oladimi?
- */
+/** Yangi sinf/guruh ocha oladimi? */
 const canOpenNewClass = (teacher, currentClassCount) => {
-  const activePlan = teacher.isPlanActive() ? teacher.plan : 'free'
-  const limit = PLAN_LIMITS[activePlan]
-  return currentClassCount < limit.classes
-}
-
-// Tarif kuchi bo'yicha tartib — solishtirish uchun
-const PLAN_RANK = { free: 0, pro: 1, premium: 2 }
+  const limit = limitsFor(activePlanOf(teacher), teacher);
+  return currentClassCount < limit.classes;
+};
 
 /**
  * Sinf uchun amalda qo'llanadigan tarif.
  *
  * Ikkita qiymatdan KATTAROG'I olinadi:
- *   1. `classPlan` — sinf yaratilgandagi tarif (eski, yuqoriroq tarifni
- *      saqlab qolish uchun: premiumda ochilgan sinf, keyin free'ga
- *      tushsangiz ham, katta limitini yo'qotmaydi)
+ *   1. `classPlan` — sinf yaratilgandagi tarif (eski, yuqoriroq
+ *      tarifni saqlab qolish uchun)
  *   2. Direktorning HOZIRGI aktiv tarifi
  *
- * NEGA "kattarog'i"? Avval faqat (1) ishlatilardi va bu ikkita
- * to'lovchi mijozga tegadigan xatoga olib kelgan edi:
- *
- *   • LC guruhlari `plan` maydonini umuman yozmasdi (groupController
- *     uni o'rnatmagan) → sxema `"free"` qo'yardi → Premium hisob ham
- *     guruhiga 30 tadan ortiq o'quvchi qo'sha olmasdi.
- *   • Tarifni KO'TARGAN foydalanuvchi eski sinflarida eski limitda
- *     qolib ketardi — ya'ni to'lagan puli ish bermasdi.
- *
- * Ikkalasi ham migratsiyasiz tuzaladi: eski yozuvdagi `plan` qiymati
- * qanday bo'lishidan qat'i nazar, hozirgi tarif undan past bo'lmaydi.
- *
- * @param {string} classPlan  sinfdagi `plan` (bo'lmasligi mumkin)
- * @param {object} [teacher]  Teacher hujjati (isPlanActive() bilan)
+ * NEGA "kattarog'i" — batafsil tarix uchun CLAUDE.md ga qarang:
+ * LC guruhlari `plan` ni yozmasdi (Premium ham 30 tada qolardi) va
+ * tarifni ko'targan foydalanuvchi eski sinflarida yutmasdi.
  */
 const effectivePlan = (classPlan, teacher) => {
-  const snapshot = PLAN_RANK[classPlan] !== undefined ? classPlan : 'free'
-
-  let current = 'free'
-  if (teacher && typeof teacher.isPlanActive === 'function') {
-    current = teacher.isPlanActive() ? teacher.plan : 'free'
-  } else if (teacher && PLAN_RANK[teacher.plan] !== undefined) {
-    current = teacher.plan
-  }
-  if (PLAN_RANK[current] === undefined) current = 'free'
-
-  return PLAN_RANK[current] > PLAN_RANK[snapshot] ? current : snapshot
-}
+  const snapshot = planOf(classPlan);
+  const current = activePlanOf(teacher);
+  return PLAN_RANK[current] > PLAN_RANK[snapshot] ? current : snapshot;
+};
 
 /**
  * Sinfga yangi o'quvchi qo'sha oladimi?
  *
  * @param {string} classPlan            sinfdagi `plan`
  * @param {number} currentStudentCount  hozirgi o'quvchilar soni
- * @param {object} [teacher]            Teacher hujjati — berilsa, hozirgi
- *                                      tarif ham hisobga olinadi
+ * @param {object} [teacher]            berilsa hozirgi tarif ham hisobga olinadi
  */
 const canAddStudent = (classPlan, currentStudentCount, teacher) => {
-  const plan = teacher ? effectivePlan(classPlan, teacher) : classPlan
-  const limit = PLAN_LIMITS[plan] || PLAN_LIMITS.free
-  return currentStudentCount < limit.students
-}
+  const plan = teacher ? effectivePlan(classPlan, teacher) : planOf(classPlan);
+  const limit = limitsFor(plan, teacher);
+  return currentStudentCount < limit.students;
+};
 
-module.exports = { PLAN_LIMITS, PLAN_PRICES, PLAN_FEATURES, PLAN_RANK, hasFeature, canOpenNewClass, canAddStudent, effectivePlan }
+/** Xodim qo'sha oladimi (faqat LC) */
+const canAddStaff = (teacher, currentStaffCount) => {
+  const limit = limitsFor(activePlanOf(teacher), teacher);
+  return currentStaffCount < (limit.staff || 0);
+};
+
+/** Filial ocha oladimi */
+const canOpenBranch = (teacher, currentBranchCount) => {
+  const limit = limitsFor(activePlanOf(teacher), teacher);
+  return currentBranchCount < (limit.branches || 0);
+};
+
+module.exports = {
+  SCHOOL,
+  LC,
+  PLAN_LIMITS,
+  PLAN_PRICES,
+  PLAN_FEATURES,
+  PLAN_RANK,
+  modeOf,
+  limitsFor,
+  priceFor,
+  featuresFor,
+  activePlanOf,
+  hasFeature,
+  canOpenNewClass,
+  canAddStudent,
+  canAddStaff,
+  canOpenBranch,
+  effectivePlan,
+};

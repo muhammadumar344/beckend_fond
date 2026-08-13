@@ -13,6 +13,15 @@ const teacherSchema = new mongoose.Schema({
   verificationCode:        { type: String, select: false },
   verificationCodeExpires: { type: Date,   select: false },
 
+  // ✅ Parol tiklash. Ilgari bu maydonlar FAQAT Staff'da bor edi va
+  // direktorning parolni tiklash imkoni umuman yo'q edi: "Parolni
+  // unutdingizmi?" formasi Staff kolleksiyasidan qidirar, direktorni
+  // topa olmas, lekin xavfsizlik uchun "xat yuborildi" deb javob
+  // qaytarardi. Ya'ni xato jimgina yutilardi — foydalanuvchi xat
+  // kutib qolardi.
+  resetPasswordToken:   { type: String, default: null, select: false },
+  resetPasswordExpires: { type: Date,   default: null, select: false },
+
   plan:             { type: String, enum: ['free','pro','premium'], default: 'free' },
   planExpiresAt:    { type: Date, default: null },
   highestPlanEver:  { type: String, enum: ['free','pro','premium'], default: 'free' },

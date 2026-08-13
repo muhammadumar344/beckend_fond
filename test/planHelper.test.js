@@ -5,7 +5,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
-  PLAN_LIMITS,
+  SCHOOL,
+  LC,
+  limitsFor,
+  priceFor,
+  featuresFor,
   hasFeature,
   canOpenNewClass,
   canAddStudent,
@@ -78,10 +82,88 @@ test("canAddStudent — noma'lum tarif free deb hisoblanadi", () => {
   assert.equal(canAddStudent(undefined, 30), false);
 });
 
-test("PLAN_LIMITS o'zgarmagan — narx/limitlar tasodifan buzilmasin", () => {
-  assert.deepEqual(PLAN_LIMITS.free, { classes: 1, students: 30 });
-  assert.deepEqual(PLAN_LIMITS.pro, { classes: 3, students: 60 });
-  assert.deepEqual(PLAN_LIMITS.premium, { classes: 10, students: 999 });
+// ── Rejim bo'yicha ajratilgan tariflar ────────────────────────
+// Fond va LC — boshqa mijozlar, boshqa narx. Bitta jadval
+// ikkalasiga to'g'ri kelmaydi.
+
+test("Fond limitlari o'zgarmagan — tasodifan buzilmasin", () => {
+  assert.equal(limitsFor("free", SCHOOL).classes, 1);
+  assert.equal(limitsFor("free", SCHOOL).students, 30);
+  assert.equal(limitsFor("pro", SCHOOL).classes, 3);
+  assert.equal(limitsFor("pro", SCHOOL).students, 60);
+  assert.equal(limitsFor("premium", SCHOOL).classes, 10);
+  assert.equal(limitsFor("premium", SCHOOL).students, 999);
+});
+
+test("LC limitlari Fond'dan kattaroq", () => {
+  // LC — biznes, hajmi kattaroq bo'lishi kerak
+  assert.ok(limitsFor("pro", LC).students > limitsFor("pro", SCHOOL).students);
+  assert.ok(limitsFor("pro", LC).classes > limitsFor("pro", SCHOOL).classes);
+  // Fond'da xodim tushunchasi yo'q
+  assert.equal(limitsFor("premium", SCHOOL).staff, 0);
+  assert.ok(limitsFor("pro", LC).staff > 0);
+});
+
+test("LC narxi Fond'dan qimmatroq", () => {
+  for (const p of ["pro", "premium"]) {
+    assert.ok(
+      priceFor(p, LC).monthly > priceFor(p, SCHOOL).monthly,
+      `${p}: LC narxi Fond'dan past`,
+    );
+  }
+  assert.equal(priceFor("free", LC).monthly, 0);
+  assert.equal(priceFor("free", SCHOOL).monthly, 0);
+});
+
+test("⚠️ TILLAR HAR BIR TARIFDA BEPUL", () => {
+  // Til — kirish to'sig'i emas. Ruszabon direktor mahsulotni
+  // sinab ko'ra olmasa, umuman sotib olmaydi.
+  for (const mode of [SCHOOL, LC]) {
+    for (const plan of ["free", "pro", "premium"]) {
+      assert.equal(
+        featuresFor(plan, mode).multi_lang,
+        true,
+        `${mode}/${plan}: multi_lang bepul bo'lishi kerak`,
+      );
+    }
+  }
+});
+
+test("hasFeature rejimni Teacher hujjatidan oladi", () => {
+  const lcPro = { plan: "pro", institutionType: LC, isPlanActive: () => true };
+  const fondPro = { plan: "pro", institutionType: SCHOOL, isPlanActive: () => true };
+
+  // Export LC'da Pro'dan boshlanadi, Fond'da faqat Premium
+  assert.equal(hasFeature(lcPro, "export"), true);
+  assert.equal(hasFeature(fondPro, "export"), false);
+});
+
+test("white_label faqat LC Premium'da", () => {
+  assert.equal(featuresFor("premium", LC).white_label, true);
+  assert.equal(featuresFor("pro", LC).white_label, false);
+  // Fond'da bu tushuncha umuman yo'q
+  assert.equal(featuresFor("premium", SCHOOL).white_label, undefined);
+});
+
+test("noma'lum rejim Fond deb hisoblanadi", () => {
+  assert.deepEqual(limitsFor("free", "nomalum"), limitsFor("free", SCHOOL));
+  assert.deepEqual(limitsFor("free", undefined), limitsFor("free", SCHOOL));
+});
+
+test("noma'lum tarif free deb hisoblanadi", () => {
+  assert.deepEqual(limitsFor("nomalum", LC), limitsFor("free", LC));
+  assert.deepEqual(limitsFor(undefined, SCHOOL), limitsFor("free", SCHOOL));
+});
+
+test("canOpenNewClass rejimga qarab ishlaydi", () => {
+  const lc = { plan: "free", institutionType: LC, isPlanActive: () => true };
+  const fond = { plan: "free", institutionType: SCHOOL, isPlanActive: () => true };
+
+  // LC free'da 2 guruh, Fond free'da 1 sinf
+  assert.equal(canOpenNewClass(lc, 1), true);
+  assert.equal(canOpenNewClass(lc, 2), false);
+  assert.equal(canOpenNewClass(fond, 0), true);
+  assert.equal(canOpenNewClass(fond, 1), false);
 });
 
 // ── effectivePlan ─────────────────────────────────────────────

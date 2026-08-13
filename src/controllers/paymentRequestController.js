@@ -5,7 +5,10 @@ const Class = require("../models/Class");
 // ✅ XATO TUZATILDI: applyReferralBonus import qilinmagan edi
 const { applyReferralBonus } = require("./referralController");
 
-const PLAN_PRICES = { pro: 29000, premium: 59000 };
+// ⚠️ Narx REJIMGA bog'liq (Fond va LC har xil) — qattiq yozilgan
+// jadval LC direktoridan Fond narxini undirardi. Yagona manba:
+// utils/planHelper.js
+const { priceFor } = require("../utils/planHelper");
 
 // ── TEACHER: So'rov yuborish ─────────────────────────────────
 exports.createRequest = async (req, res) => {
@@ -33,7 +36,11 @@ exports.createRequest = async (req, res) => {
       });
     }
 
-    const amount = PLAN_PRICES[plan] * Number(months);
+    // Narx direktorning rejimiga qarab olinadi (Fond ≠ LC)
+    const teacherDoc = await Teacher.findById(teacherId).select(
+      "institutionType",
+    );
+    const amount = (priceFor(plan, teacherDoc)?.monthly || 0) * Number(months);
 
     const request = await PaymentRequest.create({
       teacher: teacherId,

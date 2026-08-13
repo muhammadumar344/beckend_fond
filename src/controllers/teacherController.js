@@ -22,7 +22,10 @@ const {
   AlignmentType,
 } = require("docx");
 const {
-  PLAN_LIMITS,
+  limitsFor,
+  priceFor,
+  featuresFor,
+  activePlanOf,
   hasFeature,
   canOpenNewClass,
   canAddStudent,
@@ -344,7 +347,7 @@ const createClass = async (req, res) => {
     });
     if (!canOpenNewClass(teacher, currentClassCount)) {
       const activePlan = teacher.isPlanActive() ? teacher.plan : "free";
-      const limit = PLAN_LIMITS[activePlan] || PLAN_LIMITS.free;
+      const limit = limitsFor(activePlan, teacher);
       return res.status(403).json({
         success: false,
         error: teacher.isPlanActive()
@@ -614,7 +617,7 @@ const addStudent = async (req, res) => {
     const studentCount = await countGroupStudents(classId);
     if (!canAddStudent(cls.plan, studentCount, director)) {
       const limit =
-        PLAN_LIMITS[effectivePlan(cls.plan, director)] || PLAN_LIMITS.free;
+        limitsFor(effectivePlan(cls.plan, director), director);
       return res.status(403).json({
         success: false,
         error: `Bu sinfga maksimal ${limit.students} ta o'quvchi qo'shish mumkin`,

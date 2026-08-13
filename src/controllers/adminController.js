@@ -5,7 +5,13 @@ const Student = require('../models/Student')
 const Admin = require('../models/Admin')
 const MonthlyPayment = require('../models/MonthlyPayment')
 const TelegramParent = require('../models/TelegramParent')
-const { PLAN_LIMITS, PLAN_PRICES } = require('../utils/planHelper')
+const {
+  SCHOOL,
+  LC,
+  limitsFor,
+  priceFor,
+  featuresFor,
+} = require('../utils/planHelper')
 const crypto = require('crypto')
 // ✅ XATO TUZATILDI: 'referalController' import o'chirildi
 // (fayl nomi noto'g'ri yozilgan edi, va bu yerda ishlatilmaydi —
@@ -226,28 +232,68 @@ exports.activateTeacher = async (req, res) => {
   }
 }
 
-// Plan narxlari
+// ── Tarif narxlari — REJIM bo'yicha ──────────────────────────
+// Fond va LC narxlari boshqa: `?mode=learning_center` bilan LC
+// jadvali qaytadi, aks holda Fond.
+//
+// ⚠️ Ro'yxat QO'LDA yozilmaydi — planHelper'dan yig'iladi. Ilgari
+//    qattiq yozilgan edi va tarif o'zgarganda bu yer eskirib
+//    qolardi (narx bir joyda, ro'yxat boshqa joyda).
 exports.getPlanPrices = async (req, res) => {
-  res.json({
-    plans: [
-      {
-        id: 'free', name: 'Free', price: 0, classes: 1, students: 30,
-        features: ['1 ta sinf', "30 ta o'quvchi", 'Asosiy funksiyalar'],
-        notIncluded: ['Oylik eslatma', 'Export', "Ko'p til", 'Telegram bot'],
-      },
-      {
-        id: 'pro', name: 'Pro', price: PLAN_PRICES?.pro?.monthly || 29000, classes: 3, students: 60,
-        features: ['3 ta sinf', "60 ta o'quvchi", 'Oylik eslatma modali', 'Telegram bot'],
-        notIncluded: ['Export (Excel/Word)', 'SMS eslatma', "Ko'p til"],
-      },
-      {
-        id: 'premium', name: 'Premium', price: PLAN_PRICES?.premium?.monthly || 59000, classes: 10, students: 999,
-        features: [
-          '10 ta sinf', "Cheksiz o'quvchi", 'Oylik eslatma modali',
-          'Export (Excel/Word)', 'SMS eslatma', "Ko'p til (uz/ru/en)", 'Telegram bot',
-        ],
-        notIncluded: [],
-      },
-    ],
+  const mode = req.query.mode === LC ? LC : SCHOOL
+
+  const LABELS = {
+    multi_lang:       'Uch til (uz/ru/en)',
+    monthly_reminder: 'Oylik eslatma',
+    telegram:         'Telegram bot',
+    export:           'Excel / Word export',
+    import:           'Excel import',
+    sms_reminder:     'SMS eslatma',
+    branches:         'Filiallar',
+    homework:         'Uy vazifasi va reyting',
+    salaries:         'Maosh boshqaruvi',
+    roles:            'Rollar va huquqlar',
+    branch_stats:     'Filial statistikasi',
+    reports:          'Hisobotlar va grafiklar',
+    white_label:      "O'z logotipi (white-label)",
+  }
+
+  const NAMES = { free: 'Free', pro: 'Pro', premium: 'Premium' }
+  // 999+ — amalda cheksiz. "Cheksiz ta o'quvchi" g'aliz, shuning
+  // uchun sanoq so'zi ("ta") faqat aniq raqamda qo'yiladi.
+  const count = (n, unit) => (n >= 999 ? 'Cheksiz ' + unit : n + ' ta ' + unit)
+
+  const plans = ['free', 'pro', 'premium'].map((id) => {
+    const limits = limitsFor(id, mode)
+    const feats  = featuresFor(id, mode)
+
+    const included = []
+    const notIncluded = []
+    for (const [key, label] of Object.entries(LABELS)) {
+      if (!(key in feats)) continue
+      if (feats[key]) included.push(label)
+      else notIncluded.push(label)
+    }
+
+    const size = [
+      count(limits.classes, mode === LC ? 'guruh' : 'sinf'),
+      count(limits.students, "o'quvchi"),
+    ]
+    if (mode === LC && limits.staff) size.push(count(limits.staff, 'xodim'))
+
+    return {
+      id,
+      name:     NAMES[id],
+      price:    priceFor(id, mode).monthly,
+      classes:  limits.classes,
+      students: limits.students,
+      staff:    limits.staff,
+      branches: limits.branches,
+      features: [...size, ...included],
+      notIncluded,
+    }
   })
+
+  res.json({ mode, plans })
 }
+
