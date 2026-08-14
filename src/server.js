@@ -214,10 +214,29 @@ app.use((req, res) => {
 });
 
 app.use((err, req, res, next) => {
-  console.error('Server xatosi:', err && err.message ? err.message : err);
-  if (!res.headersSent) {
-    res.status(500).json({ error: 'Ichki server xatosi' });
+  if (res.headersSent) return next(err);
+
+  // ⚠️ Hajm chegarasidan oshgan tana — bu SERVER xatosi EMAS,
+  //    foydalanuvchi xatosi. Ilgari u ham 500 bo'lib chiqardi va
+  //    logotip/chek yuklayotgan direktor "Ichki server xatosi"
+  //    degan tushunarsiz javob olib, nima qilishni bilmasdi.
+  if (err?.type === 'entity.too.large' || err?.status === 413) {
+    return res.status(413).json({
+      success: false,
+      error: 'Fayl juda katta',
+    });
   }
+
+  // Buzuq JSON — ham mijoz xatosi
+  if (err instanceof SyntaxError && 'body' in err) {
+    return res.status(400).json({
+      success: false,
+      error: "So'rov formati noto'g'ri",
+    });
+  }
+
+  console.error('Server xatosi:', err && err.message ? err.message : err);
+  res.status(500).json({ error: 'Ichki server xatosi' });
 });
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

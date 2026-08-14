@@ -328,6 +328,8 @@ const MESSAGES = {
   "Maktab fondi rejimiga o'tdingiz": { ru: "Вы перешли в режим школьного фонда", en: "Switched to school fund mode" },
   "Rejimni almashtirish uchun hisob bo'sh bo'lishi kerak. Avval sinf/guruh, o'quvchi va xodimlarni o'chiring.": { ru: "Для смены режима аккаунт должен быть пустым. Сначала удалите классы/группы, учеников и сотрудников.", en: "To switch mode the account must be empty. Remove classes/groups, students and staff first." },
 
+  "Fayl juda katta": { ru: "Файл слишком большой", en: "File is too large" },
+  "So'rov formati noto'g'ri": { ru: "Неверный формат запроса", en: "Malformed request" },
   // ── Telegram / SMS ──────────────────────────────────────
   "Bot ishlamayapti": { ru: "Бот не работает", en: "The bot is not running" },
   "Eslatmalar yuborildi": { ru: "Напоминания отправлены", en: "Reminders sent" },
