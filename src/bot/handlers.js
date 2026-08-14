@@ -20,6 +20,7 @@
 // ════════════════════════════════════════════════════════════
 
 const Student = require('../models/Student')
+const Teacher = require('../models/Teacher')
 const Class = require('../models/Class')
 const StudentLink = require('../models/StudentLink')
 const InviteCode = require('../models/InviteCode')
@@ -63,19 +64,53 @@ function appUrl() {
   return base.endsWith('.html') ? base : `${base}/tma.html`
 }
 
+/**
+ * Muassasa turiga qarab matn.
+ *
+ * ⚠️ Bitta bot IKKI XIL mahsulotga xizmat qiladi: maktab sinf
+ *    fondi va o'quv markazi. Ota-ona o'z muassasasini tanimasa
+ *    ("nega menga baho haqida yozyapti, biz faqat pul yig'amiz-ku")
+ *    botga ishonchi yo'qoladi. Shuning uchun matn har doim
+ *    o'quvchining markazidan kelib chiqadi.
+ *
+ *    Ikkita alohida bot qilish SHART EMAS — farq faqat so'zlarda,
+ *    ma'lumot va xavfsizlik mantig'i bir xil.
+ */
+const isLC = (type) => type === 'learning_center'
+
+const modeWords = (type) =>
+  isLC(type)
+    ? {
+        place: "o'quv markazi",
+        sees: "*baholari*, *davomati* va *to'lovlari*",
+        after: "Endi baho, davomat va to'lovlarni ko'rishingiz mumkin.",
+      }
+    : {
+        place: 'maktab',
+        sees: "*fond to'lovlari*",
+        after: "Endi to'lovlarni ko'rishingiz va oylik eslatma olasiz.",
+      }
+
 /** Bog'langandan keyingi xabar — Mini App tugmasi bilan */
-async function sendLinked(bot, chatId, names) {
+async function sendLinked(bot, chatId, names, type) {
   const url = appUrl()
   const list = names.map((n) => `• *${n}*`).join('\n')
+  const w = modeWords(type)
 
   await bot.sendMessage(
     chatId,
-    `✅ *Bog'landingiz!*\n\n${list}\n\n` +
-      `Endi baho, davomat va to'lovlarni ko'rishingiz mumkin.`,
+    `✅ *Bog'landingiz!*\n\n${list}\n\n${w.after}`,
     url
       ? { ...MD, reply_markup: openAppKeyboard(url) }
       : { ...MD, reply_markup: removeKeyboard() },
   )
+}
+
+/** Bog'lanish orqali muassasa turini aniqlaydi */
+async function typeOfDirector(directorId) {
+  if (!directorId) return null
+  const t = await Teacher.findById(directorId).select('institutionType').lean()
+  return t?.institutionType || null
 }
 
 // ── /start ────────────────────────────────────────────────────
@@ -92,22 +127,28 @@ const handleStart = async (bot, msg) => {
       .lean()
 
     if (existing.length) {
+      const type = await typeOfDirector(existing[0].director)
       await sendLinked(
         bot,
         chatId,
         existing.map((l) => l.student?.name || '—'),
+        type,
       )
       return
     }
 
+    // ⚠️ Bu yerda muassasa turi HALI NOMA'LUM — foydalanuvchi
+    //    bog'lanmagan. Shuning uchun matn NEYTRAL: "maktab yoki
+    //    o'quv markazi". Bog'langandan keyin barcha xabarlar
+    //    aniq turga moslashadi (`modeWords`).
     await bot.sendMessage(
       chatId,
       `👋 *Assalomu alaykum!*\n\n` +
-        `Bu bot orqali farzandingizning *baholari*, *davomati* va ` +
-        `*to'lovlari*ni kuzatasiz.\n\n` +
+        `Bu bot orqali farzandingiz haqidagi ma'lumotlarni ` +
+        `kuzatasiz — to'lovlar, baholar va davomat.\n\n` +
         `▶️ Boshlash uchun pastdagi tugma bilan *raqamingizni yuboring*. ` +
-        `Raqam o'quv markazidagi ro'yxat bilan solishtiriladi.\n\n` +
-        `_Agar raqamingiz topilmasa, markazdan bir martalik kod so'rang ` +
+        `Raqam maktab yoki o'quv markazidagi ro'yxat bilan solishtiriladi.\n\n` +
+        `_Agar raqamingiz topilmasa, muassasadan bir martalik kod so'rang ` +
         `va shu yerga yozing._`,
       { ...MD, reply_markup: phoneKeyboard() },
     )
@@ -206,7 +247,8 @@ const handleContact = async (bot, msg) => {
     }
 
     console.log(`[bot] raqam orqali bog'landi: ${msg.from.id} → ${names.join(', ')}`)
-    await sendLinked(bot, chatId, names)
+    const type = await typeOfDirector(directorOf.get(String(matched[0].class)))
+    await sendLinked(bot, chatId, names, type)
   } catch (err) {
     console.error('handleContact xatosi:', err.message)
     await bot.sendMessage(chatId, `❌ Xatolik yuz berdi. /start bosib qayta urining.`)
@@ -268,7 +310,8 @@ const handleMessage = async (bot, msg) => {
     await invite.save()
 
     console.log(`[bot] kod orqali bog'landi: ${msg.from.id} → ${student.name}`)
-    await sendLinked(bot, chatId, [student.name])
+    const type = await typeOfDirector(invite.director)
+    await sendLinked(bot, chatId, [student.name], type)
   } catch (err) {
     console.error('Kod tekshirish xatosi:', err.message)
     await bot.sendMessage(chatId, `❌ Xatolik yuz berdi. Qayta urinib ko'ring.`)

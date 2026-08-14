@@ -152,9 +152,12 @@ mongoose.connect(MONGODB_URI)
 
     // initBot (agar mavjud bo'lsa)
     try {
+      // ⚠️ `initBot` endi async — tokenni Telegram'da tekshirib
+      //    ko'radi. `await` bo'lmasa "Bot initialized" yozuvi
+      //    tekshiruv natijasidan OLDIN chiqib, yaroqsiz tokenda
+      //    ham "hammasi joyida" degan taassurot qoldirardi.
       const { initBot } = require('./bot/bot');
-      if (typeof initBot === 'function') initBot(app);
-      console.log('✅ Bot initialized');
+      if (typeof initBot === 'function') await initBot(app);
     } catch (e) {
       console.warn('⚠️  bot init topilmadi yoki xato berdi:', e.message || e);
     }

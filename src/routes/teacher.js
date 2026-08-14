@@ -39,6 +39,11 @@ router.get("/dashboard", onlyTeacher, ctrl.getDashboard);
 router.get("/subscription", onlyTeacher, ctrl.getSubscriptionInfo);
 router.put("/onboarding", onlyTeacher, ctrl.completeOnboarding);
 
+// ══ REJIM — xato tanlaganlar uchun chiqish yo'li ═════════════
+// Faqat hisob bo'sh bo'lsa ishlaydi (controller izohiga qarang)
+router.get("/mode", onlyTeacher, ctrl.getModeStatus);
+router.put("/mode", onlyTeacher, ctrl.switchMode);
+
 // ══ FREEZE — faqat Director ═════════════════════════════════
 router.get("/freeze-status", onlyTeacher, async (req, res) => {
   try {

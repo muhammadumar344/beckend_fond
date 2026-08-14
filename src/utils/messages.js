@@ -322,6 +322,12 @@ const MESSAGES = {
   "Xizmat yoqildi": { ru: "Услуга включена", en: "Service enabled" },
   "Xizmat o'chirildi": { ru: "Услуга отключена", en: "Service disabled" },
 
+  "institutionType: 'school' yoki 'learning_center' bo'lishi kerak": { ru: "institutionType должен быть 'school' или 'learning_center'", en: "institutionType must be 'school' or 'learning_center'" },
+  "Rejim o'zgarmadi": { ru: "Режим не изменён", en: "Mode unchanged" },
+  "O'quv markazi rejimiga o'tdingiz": { ru: "Вы перешли в режим учебного центра", en: "Switched to learning centre mode" },
+  "Maktab fondi rejimiga o'tdingiz": { ru: "Вы перешли в режим школьного фонда", en: "Switched to school fund mode" },
+  "Rejimni almashtirish uchun hisob bo'sh bo'lishi kerak. Avval sinf/guruh, o'quvchi va xodimlarni o'chiring.": { ru: "Для смены режима аккаунт должен быть пустым. Сначала удалите классы/группы, учеников и сотрудников.", en: "To switch mode the account must be empty. Remove classes/groups, students and staff first." },
+
   // ── Telegram / SMS ──────────────────────────────────────
   "Bot ishlamayapti": { ru: "Бот не работает", en: "The bot is not running" },
   "Eslatmalar yuborildi": { ru: "Напоминания отправлены", en: "Reminders sent" },

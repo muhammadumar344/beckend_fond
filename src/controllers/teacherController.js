@@ -9,6 +9,8 @@ const {
   countGroupStudents,
 } = require("../utils/enrollment");
 const TelegramParent = require("../models/TelegramParent");
+const Staff = require("../models/Staff");
+const Branch = require("../models/Branch");
 const cloudinary = require("../services/cloudinary");
 const cloudinaryCfg = require("../config/cloudinary");
 const XLSX = require("xlsx");
@@ -184,6 +186,114 @@ const getProfile = async (req, res) => {
     return res.json({ success: true, teacher });
   } catch (err) {
     console.error("getProfile error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// ============================================================
+//  REJIMNI ALMASHTIRISH — faqat hisob BO'SH bo'lsa
+// ============================================================
+// ⚠️ Rejim (Fond / O'quv markazi) onboarding'da bir marta
+//    tanlanadi va qulflanadi — sabab `completeOnboarding`
+//    izohida. Lekin qulf butunlay yopiq bo'lsa, xato tanlagan
+//    odam qamalib qolardi: xabar "qo'llab-quvvatlashga murojaat
+//    qiling" derdi, ammo hech qanday murojaat yo'li yo'q edi.
+//
+//    Yechim: hisobda HALI HECH NARSA YO'Q bo'lsa almashtirishga
+//    ruxsat. Bunda ko'chiriladigan ma'lumot ham yo'q, ya'ni
+//    hech narsa buzilmaydi. Bitta o'quvchi qo'shilishi bilan
+//    qulf qaytadan yopiladi.
+const getModeStatus = async (req, res) => {
+  try {
+    if (req.user.role !== "teacher") {
+      return res.status(403).json({ success: false, error: "Faqat direktor uchun" });
+    }
+
+    const teacher = await Teacher.findById(req.user.id).select(
+      "institutionType institutionName",
+    );
+    if (!teacher) {
+      return res.status(404).json({ success: false, error: "Teacher topilmadi" });
+    }
+
+    const blockers = await countModeBlockers(req.user.id);
+    const total = Object.values(blockers).reduce((a, b) => a + b, 0);
+
+    return res.json({
+      success: true,
+      mode: teacher.institutionType,
+      canSwitch: total === 0,
+      blockers,
+    });
+  } catch (err) {
+    console.error("getModeStatus error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+/** Rejim almashtirishga to'sqinlik qiladigan ma'lumot */
+async function countModeBlockers(directorId) {
+  const classIds = await Class.find({ teacher: directorId }).distinct("_id");
+  const [students, staff, branches] = await Promise.all([
+    classIds.length
+      ? Student.countDocuments({ class: { $in: classIds } })
+      : 0,
+    Staff.countDocuments({ director: directorId }),
+    Branch.countDocuments({ teacher: directorId }),
+  ]);
+  return { classes: classIds.length, students, staff, branches };
+}
+
+const switchMode = async (req, res) => {
+  try {
+    if (req.user.role !== "teacher") {
+      return res.status(403).json({ success: false, error: "Faqat direktor uchun" });
+    }
+
+    const { institutionType } = req.body || {};
+    if (!["school", "learning_center"].includes(institutionType)) {
+      return res.status(400).json({
+        success: false,
+        error: "institutionType: 'school' yoki 'learning_center' bo'lishi kerak",
+      });
+    }
+
+    const teacher = await Teacher.findById(req.user.id);
+    if (!teacher) {
+      return res.status(404).json({ success: false, error: "Teacher topilmadi" });
+    }
+    if (teacher.institutionType === institutionType) {
+      return res.json({ success: true, mode: institutionType, message: "Rejim o'zgarmadi" });
+    }
+
+    const blockers = await countModeBlockers(req.user.id);
+    const total = Object.values(blockers).reduce((a, b) => a + b, 0);
+    if (total > 0) {
+      return res.status(403).json({
+        success: false,
+        error:
+          "Rejimni almashtirish uchun hisob bo'sh bo'lishi kerak. Avval sinf/guruh, o'quvchi va xodimlarni o'chiring.",
+        blockers,
+      });
+    }
+
+    teacher.institutionType = institutionType;
+    await teacher.save();
+
+    console.log(
+      `[mode] ${teacher.email}: rejim → ${institutionType}`,
+    );
+
+    return res.json({
+      success: true,
+      mode: institutionType,
+      message:
+        institutionType === "learning_center"
+          ? "O'quv markazi rejimiga o'tdingiz"
+          : "Maktab fondi rejimiga o'tdingiz",
+    });
+  } catch (err) {
+    console.error("switchMode error:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 };
@@ -2082,6 +2192,8 @@ const getSubscriptionInfo = async (req, res) => {
 module.exports = {
   completeOnboarding,
   getProfile,
+  getModeStatus,
+  switchMode,
   updateBranding,
   getBranding,
 

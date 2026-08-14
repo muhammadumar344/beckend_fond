@@ -15,10 +15,55 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 // ✅ XATO TUZATILDI: ":" belgisini "-" ga almashtiramiz
 const SAFE_PATH_TOKEN = BOT_TOKEN.replace(/:/g, "-");
 
-const initBot = (app) => {
+/**
+ * Token haqiqiyligini ishga tushishdan OLDIN tekshiradi.
+ *
+ * ⚠️ Bunisiz yaroqsiz token faqat polling boshlangach bilinardi va
+ *    o'shanda ham "401 Unauthorized" oqimi ichida ko'milib ketardi.
+ *    Endi deploy logining boshida bitta aniq qator turadi.
+ *
+ * Tarmoq ishlamasa `null` qaytaradi — bu holda bot baribir ishga
+ * tushaveradi (tarmoq tiklanishi mumkin, token esa aybdor emas).
+ */
+const checkToken = (token) =>
+  new Promise((resolve) => {
+    const req = require("https").get(
+      `https://api.telegram.org/bot${token}/getMe`,
+      { timeout: 8000 },
+      (res) => {
+        let body = "";
+        res.on("data", (c) => (body += c));
+        res.on("end", () => {
+          try {
+            const j = JSON.parse(body);
+            resolve(j.ok ? { ok: true, username: j.result.username } : { ok: false, reason: j.description });
+          } catch {
+            resolve(null);
+          }
+        });
+      },
+    );
+    req.on("timeout", () => { req.destroy(); resolve(null); });
+    req.on("error", () => resolve(null));
+  });
+
+const initBot = async (app) => {
   if (!BOT_TOKEN) {
-    console.warn("⚠️  TELEGRAM_BOT_TOKEN topilmadi");
+    console.warn("⚠️  TELEGRAM_BOT_TOKEN topilmadi — bot ishga tushmaydi");
     return null;
+  }
+
+  const check = await checkToken(BOT_TOKEN);
+  if (check && !check.ok) {
+    console.error(
+      "\n❌ TELEGRAM TOKENI YAROQSIZ — bot ishga tushirilmaydi.\n" +
+        `   Telegram javobi: ${check.reason}\n` +
+        "   Render → Environment → TELEGRAM_BOT_TOKEN ni yangilang.\n",
+    );
+    return null;
+  }
+  if (check?.ok) {
+    console.log(`✅ Bot tokeni to'g'ri — @${check.username}`);
   }
 
   try {
@@ -177,13 +222,44 @@ const _attachHandlers = () => {
   });
 
   // Xatolar
+  let lastPollingError = 0;
+
   bot.on("polling_error", (err) => {
-    console.error("📡 Polling xatosi:", err.message || err);
-    if (err?.response?.body?.error_code === 409) {
+    const code = err?.response?.body?.error_code;
+
+    // ⚠️ 401 = token YAROQSIZ (revoke qilingan yoki xato ko'chirilgan).
+    //    Bu O'TKINCHI xato EMAS — qayta urinish hech qachon yordam
+    //    bermaydi. Ilgari kutubxona uni sekundiga bir marta qayta
+    //    urinib, logni "401 Unauthorized" bilan to'ldirib tashlardi
+    //    va haqiqiy sabab o'sha oqim ichida ko'rinmay ketardi.
+    if (code === 401) {
+      bot.stopPolling();
+      console.error(
+        "\n❌ TELEGRAM TOKENI YAROQSIZ (401).\n" +
+          "   Bot to'xtatildi — qayta urinishning foydasi yo'q.\n" +
+          "   Sabab: token @BotFather da /revoke qilingan yoki\n" +
+          "   muhitga xato ko'chirilgan.\n" +
+          "   Yechim: Render → Environment → TELEGRAM_BOT_TOKEN ni\n" +
+          "   yangilang va qayta deploy qiling.\n" +
+          "   Tekshirish: https://api.telegram.org/bot<TOKEN>/getMe\n",
+      );
+      return;
+    }
+
+    if (code === 409) {
       console.warn("⚠️  Boshqa polling sessiya bor (boshqa joyda shu bot ishlamoqda).");
       console.warn("⚠️  Agar bu local development bo'lsa — alohida test bot token ishlating!");
       bot.stopPolling();
       setTimeout(() => startPolling(), 3000); // ✅ 2s → 3s (kamroq tezkor retry)
+      return;
+    }
+
+    // Qolgan xatolar (tarmoq uzilishi va h.k.) — o'tkinchi bo'lishi
+    // mumkin, lekin logni bosib ketmasin: 30 soniyada bir marta
+    const now = Date.now();
+    if (now - lastPollingError > 30000) {
+      lastPollingError = now;
+      console.error("📡 Polling xatosi:", err.message || err);
     }
   });
 
