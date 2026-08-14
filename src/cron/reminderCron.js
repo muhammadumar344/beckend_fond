@@ -1,7 +1,11 @@
 // src/cron/reminderCron.js
 const cron = require('node-cron')
 const TelegramParent = require('../models/TelegramParent')
+const StudentLink = require('../models/StudentLink')
+const Student = require('../models/Student')
+const Class = require('../models/Class')
 const MonthlyPayment = require('../models/MonthlyPayment')
+const { collectTargets } = require('../utils/notifyTargets')
 const { sendPaymentReminder } = require('../services/telegramService')
 
 const MONTH_NAMES = [
@@ -20,44 +24,78 @@ const getPreviousMonth = () => {
 const sendMonthlyReminders = async () => {
   console.log('📬 Oylik Telegram eslatma boshlandi...')
   try {
-    const parents = await TelegramParent.find({ isActive: true })
-      .populate('studentId', 'name')
-      .populate('classId', 'name')
+    // ⚠️ Ro'yxat IKKALA manbadan olinadi — utils/notifyTargets.js
+    //    izohiga qarang. Ilgari bu yer faqat `TelegramParent` ni
+    //    o'qirdi, ya'ni yangi bog'langan ota-onalar eslatmani
+    //    jimgina olmay qolardi.
+    const targets = await collectTargets()
 
-    if (!parents.length) {
+    if (!targets.length) {
       console.log('📭 Ulangan ota-ona yo\'q')
       return
+    }
+
+    // ⚠️ O'quvchi va sinf nomlari BIR MARTA olinadi. Ilgari har bir
+    //    ota-ona uchun `populate` ishlagan — 500 ta ota-onada 1000 ta
+    //    ortiqcha so'rov.
+    const studentIds = [...new Set(targets.map((t) => t.studentId))]
+    const students = await Student.find({ _id: { $in: studentIds } })
+      .select('name class')
+      .lean()
+    const classes = await Class.find({
+      _id: { $in: students.map((s) => s.class).filter(Boolean) },
+    })
+      .select('name')
+      .lean()
+
+    const studentById = new Map(students.map((s) => [String(s._id), s]))
+    const classById = new Map(classes.map((c) => [String(c._id), c.name]))
+
+    // To'lanmagan to'lovlar ham bir so'rovda
+    const unpaidAll = await MonthlyPayment.find({
+      student: { $in: studentIds },
+      status: 'not_paid',
+    })
+      .sort({ year: 1, month: 1 })
+      .select('student month year amount')
+      .lean()
+
+    const unpaidByStudent = new Map()
+    for (const p of unpaidAll) {
+      const k = String(p.student)
+      if (!unpaidByStudent.has(k)) unpaidByStudent.set(k, [])
+      const list = unpaidByStudent.get(k)
+      if (list.length < 3) list.push(p) // eng eski 3 tasi
     }
 
     let sentCount = 0
     let skippedCount = 0
 
-    for (const parent of parents) {
+    for (const t of targets) {
       try {
-        if (!parent.studentId || !parent.classId) continue
+        const student = studentById.get(t.studentId)
+        if (!student) continue
 
-        // Oxirgi 3 oyda to'lanmagan to'lovlar
-        const unpaidPayments = await MonthlyPayment.find({
-          student: parent.studentId._id,
-          status: 'not_paid',
-        }).sort({ year: 1, month: 1 }).limit(3)
-
-        if (!unpaidPayments.length) { skippedCount++; continue }
+        const unpaid = unpaidByStudent.get(t.studentId)
+        if (!unpaid?.length) { skippedCount++; continue }
 
         const sent = await sendPaymentReminder(
-          parent.telegramChatId,
-          parent.studentId.name,
-          parent.classId.name,
-          unpaidPayments.map((p) => ({ month: p.month, year: p.year, amount: p.amount }))
+          t.chatId,
+          student.name,
+          classById.get(String(student.class)) || '',
+          unpaid.map((p) => ({ month: p.month, year: p.year, amount: p.amount }))
         )
 
         if (sent) {
-          parent.lastNotifiedAt = new Date()
-          await parent.save()
+          const Model = t.source === 'link' ? StudentLink : TelegramParent
+          await Model.updateOne(
+            { _id: t.linkId },
+            { $set: { lastNotifiedAt: new Date() } },
+          )
           sentCount++
         }
       } catch (err) {
-        console.error(`Parent ${parent._id} uchun xato:`, err.message)
+        console.error(`${t.chatId} uchun xato:`, err.message)
       }
     }
 

@@ -60,7 +60,12 @@ const studentLinkSchema = new mongoose.Schema(
     phoneKey: { type: String, default: "" },
 
     isActive: { type: Boolean, default: true },
+    // Mini App'ni oxirgi marta qachon ochgan
     lastSeenAt: { type: Date, default: null },
+    // Oxirgi marta qachon xabar yuborilgan (cron/reminderCron.js).
+    // ⚠️ Bu maydonsiz `updateOne` jimgina hech narsa yozmasdi —
+    //    Mongoose sxemada yo'q maydonni xatosiz tashlab yuboradi.
+    lastNotifiedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
