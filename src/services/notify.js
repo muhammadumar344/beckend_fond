@@ -46,7 +46,7 @@ async function verifiedTargets(studentIds, section) {
     student: { $in: studentIds },
     isActive: true,
   })
-    .select("student telegramChatId telegramUserId verifiedVia")
+    .select("student telegramChatId telegramUserId verifiedVia kind")
     .lean();
 
   return links
@@ -54,6 +54,10 @@ async function verifiedTargets(studentIds, section) {
     .map((l) => ({
       chatId: String(l.telegramChatId || l.telegramUserId),
       studentId: String(l.student),
+      // ⚠️ O'quvchining O'ZI ham ulangan bo'lishi mumkin. Unga
+      //    "farzandingiz kelmadi" deb yozish g'alati — xabar
+      //    kimga borayotganiga qarab yoziladi.
+      kind: l.kind || "parent",
     }))
     .filter((t) => t.chatId);
 }
@@ -126,10 +130,15 @@ async function notifyAttendance({ directorId, date, changes }) {
     if (!s || !st) continue;
 
     const [icon, text] = ABSENCE_TEXT[st];
+    // ⚠️ O'quvchining O'ZI ulangan bo'lishi mumkin — unga
+    //    "farzandingiz kelmadi" deyish g'alati chiqardi
+    const who =
+      t.kind === "student" ? `Siz (*${s.name}*)` : `Farzandingiz *${s.name}*`;
+
     await sendMessage(
       t.chatId,
       `${icon} *Davomat*\n\n` +
-        `Farzandingiz *${s.name}* ${fmtDate(date)} kuni ${text}.\n` +
+        `${who} ${fmtDate(date)} kuni ${text}.\n` +
         (s.className ? `🏫 Guruh: ${s.className}\n` : "") +
         `\n_Batafsil ma'lumot ilovada._`,
     );
