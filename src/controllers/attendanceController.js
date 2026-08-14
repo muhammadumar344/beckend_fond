@@ -7,6 +7,7 @@ const {
   resolveContext,
   requirePermission,
 } = require("../utils/resolveContext");
+const { notifyAttendance, inBackground } = require("../services/notify");
 
 // ── Davomat saqlash ───────────────────────────────────────────
 exports.saveAttendance = async (req, res) => {
@@ -45,11 +46,17 @@ exports.saveAttendance = async (req, res) => {
     const validStatuses = ["present", "absent", "late", "excused"];
     let saved = 0;
     const errors = [];
+    // Ota-onaga xabar YUBORILADIGANLAR — faqat holati o'zgarganlar.
+    // ⚠️ Ustoz ro'yxatni ikki marta saqlasa, ota-ona bir xil xabarni
+    //    ikki marta olmasligi kerak.
+    const changes = [];
 
     for (const rec of records) {
       if (!validStatuses.includes(rec.status)) continue;
       try {
-        await Attendance.findOneAndUpdate(
+        // `new: false` — AVVALGI hujjat qaytadi. Yangi yozuvda `null`.
+        // Aynan shu farq "o'zgardimi?" degan savolga javob beradi.
+        const before = await Attendance.findOneAndUpdate(
           { class: classId, student: rec.studentId, date },
           {
             teacher: ctx.directorId,
@@ -58,12 +65,26 @@ exports.saveAttendance = async (req, res) => {
             status: rec.status,
             note: (rec.note || "").trim(),
           },
-          { upsert: true, new: true },
+          { upsert: true, new: false },
         );
+        if (!before || before.status !== rec.status) {
+          changes.push({ studentId: rec.studentId, status: rec.status });
+        }
         saved++;
       } catch (e) {
         errors.push(rec.studentId);
       }
+    }
+
+    // ⚠️ Javobni KUTDIRMAYMIZ. 30 ta Telegram xabari ~10 soniya
+    //    olishi mumkin — ustoz shuncha vaqt "Saqlanmoqda…" ni
+    //    ko'rib turmasin.
+    if (changes.length) {
+      inBackground(notifyAttendance, {
+        directorId: ctx.directorId,
+        date,
+        changes,
+      });
     }
 
     res.json({

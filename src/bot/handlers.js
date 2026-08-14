@@ -32,13 +32,35 @@ const {
 
 const MD = { parse_mode: 'Markdown' }
 
-/** Mini App manzili — sozlanmagan bo'lsa tugma ko'rsatilmaydi */
+/**
+ * Mini App manzili.
+ *
+ * `TMA_URL` ni IKKI xil yozish mumkin va ikkalasi ham ishlaydi:
+ *   https://schoolfonds.uz            → /tma.html qo'shiladi
+ *   https://schoolfonds.uz/tma.html   → shundayligicha qoladi
+ *
+ * ⚠️ Nomi "URL" bo'lgani uchun odam to'liq manzilni yozishi tabiiy.
+ *    Qo'shib yuborsak `/tma.html/tma.html` chiqib, tugma ochilmay
+ *    qolardi va sababini topish qiyin bo'lardi.
+ *
+ * Bo'sh qolsa `FRONTEND_URL` dan olinadi (u vergul bilan bir necha
+ * manzil tutishi mumkin — birinchisi olinadi).
+ *
+ * ⚠️ https SHART: Telegram http manzilni umuman ochmaydi.
+ *    Sozlanmagan bo'lsa tugma ko'rsatilmaydi — buzuq tugmadan
+ *    ko'ra tugmasiz xabar yaxshiroq.
+ */
 function appUrl() {
-  const base =
+  const raw = (
     process.env.TMA_URL ||
-    (process.env.FRONTEND_URL || '').split(',')[0].trim()
-  if (!base || !base.startsWith('https://')) return ''
-  return `${base.replace(/\/+$/, '')}/tma.html`
+    (process.env.FRONTEND_URL || '').split(',')[0] ||
+    ''
+  ).trim()
+
+  if (!raw.startsWith('https://')) return ''
+
+  const base = raw.replace(/\/+$/, '')
+  return base.endsWith('.html') ? base : `${base}/tma.html`
 }
 
 /** Bog'langandan keyingi xabar — Mini App tugmasi bilan */

@@ -7,6 +7,7 @@ const {
   resolveContext,
   requirePermission,
 } = require("../utils/resolveContext");
+const { notifyGrades, inBackground } = require("../services/notify");
 
 // ── Baho qo'yish (bulk) ──────────────────────────────────────
 exports.saveGrades = async (req, res) => {
@@ -65,11 +66,15 @@ exports.saveGrades = async (req, res) => {
 
     const [year, month] = date.split("-").map(Number);
     let saved = 0;
+    // Ota-onaga xabar — faqat YANGI yoki O'ZGARGAN baholar.
+    // Ustoz ro'yxatni qayta saqlasa xabar takrorlanmasin.
+    const changed = [];
 
     for (const g of grades) {
       if (g.score === undefined || g.score === null) continue;
       const score = Math.max(0, Math.min(Number(maxScore), Number(g.score)));
-      await Grade.findOneAndUpdate(
+      // `new: false` — avvalgi hujjat qaytadi (yangisida `null`)
+      const before = await Grade.findOneAndUpdate(
         { class: classId, student: g.studentId, subject: resolvedSubject, date, type },
         {
           teacher: ctx.directorId,
@@ -79,9 +84,25 @@ exports.saveGrades = async (req, res) => {
           maxScore: Number(maxScore),
           note: (g.note || "").trim(),
         },
-        { upsert: true, new: true },
+        { upsert: true, new: false },
       );
+      if (!before || before.score !== score) {
+        changed.push({
+          studentId: g.studentId,
+          score,
+          maxScore: Number(maxScore),
+        });
+      }
       saved++;
+    }
+
+    // Javobni kutdirmaymiz — services/notify.js izohiga qarang
+    if (changed.length) {
+      inBackground(notifyGrades, {
+        directorId: ctx.directorId,
+        subject: resolvedSubject,
+        entries: changed,
+      });
     }
 
     res.json({ success: true, message: `${saved} ta baho saqlandi`, saved });
