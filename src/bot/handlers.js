@@ -1,247 +1,274 @@
 // src/bot/handlers.js
-const Teacher = require('../models/Teacher')
-const Class = require('../models/Class')
-const Student = require('../models/Student')
-const TelegramParent = require('../models/TelegramParent')
-const { classesKeyboard, studentsKeyboard, confirmKeyboard, backKeyboard } = require('./keyboards')
+// ════════════════════════════════════════════════════════════
+// Bot orqali BOG'LANISH — ota-ona/o'quvchini Telegram hisobiga
+// biriktirish. Ko'rish esa Mini App'da (routes/tma.js).
+//
+// ⚠️ ESKI OQIM XAVFLI EDI VA OLIB TASHLANDI. U shunday ishlardi:
+//    o'qituvchining emailini yozasan → sinfni tanlaysan →
+//    ro'yxatdan ISTALGAN bolani bosasan → "ota-onasi" bo'lasan.
+//    Hech qanday isbot yo'q edi. To'lov eslatmasi uchun bu
+//    e'tiborsizlik edi; baho va davomat uchun — begona odam
+//    boshqa oilaning ma'lumotini o'qishi.
+//
+// YANGI OQIM:
+//    /start → raqamni yuborish tugmasi → Telegram raqamni O'ZI
+//    yuboradi → bazadagi `Student.parentPhone` bilan solishtiriladi.
+//    Mos kelmasa — markazdan olingan bir martalik kod.
+//
+//    Raqam Telegram tomonidan tasdiqlangan, foydalanuvchi uni
+//    qo'lda o'zgartira olmaydi. Isbot shu yerda.
+// ════════════════════════════════════════════════════════════
 
-// Har bir chat uchun holat (memory da)
-// { state, teacherId, teacherName, classes, classId, className, students, studentId, studentName }
-const userStates = {}
+const Student = require('../models/Student')
+const Class = require('../models/Class')
+const StudentLink = require('../models/StudentLink')
+const InviteCode = require('../models/InviteCode')
+const { phoneKey } = require('../utils/phone')
+const {
+  phoneKeyboard,
+  removeKeyboard,
+  openAppKeyboard,
+} = require('./keyboards')
+
+const MD = { parse_mode: 'Markdown' }
+
+/** Mini App manzili — sozlanmagan bo'lsa tugma ko'rsatilmaydi */
+function appUrl() {
+  const base =
+    process.env.TMA_URL ||
+    (process.env.FRONTEND_URL || '').split(',')[0].trim()
+  if (!base || !base.startsWith('https://')) return ''
+  return `${base.replace(/\/+$/, '')}/tma.html`
+}
+
+/** Bog'langandan keyingi xabar — Mini App tugmasi bilan */
+async function sendLinked(bot, chatId, names) {
+  const url = appUrl()
+  const list = names.map((n) => `• *${n}*`).join('\n')
+
+  await bot.sendMessage(
+    chatId,
+    `✅ *Bog'landingiz!*\n\n${list}\n\n` +
+      `Endi baho, davomat va to'lovlarni ko'rishingiz mumkin.`,
+    url
+      ? { ...MD, reply_markup: openAppKeyboard(url) }
+      : { ...MD, reply_markup: removeKeyboard() },
+  )
+}
 
 // ── /start ────────────────────────────────────────────────────
 const handleStart = async (bot, msg) => {
   const chatId = msg.chat.id
-  userStates[chatId] = { state: 'waiting_email' }
 
   try {
+    // Allaqachon bog'langan bo'lsa qaytadan so'ramaymiz
+    const existing = await StudentLink.find({
+      telegramUserId: String(msg.from.id),
+      isActive: true,
+    })
+      .populate('student', 'name')
+      .lean()
+
+    if (existing.length) {
+      await sendLinked(
+        bot,
+        chatId,
+        existing.map((l) => l.student?.name || '—'),
+      )
+      return
+    }
+
     await bot.sendMessage(
       chatId,
       `👋 *Assalomu alaykum!*\n\n` +
-      `@SchoolfondsBot ga xush kelibsiz! 🏫\n\n` +
-      `Bu bot orqali farzandingizning maktab fond to'lovlari haqida *oylik eslatmalar* olasiz.\n\n` +
-      `▶️ Boshlash uchun farzandingiz o'qituvchisining *email manzilini* yuboring:\n` +
-      `_(masalan: teacher@email.com)_`,
-      { parse_mode: 'Markdown' }
+        `Bu bot orqali farzandingizning *baholari*, *davomati* va ` +
+        `*to'lovlari*ni kuzatasiz.\n\n` +
+        `▶️ Boshlash uchun pastdagi tugma bilan *raqamingizni yuboring*. ` +
+        `Raqam o'quv markazidagi ro'yxat bilan solishtiriladi.\n\n` +
+        `_Agar raqamingiz topilmasa, markazdan bir martalik kod so'rang ` +
+        `va shu yerga yozing._`,
+      { ...MD, reply_markup: phoneKeyboard() },
     )
   } catch (err) {
     console.error('handleStart xatosi:', err.message)
   }
 }
 
-// ── Matn xabarlar ─────────────────────────────────────────────
-const handleMessage = async (bot, msg) => {
+// ── Raqam kelganda ────────────────────────────────────────────
+const handleContact = async (bot, msg) => {
   const chatId = msg.chat.id
-  const text = msg.text?.trim()
+  const contact = msg.contact
 
-  if (!text) return
-
-  const state = userStates[chatId]
-
-  if (!state) {
-    await bot.sendMessage(chatId, `Boshlash uchun /start bosing.`)
-    return
-  }
-
-  // ── Email kutilmoqda ──
-  if (state.state === 'waiting_email') {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(text)) {
+  try {
+    // ⚠️ Boshqa odamning kontaktini yuborish mumkin. Telegram
+    //    faqat O'Z raqamida `user_id` ni to'ldiradi va u
+    //    yuboruvchiga teng bo'ladi. Tekshirmasak, birov
+    //    qo'shnisining raqamini yuborib uning bolasini ko'rardi.
+    if (!contact?.phone_number || String(contact.user_id) !== String(msg.from.id)) {
       await bot.sendMessage(
         chatId,
-        `❌ Bu to'g'ri email emas.\n\nIltimos, to'g'ri email kiriting:\n_(masalan: teacher@email.com)_`,
-        { parse_mode: 'Markdown' }
+        `⚠️ Iltimos, *o'zingizning* raqamingizni yuboring — pastdagi tugma orqali.`,
+        { ...MD, reply_markup: phoneKeyboard() },
       )
       return
     }
 
-    try {
-      const teacher = await Teacher.findOne({ email: text.toLowerCase() })
+    const key = phoneKey(contact.phone_number)
+    if (!key) {
+      await bot.sendMessage(chatId, `⚠️ Raqamni o'qib bo'lmadi.`)
+      return
+    }
 
-      if (!teacher) {
-        await bot.sendMessage(
-          chatId,
-          `❌ *${text}* emailli o'qituvchi topilmadi.\n\nIltimos, to'g'ri email kiriting:`,
-          { parse_mode: 'Markdown' }
-        )
-        return
-      }
+    // Bazadagi raqamlar turli ko'rinishda yozilgan bo'lishi mumkin
+    // (`+998 90 …`, `90 …`), shuning uchun oxirgi 9 raqam bo'yicha
+    // solishtiramiz — utils/phone.js dagi izoh.
+    const candidates = await Student.find({
+      parentPhone: { $regex: `${key}$` },
+      isActive: { $ne: false },
+    })
+      .select('name class parentPhone')
+      .lean()
 
-      if (!teacher.isActive) {
-        await bot.sendMessage(chatId, `⚠️ Bu o'qituvchining akkaunt hozirda faol emas.`)
-        return
-      }
+    const matched = candidates.filter((s) => phoneKey(s.parentPhone) === key)
 
-      const classes = await Class.find({ teacher: teacher._id }).sort({ name: 1 })
-
-      if (classes.length === 0) {
-        await bot.sendMessage(
-          chatId,
-          `⚠️ *${teacher.name}* o'qituvchida hozircha sinf yo'q.\n\nBoshqa email kiriting:`,
-          { parse_mode: 'Markdown' }
-        )
-        return
-      }
-
-      userStates[chatId] = {
-        state: 'waiting_class',
-        teacherId: teacher._id.toString(),
-        teacherName: teacher.name,
-        classes,
-      }
-
+    if (!matched.length) {
       await bot.sendMessage(
         chatId,
-        `✅ *${teacher.name}* o'qituvchi topildi!\n\nFarzandingiz qaysi sinfda o'qiydi? 👇`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: classesKeyboard(classes),
-        }
+        `🔍 *${contact.phone_number}* raqami ro'yxatdan topilmadi.\n\n` +
+          `Ikki yo'l bor:\n` +
+          `1️⃣ O'quv markazidan *bir martalik kod* so'rang va shu yerga yozing\n` +
+          `2️⃣ Markazga murojaat qilib, raqamingizni yangilashni so'rang`,
+        { ...MD, reply_markup: removeKeyboard() },
       )
-    } catch (err) {
-      console.error('Email search xatosi:', err.message)
-      await bot.sendMessage(chatId, `❌ Xatolik yuz berdi. /start bosib qaytadan urinib ko'ring.`)
+      return
     }
+
+    // Sinf orqali direktorni topamiz
+    const classIds = [...new Set(matched.map((s) => String(s.class)))]
+    const classes = await Class.find({ _id: { $in: classIds } })
+      .select('teacher')
+      .lean()
+    const directorOf = new Map(
+      classes.map((c) => [String(c._id), String(c.teacher)]),
+    )
+
+    const names = []
+    for (const s of matched) {
+      const director = directorOf.get(String(s.class))
+      if (!director) continue
+
+      // ⚠️ Bir nechta farzand bo'lsa hammasi bog'lanadi — raqam
+      //    bitta, ya'ni ota-ona ham o'sha. Tanlashni so'rash
+      //    ortiqcha qadam bo'lardi.
+      await StudentLink.updateOne(
+        { telegramUserId: String(msg.from.id), student: s._id },
+        {
+          $set: {
+            director,
+            telegramChatId: String(chatId),
+            telegramUsername: msg.from.username || '',
+            kind: 'parent',
+            verifiedVia: 'phone',
+            phoneKey: key,
+            isActive: true,
+          },
+        },
+        { upsert: true },
+      )
+      names.push(s.name)
+    }
+
+    if (!names.length) {
+      await bot.sendMessage(chatId, `⚠️ Bog'lashda xatolik. Markazga murojaat qiling.`)
+      return
+    }
+
+    console.log(`[bot] raqam orqali bog'landi: ${msg.from.id} → ${names.join(', ')}`)
+    await sendLinked(bot, chatId, names)
+  } catch (err) {
+    console.error('handleContact xatosi:', err.message)
+    await bot.sendMessage(chatId, `❌ Xatolik yuz berdi. /start bosib qayta urining.`)
   }
 }
 
-// ── Inline tugmalar ────────────────────────────────────────────
-const handleCallbackQuery = async (bot, query) => {
-  const chatId = query.message.chat.id
-  const data = query.data
-  const state = userStates[chatId]
+// ── Matn xabarlar — taklif kodi ───────────────────────────────
+const handleMessage = async (bot, msg) => {
+  const chatId = msg.chat.id
+  const text = msg.text?.trim()
+  if (!text) return
 
-  // Har doim callback ni tasdiqlash (loading animatsiyasini to'xtatadi)
+  const code = InviteCode.normalizeCode(text)
+
+  // Kodga o'xshamasa — yo'riqnomani eslatamiz
+  if (code.length < 6 || code.length > 16) {
+    await bot.sendMessage(
+      chatId,
+      `Boshlash uchun /start bosing va raqamingizni yuboring.\n\n` +
+        `Agar sizda *bir martalik kod* bo'lsa, uni shu yerga yozing.`,
+      MD,
+    )
+    return
+  }
+
+  try {
+    const invite = await InviteCode.findOne({ code })
+
+    // Yo'q / ishlatilgan / eskirgan — bir xil javob (kod terib
+    // topishga urinayotgan odam farqni bilmasin)
+    if (!invite || invite.usedAt || invite.expiresAt <= new Date()) {
+      await bot.sendMessage(chatId, `❌ Kod noto'g'ri yoki muddati o'tgan.`)
+      return
+    }
+
+    const student = await Student.findById(invite.student).select('name').lean()
+    if (!student) {
+      await bot.sendMessage(chatId, `❌ Kod noto'g'ri yoki muddati o'tgan.`)
+      return
+    }
+
+    await StudentLink.updateOne(
+      { telegramUserId: String(msg.from.id), student: invite.student },
+      {
+        $set: {
+          director: invite.director,
+          telegramChatId: String(chatId),
+          telegramUsername: msg.from.username || '',
+          kind: invite.kind,
+          verifiedVia: 'code',
+          isActive: true,
+        },
+      },
+      { upsert: true },
+    )
+
+    invite.usedAt = new Date()
+    invite.usedByTelegramId = String(msg.from.id)
+    await invite.save()
+
+    console.log(`[bot] kod orqali bog'landi: ${msg.from.id} → ${student.name}`)
+    await sendLinked(bot, chatId, [student.name])
+  } catch (err) {
+    console.error('Kod tekshirish xatosi:', err.message)
+    await bot.sendMessage(chatId, `❌ Xatolik yuz berdi. Qayta urinib ko'ring.`)
+  }
+}
+
+// ── Inline tugmalar ───────────────────────────────────────────
+// Eski oqim olib tashlangani uchun hozircha faqat "qaytadan".
+const handleCallbackQuery = async (bot, query) => {
   try {
     await bot.answerCallbackQuery(query.id)
   } catch (_) {}
 
-  // ── Boshidan boshlash ──
-  if (data === 'restart' || data === 'cancel') {
-    userStates[chatId] = { state: 'waiting_email' }
-    await bot.sendMessage(chatId, `🔄 Boshidan boshlaylik.\n\nO'qituvchi emailini kiriting:`)
-    return
-  }
-
-  if (!state) {
-    await bot.sendMessage(chatId, `/start bosing.`)
-    return
-  }
-
-  // ── Sinf tanlandi ──
-  if (data.startsWith('class_') && state.state === 'waiting_class') {
-    const classId = data.replace('class_', '')
-    const selectedClass = state.classes?.find((c) => c._id.toString() === classId)
-
-    if (!selectedClass) {
-      await bot.sendMessage(chatId, `❌ Sinf topilmadi. /start bosing.`)
-      return
-    }
-
-    try {
-      const students = await Student.find({ class: classId }).sort({ rollNumber: 1 })
-
-      if (students.length === 0) {
-        await bot.sendMessage(
-          chatId,
-          `⚠️ *${selectedClass.name}* sinfida o'quvchi ro'yxati yo'q.`,
-          { parse_mode: 'Markdown', reply_markup: backKeyboard() }
-        )
-        return
-      }
-
-      userStates[chatId] = {
-        ...state,
-        state: 'waiting_student',
-        classId,
-        className: selectedClass.name,
-        students,
-      }
-
-      await bot.sendMessage(
-        chatId,
-        `📚 *${selectedClass.name}* sinfi o'quvchilari:\n\nFarzandingizni tanlang 👇`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: studentsKeyboard(students),
-        }
-      )
-    } catch (err) {
-      console.error('Sinf tanlash xatosi:', err.message)
-      await bot.sendMessage(chatId, `❌ Xatolik. /start bosing.`)
-    }
-  }
-
-  // ── O'quvchi tanlandi ──
-  if (data.startsWith('student_') && state.state === 'waiting_student') {
-    const studentId = data.replace('student_', '')
-    const selectedStudent = state.students?.find((s) => s._id.toString() === studentId)
-
-    if (!selectedStudent) {
-      await bot.sendMessage(chatId, `❌ O'quvchi topilmadi. /start bosing.`)
-      return
-    }
-
-    userStates[chatId] = {
-      ...state,
-      state: 'confirming',
-      studentId,
-      studentName: selectedStudent.name,
-    }
-
-    await bot.sendMessage(
-      chatId,
-      `📋 *Tasdiqlash*\n\n` +
-      `👤 O'quvchi: *${selectedStudent.name}*\n` +
-      `🏫 Sinf: *${state.className}*\n` +
-      `👨‍🏫 O'qituvchi: *${state.teacherName}*\n\n` +
-      `Ushbu o'quvchining ota-onasi sifatida ro'yxatdan o'tmoqchimisiz?`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: confirmKeyboard(studentId),
-      }
-    )
-  }
-
-  // ── Tasdiqlash ──
-  if (data.startsWith('confirm_') && state.state === 'confirming') {
-    try {
-      // Allaqachon ulangan chatId bormi?
-      const existing = await TelegramParent.findOne({ telegramChatId: String(chatId) })
-
-      if (existing) {
-        existing.studentId = state.studentId
-        existing.classId = state.classId
-        existing.teacherId = state.teacherId
-        existing.telegramUsername = query.from.username || ''
-        existing.isActive = true
-        await existing.save()
-      } else {
-        await TelegramParent.create({
-          telegramChatId: String(chatId),
-          telegramUsername: query.from.username || '',
-          studentId: state.studentId,
-          classId: state.classId,
-          teacherId: state.teacherId,
-        })
-      }
-
-      delete userStates[chatId]
-
-      await bot.sendMessage(
-        chatId,
-        `✅ *Muvaffaqiyatli ro'yxatdan o'tdingiz!*\n\n` +
-        `👤 O'quvchi: *${state.studentName}*\n` +
-        `🏫 Sinf: *${state.className}*\n\n` +
-        `📅 Endi har oyning *1-sanasida* to'lov eslatmalarini olasiz.\n\n` +
-        `_Ma'lumotlarni o'zgartirish uchun /start bosing._`,
-        { parse_mode: 'Markdown' }
-      )
-    } catch (err) {
-      console.error("Ro'yxatdan o'tishda xato:", err.message)
-      await bot.sendMessage(chatId, `❌ Saqlashda xatolik. /start bosib qaytadan urinib ko'ring.`)
-    }
+  if (query.data === 'restart' || query.data === 'cancel') {
+    await handleStart(bot, { chat: query.message.chat, from: query.from })
   }
 }
 
-module.exports = { handleStart, handleMessage, handleCallbackQuery }
+module.exports = {
+  handleStart,
+  handleContact,
+  handleMessage,
+  handleCallbackQuery,
+  appUrl,
+}

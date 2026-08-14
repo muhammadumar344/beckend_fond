@@ -471,6 +471,57 @@ xato bermaydi. `check:messages` aynan shuni topadi.
 shart. Bo'lmasa brauzer sarlavhani umuman yubormaydi va hamma narsa
 o'zbekcha chiqaveradi.
 
+## Telegram Mini App (ota-ona / o'quvchi)
+
+Direktor CRM'idan **butunlay alohida** bo'lim: `/api/tma/*`,
+o'z middleware'i, o'z controlleri.
+
+⚠️ **Bu ikkalasini aralashtirmang.** `middleware/auth.js` (direktor
+tokeni) `/api/tma/*` ga ulanmasin, `tmaAuth` boshqa router'da
+ishlatilmasin. Aralashsa ota-ona hisobi bilan markaz moliyasiga
+yo'l ochiladi.
+
+### Kim kimligini isbotlash
+
+| Qatlam | Fayl | Nima qiladi |
+|---|---|---|
+| Imzo | `services/telegramAuth.js` | `initData` HMAC tekshiruvi |
+| Bog'lanish | `models/StudentLink.js` | Telegram hisobi ↔ o'quvchi |
+| Ruxsat | `utils/tmaAccess.js` | Qaysi bo'lim ochiq |
+
+Bog'lanish uch xil isbotlanadi:
+
+- **`phone`** — bot'da yuborilgan raqam `Student.parentPhone` bilan
+  mos keldi (asosiy yo'l, ota-onalarning ko'pchiligi)
+- **`code`** — xodim CRM'da chiqargan bir martalik kod
+- **`legacy`** — eski `TelegramParent` yozuvi, **isbotsiz**
+
+⚠️ **`legacy` faqat to'lovni ko'radi.** Eski bot'da o'qituvchi
+emailini bilgan har kim ro'yxatdan istalgan bolani tanlab
+"ota-onasi" bo'lib qo'ya olardi. O'sha yozuvlarga baho ochib
+berish — yillik maxfiy ma'lumotni tarqatish bo'lardi. To'lov
+eslatmasi esa avvaldan ishlab turgan, uni to'xtatsak haqiqiy
+ota-onalarni jazolagan bo'lardik.
+
+⚠️ `utils/tmaAccess.js` ga **yangi bo'lim qo'shishni unutmang**.
+Noma'lum bo'lim standart holda **yopiq** — ya'ni unutilgani
+ochilib qolmaydi, lekin ishlamaydi ham.
+
+⚠️ Raqamlarni **hech qachon to'g'ridan-to'g'ri solishtirmang**.
+Bazada `+998 90 …`, `90 …`, `901234567` — hammasi bor.
+`utils/phone.js` oxirgi 9 raqam bo'yicha solishtiradi.
+
+⚠️ Kontakt kelganda `contact.user_id === msg.from.id` tekshiruvi
+**shart**. Telegram'da birovning kontaktini yuborish mumkin —
+tekshirmasak, qo'shnisining raqamini yuborib uning bolasini
+ko'rish mumkin bo'lardi.
+
+### Yoqish
+
+`TMA_URL` (yoki `FRONTEND_URL`) + `/tma.html`. Frontend'da bu
+alohida Vite kirish nuqtasi — router/Pinia/i18n **yo'q**, jami
+~90 KB. CRM 260 KB, uni Telegram ichida ochish mumkin emas.
+
 ## Xavfsizlik
 
 Uchta qatlam, uchtasi ham `middleware/` da:

@@ -273,6 +273,23 @@ const MESSAGES = {
   "Muassasa hisobi o'chirilmoqda": { ru: "Аккаунт учреждения удаляется", en: "The institution's account is being deleted" },
   "Muassasa hisobi o'chirilmoqda. Direktor bilan bog'laning.": { ru: "Аккаунт учреждения удаляется. Свяжитесь с директором.", en: "The institution's account is being deleted. Contact the director." },
 
+  // ── So'rov cheklagichi ──────────────────────────────────
+  "Juda ko'p kirish urinishi. 15 daqiqadan keyin urinib ko'ring.": { ru: "Слишком много попыток входа. Повторите через 15 минут.", en: "Too many sign-in attempts. Try again in 15 minutes." },
+  "Bu hisobga juda ko'p urinish bo'ldi. 15 daqiqadan keyin urining.": { ru: "Слишком много попыток для этого аккаунта. Повторите через 15 минут.", en: "Too many attempts for this account. Try again in 15 minutes." },
+  "Juda ko'p so'rov. Bir soatdan keyin urinib ko'ring.": { ru: "Слишком много запросов. Повторите через час.", en: "Too many requests. Try again in an hour." },
+  "Juda ko'p ro'yxatdan o'tish urinishi. Keyinroq urining.": { ru: "Слишком много попыток регистрации. Повторите позже.", en: "Too many sign-up attempts. Try again later." },
+  "Juda ko'p fayl yuborildi. Birozdan keyin urinib ko'ring.": { ru: "Отправлено слишком много файлов. Повторите позже.", en: "Too many uploads. Try again shortly." },
+  "Juda ko'p urinish. Bir soatdan keyin urinib ko'ring.": { ru: "Слишком много попыток. Повторите через час.", en: "Too many attempts. Try again in an hour." },
+  "Parol o'zgargan — qaytadan tizimga kiring": { ru: "Пароль изменён — войдите заново", en: "Password changed — please sign in again" },
+
+  // ── Mini App (ota-ona / o'quvchi) ───────────────────────
+  "Bu o'quvchiga ruxsat yo'q": { ru: "Нет доступа к этому ученику", en: "No access to this student" },
+  "Buni ko'rish uchun hisobingizni tasdiqlang": { ru: "Подтвердите аккаунт, чтобы увидеть это", en: "Verify your account to see this" },
+  "Kod noto'g'ri yoki muddati o'tgan": { ru: "Код неверный или истёк", en: "The code is invalid or has expired" },
+  "Kod noto'g'ri": { ru: "Неверный код", en: "Invalid code" },
+  "Ulanish topilmadi": { ru: "Связь не найдена", en: "Link not found" },
+  "Ulanish uzildi": { ru: "Связь разорвана", en: "Link removed" },
+
   // ── Telegram / SMS ──────────────────────────────────────
   "Bot ishlamayapti": { ru: "Бот не работает", en: "The bot is not running" },
   "Eslatmalar yuborildi": { ru: "Напоминания отправлены", en: "Reminders sent" },

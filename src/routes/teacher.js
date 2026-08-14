@@ -116,6 +116,21 @@ router.get(
 );
 router.delete("/students/:studentId", allowTeacherOrStaff, ctrl.deleteStudent);
 
+// ══ MINI APP ULANISHI — ota-onani Telegram'ga bog'lash ══════
+// Kod bilan bog'lanish o'zi bot'da; bu yerda faqat kod chiqariladi.
+const inviteCtrl = require("../controllers/inviteController");
+router.post(
+  "/students/:studentId/invite",
+  allowTeacherOrStaff,
+  inviteCtrl.createInvite,
+);
+router.get(
+  "/students/:studentId/links",
+  allowTeacherOrStaff,
+  inviteCtrl.getStudentLinks,
+);
+router.delete("/links/:linkId", allowTeacherOrStaff, inviteCtrl.revokeLink);
+
 // ══ PAYMENTS — Director + 'managePayments' huquqli xodim ════
 // Ruxsat controller ichida requirePermission(ctx, 'managePayments') bilan
 // tekshiriladi; xodim faqat o'z filiali sinflarini ko'radi/o'zgartiradi.

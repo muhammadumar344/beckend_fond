@@ -118,6 +118,7 @@ const _attachHandlers = () => {
 
   const {
     handleStart,
+    handleContact,
     handleMessage,
     handleCallbackQuery,
   } = require("./handlers");
@@ -137,11 +138,16 @@ const _attachHandlers = () => {
       await bot.sendMessage(
         msg.chat.id,
         `ℹ️ *Yordam*\n\n` +
-          `Bu bot orqali maktab fond to'lovlari haqida eslatma olasiz.\n\n` +
+          `Bu bot orqali farzandingizning baholari, davomati va ` +
+          `to'lovlarini kuzatasiz.\n\n` +
           `📌 *Buyruqlar:*\n` +
-          `/start — Ro'yxatdan o'tish\n` +
+          `/start — Bog'lanish yoki ilovani ochish\n` +
           `/help — Yordam\n\n` +
-          `❓ Muammo bo'lsa o'qituvchingiz bilan bog'laning.`,
+          `🔗 *Bog'lanish ikki yo'l bilan:*\n` +
+          `1️⃣ Raqamingizni yuborish — markazdagi ro'yxat bilan ` +
+          `solishtiriladi\n` +
+          `2️⃣ Markazdan olingan bir martalik kodni yozish\n\n` +
+          `❓ Raqamingiz topilmasa — o'quv markaziga murojaat qiling.`,
         { parse_mode: "Markdown" }
       );
     } catch (e) {
@@ -149,10 +155,17 @@ const _attachHandlers = () => {
     }
   });
 
-  // Oddiy xabarlar (text)
+  // ⚠️ Raqam MATNDAN OLDIN tekshiriladi: kontakt xabarida `text`
+  //    bo'lmaydi, lekin tartib chalkashsa oson yo'qolib qoladi.
+  bot.on("contact", (msg) => {
+    console.log(`📱 Raqam keldi — chatId: ${msg.chat.id}`);
+    handleContact(bot, msg);
+  });
+
+  // Oddiy xabarlar (text) — taklif kodi shu yerdan o'tadi
   bot.on("message", (msg) => {
+    if (msg.contact) return; // yuqoridagi handler ushlaydi
     if (msg.text && !msg.text.startsWith("/")) {
-      console.log(`💬 Xabar: "${msg.text}" (chatId: ${msg.chat.id})`);
       handleMessage(bot, msg);
     }
   });

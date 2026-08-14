@@ -105,6 +105,12 @@ try {
 }
 try {
   app.use('/api/lc', require('./routes/lc'));
+
+  // ⚠️ Mini App (ota-ona/o'quvchi) — ATAYLAB alohida bo'lim.
+  //    O'zining middleware'i (`tmaAuth`), o'zining controlleri.
+  //    Bu yerga direktor route'larini ulamang: ota-ona hisobi
+  //    bilan markaz moliyasiga yo'l ochilib ketadi.
+  app.use('/api/tma', require('./routes/tma'));
   console.log('✅ /api/lc router mounted');
 } catch (e) {
   console.warn('⚠️  routes/lc topilmadi yoki xato:', e.message || e);
