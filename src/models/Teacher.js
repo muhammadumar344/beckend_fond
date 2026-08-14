@@ -74,6 +74,11 @@ const teacherSchema = new mongoose.Schema({
   deletionRequestedAt:  { type: Date, default: null },
   deletionScheduledFor: { type: Date, default: null },
 
+  // Parol oxirgi marta qachon almashgan — bundan OLDIN berilgan
+  // tokenlar yaroqsiz (middleware/auth.js). Quyidagi pre('save')
+  // hook o'zi to'ldiradi, qo'lda yozish shart emas.
+  passwordChangedAt: { type: Date, default: null },
+
   registeredDate: { type: Date, default: Date.now },
 }, {
   timestamps: true
@@ -88,6 +93,14 @@ teacherSchema.pre('save', async function(next) {
   } catch (e) {
     return next(e)
   }
+  // Parol almashgan payt — eski tokenlarni o'lik qilish uchun
+  // (middleware/auth.js). Bu YAGONA joy: parol qaysi yo'l bilan
+  // o'zgarmasin (o'zi, admin, "parolni unutdim") shu hook o'tadi.
+  //
+  // ⚠️ 2 soniya orqaga surilgan: JWT dagi `iat` SONIYAda yoziladi,
+  //    shu soniyada berilgan token o'zini "eski" deb topib,
+  //    foydalanuvchi parolni almashtirishi bilan o'zi chiqib ketardi.
+  this.passwordChangedAt = new Date(Date.now() - 2000)
   next()
 })
 

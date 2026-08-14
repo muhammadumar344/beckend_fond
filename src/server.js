@@ -18,6 +18,20 @@ if (!process.env.JWT_SECRET) {
 
 const app = express();
 
+// ⚠️ Render (va har qanday proksi) orqasida `req.ip` proksining
+//    manzilini ko'rsatadi. So'rov cheklagichi shu manzilga qarab
+//    sanaydi — ya'ni bu sozlamasiz BITTA foydalanuvchi hammani
+//    bloklab qo'yardi. `1` = faqat birinchi proksiga ishonamiz
+//    (Render shunday), aks holda mijoz sarlavhani soxtalashtiradi.
+app.set('trust proxy', 1);
+
+// Express o'zini "X-Powered-By: Express" deb tanishtiradi —
+// hujumchiga bekorga ma'lumot bermaymiz
+app.disable('x-powered-by');
+
+const { securityHeaders } = require('./middleware/security');
+app.use(securityHeaders);
+
 // ✅ TUZATILDI: agar FRONTEND_URL muhitda sozlanmagan/xato bo'lsa ham,
 // production domen qattiq yozilgan — sayt CORS sababli butunlay
 // to'xtab qolmaydi.

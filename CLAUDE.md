@@ -471,6 +471,73 @@ xato bermaydi. `check:messages` aynan shuni topadi.
 shart. Bo'lmasa brauzer sarlavhani umuman yubormaydi va hamma narsa
 o'zbekcha chiqaveradi.
 
+## Xavfsizlik
+
+Uchta qatlam, uchtasi ham `middleware/` da:
+
+| Fayl | Nima qiladi |
+|---|---|
+| `security.js` | Xavfsizlik sarlavhalari (nosniff, DENY, HSTS…) |
+| `rateLimit.js` | So'rov cheklagichi — parol terib topishga qarshi |
+| `auth.js` | Token + **seans hali haqiqiymi** tekshiruvi |
+
+### Seans bekor qilish — eng muhim tuzatish
+
+Ilgari `auth.js` faqat `jwt.verify` qilardi. Ya'ni token berilgach
+**30 kun** hech narsa uni to'xtata olmasdi:
+
+- admin direktorni bloklaydi → u ishlayveradi
+- direktor hisobni o'chiradi → tokeni ishlayveradi
+- parol o'g'irlanadi, egasi parolni almashtiradi → o'g'ri ichkarida
+
+Endi `auth.js` hisob holatini o'qiydi va **30 soniya keshlaydi**.
+Odatiy so'rovga yuk tushmaydi, bloklangan foydalanuvchi esa eng
+ko'pi bilan 30 soniyada uchib chiqadi.
+
+⚠️ `passwordChangedAt` ni **qo'lda yozmang**. Uni `pre('save')` hook
+o'zi qo'yadi — parol qaysi yo'l bilan o'zgarmasin (o'zi, admin,
+"parolni unutdim") o'sha yagona joydan o'tadi.
+
+⚠️ Vaqt 2 soniya orqaga suriladi: JWT dagi `iat` soniyada yoziladi,
+aks holda parol almashtirgan odam o'z tokeni bilan darhol chiqib
+ketardi.
+
+### So'rov cheklagichi
+
+Parol tekshiriladigan **har bir** manzil cheklangan. Ikki xil
+kalit bilan:
+
+- **IP bo'yicha** — 15 daqiqada 20 urinish
+- **Email bo'yicha** — 15 daqiqada 10 urinish
+
+Ikkinchisi shart: hujumchi IP almashtirib bitta hisobga hujum
+qilsa, IP cheklovi uni to'xtatmaydi.
+
+⚠️ `server.js` da `trust proxy` **shart**. Render orqasida `req.ip`
+proksining manzilini ko'rsatadi — bu sozlamasiz bitta foydalanuvchi
+hammani bloklab qo'yardi.
+
+⚠️ Cheklagich **xotirada**. Bitta instansiya uchun to'g'ri. Render'da
+instansiya ko'paytirilsa Redis kerak bo'ladi.
+
+### Tiklash tokeni
+
+Bazada **hash** bo'lib yotadi (`sha256`), xatga ochiq token ketadi.
+Baza nusxasi chiqib ketsa ham tokenlar foydasiz.
+
+⚠️ Bu o'zgarish eski, ishlatilmagan tiklash havolalarini kuchsiz
+qildi — foydalanuvchi qaytadan so'rasa bo'ldi.
+
+### Tekshirilgan va joyida
+
+- **IDOR** — hamma joyda `findOne({ _id, teacher: ctx.directorId })`
+  qolipi. Boshqa markazning ma'lumotiga ID bilan kirib bo'lmaydi.
+- **Mass assignment** — hech qayerda `...req.body` model ichiga
+  to'g'ridan-to'g'ri tushmaydi.
+- **Foydalanuvchi sanash** — login va parol tiklash bir xil javob
+  beradi, email bor-yo'qligi bilinmaydi.
+- **XSS** — Vue o'zi ekranlaydi; yagona `v-html` i18n matni ustida.
+
 ## Cron
 
 `server.js` **bazaga ulangandan keyin** ishga tushiradi:

@@ -12,6 +12,8 @@ const prCtrl = require("../controllers/paymentRequestController");
 const auth = require("../middleware/auth");
 const { onlyTeacher, allowTeacherOrStaff } = require("../middleware/roles"); // ✅ TUZATILDI: destructure
 const { requireLCMode } = require("../middleware/mode"); // ✅ YANGI
+// Rasm yuboriladigan manzillar — katta tana bilan serverni bo'g'ishga qarshi
+const { uploadLimiter } = require("../middleware/rateLimit");
 
 const {
   exportPreviousYear,
@@ -25,7 +27,7 @@ router.use(auth);
 // Brendlash (white-label): o'qishni xodim ham qiladi (sidebar uchun),
 // o'zgartirishni faqat direktor — tekshiruv controller ichida.
 router.get("/branding", allowTeacherOrStaff, ctrl.getBranding);
-router.put("/branding", onlyTeacher, ctrl.updateBranding);
+router.put("/branding", uploadLimiter, onlyTeacher, ctrl.updateBranding);
 
 // ══ HISOBNI O'CHIRISH — faqat direktorning o'zi ═════════════
 // Tiklash `/api/auth/restore-account` da (login talab qilinmaydi).
@@ -159,7 +161,7 @@ router.post("/telegram/send-to-students", onlyTeacher, tgCtrl.sendToStudents);
 router.get("/referral", onlyTeacher, refCtrl.getMyReferral);
 
 // ══ PAYMENT REQUESTS — faqat Director ════════════════════════
-router.post("/payment-requests", onlyTeacher, prCtrl.createRequest);
+router.post("/payment-requests", uploadLimiter, onlyTeacher, prCtrl.createRequest);
 router.get("/payment-requests", onlyTeacher, prCtrl.getMyRequests);
 
 // ══ BRANCHES — faqat Director ════════════════════════════════

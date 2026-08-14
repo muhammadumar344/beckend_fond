@@ -26,6 +26,11 @@ const staffSchema = new mongoose.Schema({
 
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Staff', default: null },
   isActive:  { type: Boolean, default: true },
+
+  // Parol oxirgi marta qachon almashgan — bundan OLDIN berilgan
+  // tokenlar yaroqsiz (middleware/auth.js). Quyidagi pre('save')
+  // hook o'zi to'ldiradi.
+  passwordChangedAt: { type: Date, default: null },
 }, { timestamps: true })
 
 staffSchema.index({ email: 1 }, { unique: true })
@@ -34,6 +39,8 @@ staffSchema.index({ director: 1, branch: 1 })
 staffSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next()
   this.password = await bcrypt.hash(this.password, 10)
+  // Eski tokenlarni o'lik qilish uchun — Teacher.js dagi izohga qarang
+  this.passwordChangedAt = new Date(Date.now() - 2000)
   next()
 })
 

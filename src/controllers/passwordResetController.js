@@ -29,6 +29,17 @@ const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 soat
 // Javob har doim bir xil — email bor-yo'qligi oshkor bo'lmasin
 const VAGUE = "Agar email mavjud bo'lsa, tiklash xati yuborildi";
 
+/**
+ * Tiklash tokenining bazada saqlanadigan ko'rinishi.
+ *
+ * Token 32 bayt tasodifiy — taxmin qilib bo'lmaydi, shuning uchun
+ * bcrypt kabi sekin algoritm shart emas: sha256 yetadi va tez.
+ * (Parolda boshqacha — u qisqa va taxmin qilinadi, o'sha yerda
+ * ataylab sekin bcrypt ishlatiladi.)
+ */
+const hashToken = (t) =>
+  crypto.createHash("sha256").update(String(t)).digest("hex");
+
 /** FRONTEND_URL dan toza asosiy manzil */
 function baseUrl() {
   return (process.env.FRONTEND_URL || "https://schoolfonds.netlify.app")
@@ -76,8 +87,13 @@ exports.forgotPassword = async (req, res) => {
       return res.json({ success: true, message: VAGUE });
     }
 
+    // ⚠️ Xatga KETADIGAN token va BAZADA saqlanadigan qiymat boshqa-boshqa.
+    //    Bazaga hash yoziladi, chunki tiklash tokeni parol bilan tengdir:
+    //    baza nusxasi bir zum begonaning qo'liga tushsa, ochiq token bilan
+    //    istalgan hisobga kirib olish mumkin edi. Hash bo'lsa — foydasiz.
+    //    (Parolning o'zi ham shu sababdan hash bo'lib yotadi.)
     const token = crypto.randomBytes(32).toString("hex");
-    doc.resetPasswordToken = token;
+    doc.resetPasswordToken = hashToken(token);
     doc.resetPasswordExpires = new Date(Date.now() + TOKEN_TTL_MS);
     await doc.save();
 
@@ -124,7 +140,8 @@ exports.resetPassword = async (req, res) => {
     }
 
     const query = {
-      resetPasswordToken: token,
+      // Bazada hash yotibdi — kelgan tokenni ham hash qilib solishtiramiz
+      resetPasswordToken: hashToken(token),
       resetPasswordExpires: { $gt: new Date() },
     };
     // ⚠️ Ikkala maydon ham `select: false` — aniq so'ralmasa kelmaydi
