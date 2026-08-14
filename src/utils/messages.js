@@ -290,6 +290,27 @@ const MESSAGES = {
   "Ulanish topilmadi": { ru: "Связь не найдена", en: "Link not found" },
   "Ulanish uzildi": { ru: "Связь разорвана", en: "Link removed" },
 
+  // ── Qo'shimcha mashg'ulot (support booking) ─────────────
+  "Ustoz tanlanmagan": { ru: "Преподаватель не выбран", en: "No teacher selected" },
+  "Hafta kuni noto'g'ri": { ru: "Неверный день недели", en: "Invalid day of week" },
+  "Vaqt HH:MM formatida bo'lsin": { ru: "Время в формате ЧЧ:ММ", en: "Time must be in HH:MM format" },
+  "Tugash vaqti boshlanishdan keyin bo'lsin": { ru: "Время окончания должно быть позже начала", en: "The end time must be after the start time" },
+  "Oraliq bitta uchrashuvga ham yetmaydi": { ru: "Интервал меньше одной встречи", en: "The window is shorter than one session" },
+  "Qabul vaqti topilmadi": { ru: "Приёмное время не найдено", en: "Office hours not found" },
+  "Holat noto'g'ri": { ru: "Неверный статус", en: "Invalid status" },
+  "Yozuv topilmadi": { ru: "Запись не найдена", en: "Booking not found" },
+  "Bu vaqt endi bo'sh emas": { ru: "Это время уже занято", en: "That time is no longer free" },
+  "Bu haftaga allaqachon yozilgansiz. Avval uni bekor qiling.": { ru: "Вы уже записаны на эту неделю. Сначала отмените её.", en: "You already have a booking this week. Cancel it first." },
+  "Bu yozuvni bekor qilib bo'lmaydi": { ru: "Эту запись нельзя отменить", en: "This booking cannot be cancelled" },
+  "Bekor qilish uchun kamida 2 soat qolishi kerak": { ru: "Отменить можно не позднее чем за 2 часа", en: "Cancellation requires at least 2 hours' notice" },
+  "Yozildingiz. Ustoz tasdiqlagach xabar keladi.": { ru: "Вы записаны. Придёт уведомление после подтверждения.", en: "Booked. You'll be notified once the teacher confirms." },
+  "Bekor qilindi": { ru: "Отменено", en: "Cancelled" },
+  "O'chirildi": { ru: "Удалено", en: "Deleted" },
+  "teacherId va date majburiy": { ru: "teacherId и date обязательны", en: "teacherId and date are required" },
+  "teacherId, date, startTime majburiy": { ru: "teacherId, date, startTime обязательны", en: "teacherId, date and startTime are required" },
+  "studentId, teacherId, date, startTime majburiy": { ru: "studentId, teacherId, date, startTime обязательны", en: "studentId, teacherId, date and startTime are required" },
+  "Juda ko'p urinish. Birozdan keyin urinib ko'ring.": { ru: "Слишком много попыток. Повторите позже.", en: "Too many attempts. Try again shortly." },
+
   // ── Telegram / SMS ──────────────────────────────────────
   "Bot ishlamayapti": { ru: "Бот не работает", en: "The bot is not running" },
   "Eslatmalar yuborildi": { ru: "Напоминания отправлены", en: "Reminders sent" },

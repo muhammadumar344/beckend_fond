@@ -516,11 +516,56 @@ Bazada `+998 90 …`, `90 …`, `901234567` — hammasi bor.
 tekshirmasak, qo'shnisining raqamini yuborib uning bolasini
 ko'rish mumkin bo'lardi.
 
+### Xabarnomalar
+
+`services/notify.js` — davomat, baho va yozilish hodisalari.
+
+⚠️ **"Keldi" haqida xabar yuborilmaydi.** Har kuni "farzandingiz
+darsga keldi" — shovqin: ota-ona bir hafta o'qiydi, keyin botni
+o'chiradi va rostdan muhim xabarni ham ko'rmaydi.
+
+⚠️ Faqat **o'zgargan** yozuvlar xabar beradi. `findOneAndUpdate`
+`new: false` bilan avvalgi hujjatni qaytaradi — ustoz ro'yxatni
+ikki marta saqlasa ota-ona takror xabar olmaydi.
+
+⚠️ `inBackground()` bilan chaqiring. 30 ta Telegram xabari ~10
+soniya olishi mumkin; ustoz shuncha "Saqlanmoqda…" ni kuzatib
+turmasin. Xato ham yutiladi — Telegram javob bermagani
+davomatning saqlanishiga to'sqinlik qilmasin.
+
+### Qo'shimcha mashg'ulot (support booking)
+
+| Fayl | Vazifasi |
+|---|---|
+| `models/SupportSlot.js` | Ustozning takrorlanuvchi qabul vaqti |
+| `models/SupportBooking.js` | Haqiqiy yozuv |
+| `utils/supportSlots.js` | Bo'sh vaqtlarni **hisoblash** |
+| `services/supportBooking.js` | Yozilish qoidalari (CRM va ilova uchun bitta) |
+
+Bo'sh vaqtlar **saqlanmaydi**, har safar hisoblanadi:
+qabul oynasi − dars jadvali − band vaqtlar − o'tgan vaqt.
+Jadval o'zgarganda oldindan yozib qo'yilgan "bo'sh vaqtlar"
+yolg'on bo'lib qolardi.
+
+⚠️ **HAFTA KUNI IKKI XIL SANALADI.** Loyihada `0 = Dushanba`,
+JS `getDay()` da `0 = Yakshanba`. O'girish faqat
+`projectDayOfWeek()` da. Aralashtirsangiz bo'sh vaqtlar bir kun
+surilib ketadi va buni faqat ustoz kelmagan o'quvchini kutib
+turganda bilinadi. `test/supportSlots.test.js` qulflab turibdi.
+
+⚠️ Yozishdan oldin bo'shlik **qayta tekshiriladi**, ustiga noyob
+indeks bor (`teacher + date + startTime`). Tekshiruv bilan yozuv
+orasida tirqish bor — ikki kishi bir vaqtda bosgan holatni faqat
+indeks yopadi.
+
 ### Yoqish
 
 `TMA_URL` (yoki `FRONTEND_URL`) + `/tma.html`. Frontend'da bu
 alohida Vite kirish nuqtasi — router/Pinia/i18n **yo'q**, jami
-~90 KB. CRM 260 KB, uni Telegram ichida ochish mumkin emas.
+~96 KB. CRM 260 KB, uni Telegram ichida ochish mumkin emas.
+
+`TMA_URL` ikkala shaklni ham qabul qiladi: `https://saytim.uz`
+yoki `https://saytim.uz/tma.html`.
 
 ## Xavfsizlik
 

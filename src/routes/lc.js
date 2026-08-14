@@ -138,4 +138,19 @@ router.get("/dashboard-stats", allowTeacherOrStaff, groupCtrl.getDashboardStats)
 router.get("/reports/summary", allowTeacherOrStaff, groupCtrl.getReportSummary);
 router.get("/reports/export", allowTeacherOrStaff, groupCtrl.exportGroupsReport);
 
+
+// ─── QO'SHIMCHA MASHG'ULOT (support booking) ─────────────────────────────────
+// Ustoz qabul vaqtini belgilaydi, o'quvchi Mini App'dan yoziladi.
+// O'quvchi tomoni: routes/tma.js
+const supportCtrl = require("../controllers/supportController");
+
+router.get("/support/slots", allowTeacherOrStaff, supportCtrl.getSlots);
+router.post("/support/slots", allowTeacherOrStaff, supportCtrl.createSlot);
+router.delete("/support/slots/:slotId", allowTeacherOrStaff, supportCtrl.deleteSlot);
+
+router.get("/support/free", allowTeacherOrStaff, supportCtrl.getFree);
+router.get("/support/bookings", allowTeacherOrStaff, supportCtrl.getBookings);
+router.post("/support/bookings", allowTeacherOrStaff, supportCtrl.createBooking);
+router.put("/support/bookings/:bookingId", allowTeacherOrStaff, supportCtrl.updateBooking);
+
 module.exports = router;

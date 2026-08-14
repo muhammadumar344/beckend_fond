@@ -45,6 +45,8 @@ const OWNED = [
   ["Staff", "director"],
   ["StudentLink", "director"],
   ["Subject", "director"],
+  ["SupportBooking", "director"],
+  ["SupportSlot", "director"],
   ["TelegramParent", "teacherId"],
   ["Transaction", "teacher"],
 ];

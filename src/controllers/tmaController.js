@@ -21,7 +21,16 @@ const MonthlyPayment = require("../models/MonthlyPayment");
 const Teacher = require("../models/Teacher");
 const StudentLink = require("../models/StudentLink");
 const InviteCode = require("../models/InviteCode");
+const Staff = require("../models/Staff");
+const SupportSlot = require("../models/SupportSlot");
+const SupportBooking = require("../models/SupportBooking");
 const { canSee, isVerified, visibleSections } = require("../utils/tmaAccess");
+const { getStudentGroupIds } = require("../utils/enrollment");
+const { freeSlots } = require("../utils/supportSlots");
+const {
+  bookSlot,
+  cancelBooking: cancelBookingSvc,
+} = require("../services/supportBooking");
 
 /** Bog'lanishni topadi va bo'limga ruxsatni tekshiradi */
 function requireLink(req, res, studentId, section) {
@@ -215,6 +224,183 @@ exports.getPayments = async (req, res) => {
     });
   } catch (err) {
     console.error("[tma] getPayments", err);
+    res.status(500).json({ success: false, error: "Server xatosi" });
+  }
+};
+
+// ══ QO'SHIMCHA MASHG'ULOT ═══════════════════════════════════
+
+// ── GET /api/tma/student/:studentId/teachers ─────────────────
+// Kimga yozilish mumkin: o'quvchi guruhlarining ustozlari.
+exports.getSupportTeachers = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const link = requireLink(req, res, studentId, "booking");
+    if (!link) return;
+
+    // O'quvchi qatnashadigan guruhlar (asosiy + qo'shimcha)
+    const groupIds = await getStudentGroupIds(studentId);
+    if (!groupIds.length) return res.json({ success: true, teachers: [] });
+
+    const groups = await Class.find({ _id: { $in: groupIds } })
+      .select("assignedTeacher name")
+      .lean();
+
+    const teacherIds = [
+      ...new Set(groups.map((g) => g.assignedTeacher).filter(Boolean).map(String)),
+    ];
+    if (!teacherIds.length) return res.json({ success: true, teachers: [] });
+
+    // ⚠️ Faqat qabul vaqti BOR ustozlar ko'rsatiladi. Aks holda
+    //    o'quvchi ustozni tanlab, keyin "bo'sh vaqt yo'q" degan
+    //    bo'sh ekranga tushardi.
+    const withSlots = await SupportSlot.find({
+      teacher: { $in: teacherIds },
+      director: link.director,
+      isActive: true,
+    }).distinct("teacher");
+
+    const staff = await Staff.find({ _id: { $in: withSlots } })
+      .select("name position")
+      .lean();
+
+    res.json({
+      success: true,
+      teachers: staff.map((s) => ({
+        id: s._id,
+        name: s.name,
+        position: s.position || "",
+      })),
+    });
+  } catch (err) {
+    console.error("[tma] getSupportTeachers", err);
+    res.status(500).json({ success: false, error: "Server xatosi" });
+  }
+};
+
+// ── GET /api/tma/student/:studentId/free?teacherId=&date= ────
+exports.getFreeSlots = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const link = requireLink(req, res, studentId, "booking");
+    if (!link) return;
+
+    const { teacherId, date } = req.query;
+    if (!teacherId || !date) {
+      return res
+        .status(400)
+        .json({ success: false, error: "teacherId va date majburiy" });
+    }
+
+    const slots = await freeSlots({
+      directorId: link.director,
+      teacherId,
+      date,
+    });
+    res.json({ success: true, date, slots });
+  } catch (err) {
+    console.error("[tma] getFreeSlots", err);
+    res.status(500).json({ success: false, error: "Server xatosi" });
+  }
+};
+
+// ── POST /api/tma/student/:studentId/bookings ────────────────
+exports.createBooking = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const link = requireLink(req, res, studentId, "booking");
+    if (!link) return;
+
+    const { teacherId, date, startTime, topic } = req.body || {};
+    if (!teacherId || !date || !startTime) {
+      return res.status(400).json({
+        success: false,
+        error: "teacherId, date, startTime majburiy",
+      });
+    }
+
+    const r = await bookSlot({
+      directorId: link.director,
+      studentId,
+      teacherId,
+      date,
+      startTime,
+      topic,
+      via: "app",
+    });
+
+    if (!r.ok) {
+      return res.status(r.status || 400).json({ success: false, error: r.error });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Yozildingiz. Ustoz tasdiqlagach xabar keladi.",
+      booking: {
+        id: r.booking._id,
+        date: r.booking.date,
+        startTime: r.booking.startTime,
+        endTime: r.booking.endTime,
+        status: r.booking.status,
+      },
+    });
+  } catch (err) {
+    console.error("[tma] createBooking", err);
+    res.status(500).json({ success: false, error: "Server xatosi" });
+  }
+};
+
+// ── GET /api/tma/student/:studentId/bookings ─────────────────
+exports.getBookings = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    if (!requireLink(req, res, studentId, "booking")) return;
+
+    const bookings = await SupportBooking.find({ student: studentId })
+      .sort({ date: -1, startTime: -1 })
+      .limit(20)
+      .populate("teacher", "name")
+      .select("date startTime endTime topic status note teacher")
+      .lean();
+
+    res.json({
+      success: true,
+      bookings: bookings.map((b) => ({
+        id: b._id,
+        date: b.date,
+        startTime: b.startTime,
+        endTime: b.endTime,
+        topic: b.topic,
+        status: b.status,
+        note: b.note,
+        teacherName: b.teacher?.name || "",
+      })),
+    });
+  } catch (err) {
+    console.error("[tma] getBookings", err);
+    res.status(500).json({ success: false, error: "Server xatosi" });
+  }
+};
+
+// ── DELETE /api/tma/bookings/:bookingId ──────────────────────
+exports.cancelBooking = async (req, res) => {
+  try {
+    // ⚠️ Ruxsat AYNAN shu ota-onaning bolalari bo'yicha
+    //    tekshiriladi — bookingId manzildan keladi.
+    const studentIds = req.tma.links.map((l) => l.student?._id).filter(Boolean);
+
+    const r = await cancelBookingSvc({
+      bookingId: req.params.bookingId,
+      studentIds,
+      by: "app",
+    });
+
+    if (!r.ok) {
+      return res.status(r.status || 400).json({ success: false, error: r.error });
+    }
+    res.json({ success: true, message: "Bekor qilindi" });
+  } catch (err) {
+    console.error("[tma] cancelBooking", err);
     res.status(500).json({ success: false, error: "Server xatosi" });
   }
 };

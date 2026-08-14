@@ -34,4 +34,19 @@ router.get("/student/:studentId/grades", ctrl.getGrades);
 router.get("/student/:studentId/attendance", ctrl.getAttendance);
 router.get("/student/:studentId/payments", ctrl.getPayments);
 
+// ── Qo'shimcha mashg'ulot ───────────────────────────────────
+const bookLimiter = rateLimit({
+  name: "tma-book",
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  keyBy: (req) => req.tma?.user?.id || req.ip,
+  message: "Juda ko'p urinish. Birozdan keyin urinib ko'ring.",
+});
+
+router.get("/student/:studentId/teachers", ctrl.getSupportTeachers);
+router.get("/student/:studentId/free", ctrl.getFreeSlots);
+router.get("/student/:studentId/bookings", ctrl.getBookings);
+router.post("/student/:studentId/bookings", bookLimiter, ctrl.createBooking);
+router.delete("/bookings/:bookingId", ctrl.cancelBooking);
+
 module.exports = router;

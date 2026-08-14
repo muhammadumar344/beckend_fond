@@ -174,6 +174,48 @@ async function notifyGrades({ directorId, subject, entries }) {
   }
 }
 
+// ── Mashg'ulotga yozilish ───────────────────────────────────
+const BOOKING_TEXT = {
+  confirmed: ["✅", "tasdiqlandi"],
+  cancelled: ["❌", "bekor qilindi"],
+};
+
+/**
+ * @param {object} p  { directorId, bookingId, status }
+ */
+async function notifyBooking({ directorId, bookingId, status }) {
+  const text = BOOKING_TEXT[status];
+  if (!text) return;
+  if (!(await telegramAllowed(directorId))) return;
+
+  const SupportBooking = require("../models/SupportBooking");
+  const booking = await SupportBooking.findById(bookingId)
+    .populate("teacher", "name")
+    .lean();
+  if (!booking) return;
+
+  const targets = await verifiedTargets([booking.student], "booking");
+  if (!targets.length) return;
+
+  const info = await labels([booking.student]);
+  const [icon, word] = text;
+
+  for (const t of targets) {
+    const s = info.get(t.studentId);
+    if (!s) continue;
+
+    await sendMessage(
+      t.chatId,
+      `${icon} *Qo'shimcha mashg'ulot ${word}*\n\n` +
+        `👤 *${s.name}*\n` +
+        `📅 ${fmtDate(booking.date)}, *${booking.startTime}–${booking.endTime}*\n` +
+        (booking.teacher?.name ? `👨‍🏫 Ustoz: ${booking.teacher.name}\n` : "") +
+        (booking.topic ? `📝 Mavzu: ${booking.topic}\n` : "") +
+        (booking.note ? `\n💬 ${booking.note}` : ""),
+    );
+  }
+}
+
 /**
  * Fon rejimida chaqirish uchun o'ram.
  *
@@ -189,6 +231,7 @@ function inBackground(fn, args) {
 module.exports = {
   notifyAttendance,
   notifyGrades,
+  notifyBooking,
   inBackground,
   notableChanges,
   // test uchun
