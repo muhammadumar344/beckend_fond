@@ -33,6 +33,7 @@ router.post("/redeem", redeemLimiter, ctrl.redeemCode);
 router.get("/student/:studentId/grades", ctrl.getGrades);
 router.get("/student/:studentId/attendance", ctrl.getAttendance);
 router.get("/student/:studentId/payments", ctrl.getPayments);
+router.get("/student/:studentId/homework", ctrl.getHomework);
 
 // ── Qo'shimcha mashg'ulot ───────────────────────────────────
 const bookLimiter = rateLimit({
@@ -47,6 +48,7 @@ router.get("/student/:studentId/teachers", ctrl.getSupportTeachers);
 router.get("/student/:studentId/free", ctrl.getFreeSlots);
 router.get("/student/:studentId/bookings", ctrl.getBookings);
 router.post("/student/:studentId/bookings", bookLimiter, ctrl.createBooking);
-router.delete("/bookings/:bookingId", ctrl.cancelBooking);
+// ⚠️ Bekor qilish endpoint'i ATAYLAB yo'q — controller izohiga qarang
+router.post("/scan", bookLimiter, ctrl.scanQr);
 
 module.exports = router;

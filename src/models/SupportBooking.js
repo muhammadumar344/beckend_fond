@@ -55,8 +55,14 @@ const supportBookingSchema = new mongoose.Schema(
       default: "app",
     },
 
+    // ── QR orqali kelganini tasdiqlash ──────────────────────
+    // O'quvchi ustoz ekranidagi QR ni skanerlaganda to'ladi.
+    // ⚠️ Bo'sh qolsa va vaqt o'tsa — cron `no_show` qilib qo'yadi
+    //    (cron/supportCron.js).
+    attendedAt: { type: Date, default: null },
+
     cancelledAt: { type: Date, default: null },
-    cancelledBy: { type: String, default: "" }, // "app" | "crm"
+    cancelledBy: { type: String, default: "" }, // "crm"
   },
   { timestamps: true },
 );

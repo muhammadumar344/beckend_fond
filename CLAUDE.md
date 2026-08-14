@@ -535,6 +535,45 @@ davomatning saqlanishiga to'sqinlik qilmasin.
 
 ### Qo'shimcha mashg'ulot (support booking)
 
+⚠️ **HAR BIR MARKAZDA BO'LMAYDI.** `Teacher.supportEnabled`
+standart holda **`false`**. O'chiq bo'lsa:
+
+- CRM'da menyu ko'rinadi, lekin sahifa "yoqish" taklifini beradi
+- Mini App'da "Yozilish" tabi **umuman chiqmaydi**
+- API `middleware/support.js` bilan 403 qaytaradi
+
+Interfeysni yashirish yetarli emas — so'rovni qo'lda yuborish
+mumkin. Sozlama endpoint'larining o'zi `requireSupport` dan
+**o'tmaydi**, aks holda o'chirilgan xizmatni qayta yoqib
+bo'lmasdi.
+
+### Kelganini tasdiqlash — QR
+
+```
+o'quvchi keladi
+   → ustoz kartochkasini bosadi → ekranda QR (har 10s yangilanadi)
+   → o'quvchi Mini App'dan skanerlaydi → `done` + `attendedAt`
+   → skanerlamasa, vaqt tugagach cron → `no_show` + 3 kun blok
+```
+
+⚠️ **BEKOR QILISH YO'Q.** O'quvchi yozildimi — keladi. Erkin
+bekor qilish bo'lsa, joy band bo'lib turib oxirgi daqiqada
+bo'shatilardi va o'sha vaqtga boshqa hech kim ulgurmasdi.
+Ustoz esa bekor qila oladi (kasal bo'lishi mumkin) va bunda
+o'quvchi **jazolanmaydi**.
+
+⚠️ **QR har 10 soniyada yangilanadi.** Aks holda QR ning surati
+yetarli bo'lardi — o'quvchi kelmasdan, do'stidan rasm so'rab
+"keldim" qilib qo'yardi. Bitta oyna orqaga qabul qilinadi
+(skanerlash paytida almashib qolsa), ikkitasi — yo'q.
+
+⚠️ **Kod bazaga yozilmaydi** — `bookingId + vaqt oynasi` dan
+HMAC bilan hisoblanadi (`services/supportQr.js`). Saqlash,
+tozalash va eskirgan yozuv muammosi umuman yo'q.
+
+⚠️ Telefoni o'chgan o'quvchi uchun ustozda **qo'lda belgilash**
+tugmasi bor — zaxira yo'l, odatdagisi QR.
+
 | Fayl | Vazifasi |
 |---|---|
 | `models/SupportSlot.js` | Ustozning takrorlanuvchi qabul vaqti |
@@ -642,6 +681,7 @@ qildi — foydalanuvchi qaytadan so'rasa bo'ldi.
 |---|---|---|
 | `cron/reminderCron.js` | 1-sana 09:00 | Ota-onalarga Telegram eslatma |
 | `cron/accountCleanupCron.js` | har kuni 03:30 | Muhlati o'tgan hisoblarni o'chirish |
+| `cron/supportCron.js` | har 5 daqiqa | Kelmagan o'quvchini belgilash + 3 kun blok |
 
 ⚠️ `startReminderCron` yozilgan edi, lekin **hech qayerdan
 chaqirilmagan** — ya'ni Pro/Premium da sotilayotgan "oylik eslatma"

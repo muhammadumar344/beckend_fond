@@ -217,6 +217,39 @@ async function notifyBooking({ directorId, bookingId, status }) {
 }
 
 /**
+ * Kelmadi — jazo bilan birga.
+ * @param {object} p  { directorId, bookingId, blockDays }
+ */
+async function notifyNoShow({ directorId, bookingId, blockDays }) {
+  if (!(await telegramAllowed(directorId))) return;
+
+  const SupportBooking = require("../models/SupportBooking");
+  const booking = await SupportBooking.findById(bookingId).lean();
+  if (!booking) return;
+
+  const targets = await verifiedTargets([booking.student], "booking");
+  if (!targets.length) return;
+
+  const info = await labels([booking.student]);
+
+  for (const t of targets) {
+    const s = info.get(t.studentId);
+    if (!s) continue;
+
+    await sendMessage(
+      t.chatId,
+      `🚫 *Mashg'ulotga kelmadingiz*\n\n` +
+        `👤 *${s.name}*\n` +
+        `📅 ${fmtDate(booking.date)}, ${booking.startTime}–${booking.endTime}\n\n` +
+        `Kelganingizni tasdiqlash uchun ustozning QR kodini ` +
+        `skanerlash kerak edi.\n\n` +
+        `⏳ Endi *${blockDays} kun* davomida qo'shimcha mashg'ulotga ` +
+        `yozila olmaysiz.`,
+    );
+  }
+}
+
+/**
  * Fon rejimida chaqirish uchun o'ram.
  *
  * ⚠️ Xato yuzaga chiqmaydi va so'rovni yiqitmaydi: xabar ketmagani
@@ -232,6 +265,7 @@ module.exports = {
   notifyAttendance,
   notifyGrades,
   notifyBooking,
+  notifyNoShow,
   inBackground,
   notableChanges,
   // test uchun

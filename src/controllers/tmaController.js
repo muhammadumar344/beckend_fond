@@ -24,13 +24,13 @@ const InviteCode = require("../models/InviteCode");
 const Staff = require("../models/Staff");
 const SupportSlot = require("../models/SupportSlot");
 const SupportBooking = require("../models/SupportBooking");
+const Homework = require("../models/Homework");
+const HomeworkResult = require("../models/HomeworkResult");
 const { canSee, isVerified, visibleSections } = require("../utils/tmaAccess");
 const { getStudentGroupIds } = require("../utils/enrollment");
 const { freeSlots } = require("../utils/supportSlots");
-const {
-  bookSlot,
-  cancelBooking: cancelBookingSvc,
-} = require("../services/supportBooking");
+const { bookSlot } = require("../services/supportBooking");
+const { verifyPayload } = require("../services/supportQr");
 
 /** Bog'lanishni topadi va bo'limga ruxsatni tekshiradi */
 function requireLink(req, res, studentId, section) {
@@ -60,10 +60,26 @@ exports.getMe = async (req, res) => {
     const directorIds = [...new Set(links.map((l) => String(l.director)))];
     const directors = directorIds.length
       ? await Teacher.find({ _id: { $in: directorIds } })
-          .select("institutionName logo brandColor institutionType")
+          .select("institutionName logo brandColor institutionType supportEnabled")
           .lean()
       : [];
     const byId = new Map(directors.map((d) => [String(d._id), d]));
+
+    // Bloklangan o'quvchilar — "yozila olmaysiz" sababini
+    // ko'rsatish uchun (yozilishga urinib, keyin xato olishdan
+    // ko'ra oldindan aytgan yaxshi)
+    const studentIds = links.map((l) => l.student?._id).filter(Boolean);
+    const blocks = studentIds.length
+      ? await Student.find({
+          _id: { $in: studentIds },
+          supportBlockedUntil: { $gt: new Date() },
+        })
+          .select("supportBlockedUntil")
+          .lean()
+      : [];
+    const blockedUntil = new Map(
+      blocks.map((s) => [String(s._id), s.supportBlockedUntil]),
+    );
 
     // Guruh nomlari
     const classIds = links.map((l) => l.student?.class).filter(Boolean);
@@ -74,13 +90,23 @@ exports.getMe = async (req, res) => {
 
     const children = links.map((l) => {
       const d = byId.get(String(l.director));
+
+      // ⚠️ Markazda bu xizmat bo'lmasa "Yozilish" tabi UMUMAN
+      //    ko'rsatilmaydi. Aks holda ota-ona tabni bosib, bo'sh
+      //    ekranga tushardi va "nima uchun ishlamayapti?" deb
+      //    markazga qo'ng'iroq qilardi.
+      const sections = visibleSections(l).filter(
+        (s) => s !== "booking" || d?.supportEnabled,
+      );
+
       return {
         studentId: l.student?._id,
         name: l.student?.name || "—",
         className: className.get(String(l.student?.class)) || "",
         kind: l.kind,
         verified: isVerified(l),
-        sections: visibleSections(l),
+        sections,
+        supportBlockedUntil: blockedUntil.get(String(l.student?._id)) || null,
         center: d
           ? {
               name: d.institutionName || "",
@@ -224,6 +250,71 @@ exports.getPayments = async (req, res) => {
     });
   } catch (err) {
     console.error("[tma] getPayments", err);
+    res.status(500).json({ success: false, error: "Server xatosi" });
+  }
+};
+
+// ── GET /api/tma/student/:studentId/homework ─────────────────
+exports.getHomework = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    if (!requireLink(req, res, studentId, "homework")) return;
+
+    // O'quvchi qatnashadigan barcha guruhlar (asosiy + qo'shimcha)
+    const groupIds = await getStudentGroupIds(studentId);
+    if (!groupIds.length) {
+      return res.json({ success: true, homework: [], pendingCount: 0 });
+    }
+
+    const items = await Homework.find({ class: { $in: groupIds } })
+      .sort({ dueDate: -1 })
+      .limit(40)
+      .select("title description subject assignedDate dueDate points class")
+      .lean();
+    if (!items.length) {
+      return res.json({ success: true, homework: [], pendingCount: 0 });
+    }
+
+    // Natijalar bir so'rovda — har bir topshiriq uchun alohida
+    // so'rov yuborsak 40 ta so'rov bo'lardi
+    const results = await HomeworkResult.find({
+      student: studentId,
+      homework: { $in: items.map((h) => h._id) },
+    })
+      .select("homework status points note checkedAt")
+      .lean();
+    const byHw = new Map(results.map((r) => [String(r.homework), r]));
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const homework = items.map((h) => {
+      const r = byHw.get(String(h._id));
+      const status = r?.status || "pending";
+      return {
+        id: h._id,
+        title: h.title,
+        description: h.description,
+        subject: h.subject,
+        assignedDate: h.assignedDate,
+        dueDate: h.dueDate,
+        maxPoints: h.points,
+        status,
+        points: r?.points ?? null,
+        note: r?.note || "",
+        // ⚠️ "Muddati o'tgan" holati BAZADA yo'q — u sanadan
+        //    kelib chiqadi. Bazaga yozib qo'ysak har kuni
+        //    yangilab turish kerak bo'lardi.
+        overdue: status === "pending" && h.dueDate < today,
+      };
+    });
+
+    res.json({
+      success: true,
+      homework,
+      pendingCount: homework.filter((h) => h.status === "pending").length,
+    });
+  } catch (err) {
+    console.error("[tma] getHomework", err);
     res.status(500).json({ success: false, error: "Server xatosi" });
   }
 };
@@ -382,25 +473,64 @@ exports.getBookings = async (req, res) => {
   }
 };
 
-// ── DELETE /api/tma/bookings/:bookingId ──────────────────────
-exports.cancelBooking = async (req, res) => {
+// ── POST /api/tma/scan ───────────────────────────────────────
+// O'quvchi ustoz ekranidagi QR ni skanerlaydi → "keldi".
+//
+// ⚠️ BEKOR QILISH ENDPOINT'I ATAYLAB YO'Q. Yozildingizmi —
+//    kelasiz. Bekor qilish erkin bo'lsa, o'quvchi vaqtni band
+//    qilib qo'yib oxirgi daqiqada bo'shatardi va o'sha joyga
+//    boshqa hech kim ulgurmasdi.
+exports.scanQr = async (req, res) => {
   try {
-    // ⚠️ Ruxsat AYNAN shu ota-onaning bolalari bo'yicha
-    //    tekshiriladi — bookingId manzildan keladi.
-    const studentIds = req.tma.links.map((l) => l.student?._id).filter(Boolean);
-
-    const r = await cancelBookingSvc({
-      bookingId: req.params.bookingId,
-      studentIds,
-      by: "app",
-    });
-
-    if (!r.ok) {
-      return res.status(r.status || 400).json({ success: false, error: r.error });
+    const v = verifyPayload(req.body?.payload);
+    if (!v.ok) {
+      return res.status(400).json({ success: false, error: v.reason });
     }
-    res.json({ success: true, message: "Bekor qilindi" });
+
+    const booking = await SupportBooking.findById(v.bookingId);
+    if (!booking) {
+      return res.status(404).json({ success: false, error: "Yozuv topilmadi" });
+    }
+
+    // ⚠️ QR AYNAN shu foydalanuvchining yozuvidanmi. Usiz do'stining
+    //    QR ini skanerlab, o'zini kelgan qilib ko'rsatish mumkin edi.
+    const link = req.tma.linkFor(booking.student);
+    if (!link) {
+      return res
+        .status(403)
+        .json({ success: false, error: "Bu yozuv sizniki emas" });
+    }
+
+    if (booking.attendedAt) {
+      return res.json({
+        success: true,
+        already: true,
+        message: "Allaqachon belgilangan",
+      });
+    }
+    if (!["pending", "confirmed"].includes(booking.status)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Bu yozuv faol emas" });
+    }
+
+    booking.attendedAt = new Date();
+    booking.status = "done";
+    await booking.save();
+
+    console.log(`[tma] mashg'ulotga keldi: ${booking._id}`);
+
+    res.json({
+      success: true,
+      message: "Kelganingiz belgilandi ✅",
+      booking: {
+        id: booking._id,
+        date: booking.date,
+        startTime: booking.startTime,
+      },
+    });
   } catch (err) {
-    console.error("[tma] cancelBooking", err);
+    console.error("[tma] scanQr", err);
     res.status(500).json({ success: false, error: "Server xatosi" });
   }
 };

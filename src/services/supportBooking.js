@@ -10,7 +10,12 @@
 
 const SupportBooking = require("../models/SupportBooking");
 const Staff = require("../models/Staff");
+const Student = require("../models/Student");
+const Teacher = require("../models/Teacher");
 const { isSlotFree } = require("../utils/supportSlots");
+
+// Kelmagan o'quvchi necha kun yozila olmaydi
+const BLOCK_DAYS = 3;
 
 // Bir o'quvchi haftada nechta faol yozuv qila oladi.
 // ⚠️ Cheklovsiz bo'lsa bitta o'quvchi ustozning butun haftasini
@@ -44,6 +49,38 @@ async function bookSlot({
   topic = "",
   via = "app",
 }) {
+  // ⚠️ Markazda bu xizmat umuman bor-yo'qligi. Interfeysni yashirish
+  //    yetarli emas — so'rovni qo'lda yuborish mumkin.
+  const director = await Teacher.findById(directorId).select("supportEnabled");
+  if (!director?.supportEnabled) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Bu markazda qo'shimcha mashg'ulot xizmati yo'q",
+    };
+  }
+
+  // ⚠️ Kelmagani uchun bloklanganmi. Yozuvni bekor qilib bo'lmaydi,
+  //    shuning uchun kelmaslikning yagona oqibati shu — aks holda
+  //    o'quvchi joyni band qilib, kelmay, ertasiga yana yozilaverardi.
+  const student = await Student.findById(studentId).select(
+    "supportBlockedUntil name",
+  );
+  if (!student) {
+    return { ok: false, status: 404, error: "O'quvchi topilmadi" };
+  }
+  if (student.supportBlockedUntil && student.supportBlockedUntil > new Date()) {
+    const left = Math.ceil(
+      (student.supportBlockedUntil - Date.now()) / 86400000,
+    );
+    return {
+      ok: false,
+      status: 403,
+      error: `Oldingi mashg'ulotga kelmadingiz. Yana ${left} kundan keyin yozilishingiz mumkin.`,
+      blockedUntil: student.supportBlockedUntil,
+    };
+  }
+
   // ⚠️ Bo'shligini QAYTA tekshiramiz: ro'yxat ko'rsatilgandan keyin
   //    boshqa o'quvchi o'sha vaqtni olgan bo'lishi mumkin.
   const slot = await isSlotFree({ directorId, teacherId, date, startTime });
@@ -99,37 +136,25 @@ async function bookSlot({
 }
 
 /**
- * Bekor qilish.
- * @param {object} p  { bookingId, studentIds, by }  studentIds — kimga ruxsat
+ * Bekor qilish — FAQAT MARKAZ TOMONIDAN.
+ *
+ * ⚠️ O'QUVCHI BEKOR QILA OLMAYDI. Yozildingizmi — kelasiz.
+ *    Sabab: bekor qilish erkin bo'lsa, o'quvchi vaqtni band
+ *    qilib qo'yib, oxirgi daqiqada bekor qilardi va o'sha joyga
+ *    boshqa hech kim ulgurmasdi. Kelmaslikning oqibati bor:
+ *    3 kunlik bloklash (cron/supportCron.js).
+ *
+ *    Ustoz esa bekor qila oladi — u kasal bo'lib qolishi mumkin,
+ *    va bu holda o'quvchi JAZOLANMAYDI.
  */
-async function cancelBooking({ bookingId, studentIds, by = "app" }) {
+async function cancelBooking({ bookingId, by = "crm" }) {
   const booking = await SupportBooking.findById(bookingId);
   if (!booking) {
     return { ok: false, status: 404, error: "Yozuv topilmadi" };
   }
 
-  // ⚠️ O'z farzandining yozuvimi — usiz istalgan yozuvni bekor
-  //    qilish mumkin bo'lardi
-  if (
-    studentIds &&
-    !studentIds.map(String).includes(String(booking.student))
-  ) {
-    return { ok: false, status: 403, error: "Ruxsat yo'q" };
-  }
-
   if (!ACTIVE.includes(booking.status)) {
     return { ok: false, status: 400, error: "Bu yozuvni bekor qilib bo'lmaydi" };
-  }
-
-  // ⚠️ Oxirgi daqiqada bekor qilish — ustoz allaqachon kelgan
-  //    va kutayotgan bo'ladi. Kamida 2 soat oldin.
-  const when = new Date(`${booking.date}T${booking.startTime}:00+05:00`);
-  if (when.getTime() - Date.now() < 2 * 60 * 60 * 1000) {
-    return {
-      ok: false,
-      status: 400,
-      error: "Bekor qilish uchun kamida 2 soat qolishi kerak",
-    };
   }
 
   booking.status = "cancelled";
@@ -140,10 +165,16 @@ async function cancelBooking({ bookingId, studentIds, by = "app" }) {
   return { ok: true, booking };
 }
 
+/** Kelmagani uchun bloklash sanasi */
+const blockUntil = (from = new Date()) =>
+  new Date(from.getTime() + BLOCK_DAYS * 24 * 60 * 60 * 1000);
+
 module.exports = {
   bookSlot,
   cancelBooking,
+  blockUntil,
   weekRange,
   MAX_ACTIVE_PER_WEEK,
+  BLOCK_DAYS,
   ACTIVE,
 };

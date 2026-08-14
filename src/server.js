@@ -172,6 +172,8 @@ mongoose.connect(MONGODB_URI)
       startReminderCron();
       const { startAccountCleanupCron } = require('./cron/accountCleanupCron');
       startAccountCleanupCron();
+      const { startSupportCron } = require('./cron/supportCron');
+      startSupportCron();
     } catch (e) {
       console.error('⚠️  cron ishga tushmadi:', e.message || e);
     }

@@ -143,14 +143,21 @@ router.get("/reports/export", allowTeacherOrStaff, groupCtrl.exportGroupsReport)
 // Ustoz qabul vaqtini belgilaydi, o'quvchi Mini App'dan yoziladi.
 // O'quvchi tomoni: routes/tma.js
 const supportCtrl = require("../controllers/supportController");
+const requireSupport = require("../middleware/support");
 
-router.get("/support/slots", allowTeacherOrStaff, supportCtrl.getSlots);
-router.post("/support/slots", allowTeacherOrStaff, supportCtrl.createSlot);
-router.delete("/support/slots/:slotId", allowTeacherOrStaff, supportCtrl.deleteSlot);
+// ⚠️ Sozlama endpoint'lari `requireSupport` DAN O'TMAYDI — aks
+//    holda o'chirilgan xizmatni qayta yoqib bo'lmasdi.
+router.get("/support/settings", allowTeacherOrStaff, supportCtrl.getSettings);
+router.put("/support/settings", onlyTeacher, supportCtrl.updateSettings);
 
-router.get("/support/free", allowTeacherOrStaff, supportCtrl.getFree);
-router.get("/support/bookings", allowTeacherOrStaff, supportCtrl.getBookings);
-router.post("/support/bookings", allowTeacherOrStaff, supportCtrl.createBooking);
-router.put("/support/bookings/:bookingId", allowTeacherOrStaff, supportCtrl.updateBooking);
+router.get("/support/slots", allowTeacherOrStaff, requireSupport, supportCtrl.getSlots);
+router.post("/support/slots", allowTeacherOrStaff, requireSupport, supportCtrl.createSlot);
+router.delete("/support/slots/:slotId", allowTeacherOrStaff, requireSupport, supportCtrl.deleteSlot);
+
+router.get("/support/free", allowTeacherOrStaff, requireSupport, supportCtrl.getFree);
+router.get("/support/bookings", allowTeacherOrStaff, requireSupport, supportCtrl.getBookings);
+router.post("/support/bookings", allowTeacherOrStaff, requireSupport, supportCtrl.createBooking);
+router.put("/support/bookings/:bookingId", allowTeacherOrStaff, requireSupport, supportCtrl.updateBooking);
+router.get("/support/bookings/:bookingId/qr", allowTeacherOrStaff, requireSupport, supportCtrl.getQr);
 
 module.exports = router;

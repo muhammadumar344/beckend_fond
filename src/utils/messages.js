@@ -311,6 +311,17 @@ const MESSAGES = {
   "studentId, teacherId, date, startTime majburiy": { ru: "studentId, teacherId, date, startTime обязательны", en: "studentId, teacherId, date and startTime are required" },
   "Juda ko'p urinish. Birozdan keyin urinib ko'ring.": { ru: "Слишком много попыток. Повторите позже.", en: "Too many attempts. Try again shortly." },
 
+  "Bu markazda qo'shimcha mashg'ulot xizmati yo'q": { ru: "В этом центре нет услуги дополнительных занятий", en: "This centre does not offer support sessions" },
+  "Bu yozuv uchun QR berilmaydi": { ru: "Для этой записи QR не выдаётся", en: "No QR is issued for this booking" },
+  "Bu yozuv faol emas": { ru: "Эта запись неактивна", en: "This booking is not active" },
+  "Bu yozuv sizniki emas": { ru: "Эта запись не ваша", en: "This booking is not yours" },
+  "Kelganingiz belgilandi ✅": { ru: "Присутствие отмечено ✅", en: "Attendance recorded ✅" },
+  "Allaqachon belgilangan": { ru: "Уже отмечено", en: "Already recorded" },
+  "QR kod tanilmadi": { ru: "QR-код не распознан", en: "QR code not recognised" },
+  "QR kod eskirgan — ustozdan yangisini so'rang": { ru: "QR-код устарел — попросите новый у преподавателя", en: "The QR code has expired — ask the teacher for a new one" },
+  "Xizmat yoqildi": { ru: "Услуга включена", en: "Service enabled" },
+  "Xizmat o'chirildi": { ru: "Услуга отключена", en: "Service disabled" },
+
   // ── Telegram / SMS ──────────────────────────────────────
   "Bot ishlamayapti": { ru: "Бот не работает", en: "The bot is not running" },
   "Eslatmalar yuborildi": { ru: "Напоминания отправлены", en: "Reminders sent" },

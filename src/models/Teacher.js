@@ -61,6 +61,16 @@ const teacherSchema = new mongoose.Schema({
   referralCount:       { type: Number, default: 0 },
   referralBonusDays:   { type: Number, default: 0 },
 
+  // ✅ Qo'shimcha mashg'ulot (support) — HAR BIR MARKAZDA BO'LMAYDI.
+  // Ba'zi o'quv markazlarida bunday xizmat umuman yo'q, shuning
+  // uchun standart holda O'CHIQ: yo'q xizmatning menyusi, tabi va
+  // "bo'sh vaqt yo'q" degan bo'sh ekranlari ko'rinib turmasin.
+  //
+  // Yoqilganda: CRM'da menyu paydo bo'ladi, Mini App'da "Yozilish"
+  // tabi chiqadi. O'chiq bo'lsa API ham 403 qaytaradi — faqat
+  // interfeysni yashirish yetarli emas.
+  supportEnabled: { type: Boolean, default: false },
+
   isActive:       { type: Boolean, default: true },
 
   // ── Hisobni o'chirish (30 kunlik muhlat bilan) ──────────────

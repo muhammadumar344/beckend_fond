@@ -9,10 +9,12 @@
 const SupportSlot = require("../models/SupportSlot");
 const SupportBooking = require("../models/SupportBooking");
 const Staff = require("../models/Staff");
+const Teacher = require("../models/Teacher");
 const Student = require("../models/Student");
 const { resolveContext, requirePermission } = require("../utils/resolveContext");
 const { freeSlots, toMin } = require("../utils/supportSlots");
 const { notifyBooking, inBackground } = require("../services/notify");
+const { currentToken, WINDOW_SEC } = require("../services/supportQr");
 
 const DAY_NAMES = [
   "Dushanba", "Seshanba", "Chorshanba",
@@ -20,6 +22,55 @@ const DAY_NAMES = [
 ];
 
 const isTime = (t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(t));
+
+// ══ MARKAZ SOZLAMASI ════════════════════════════════════════
+// ⚠️ Bu ikkalasi `requireSupport` dan O'TMAYDI — o'chirilgan
+//    xizmatni qayta yoqish uchun yo'l ochiq qolishi kerak.
+
+// GET /api/lc/support/settings
+exports.getSettings = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    const director = await Teacher.findById(ctx.directorId)
+      .select("supportEnabled")
+      .lean();
+
+    res.json({
+      success: true,
+      enabled: Boolean(director?.supportEnabled),
+      canEdit: ctx.isDirector,
+    });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+};
+
+// PUT /api/lc/support/settings  { enabled }
+exports.updateSettings = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    const enabled = Boolean(req.body?.enabled);
+
+    const director = await Teacher.findById(ctx.directorId);
+    if (!director) {
+      return res.status(404).json({ success: false, error: "Teacher topilmadi" });
+    }
+
+    director.supportEnabled = enabled;
+    await director.save();
+
+    // ⚠️ O'chirilganda mavjud yozuvlar TEGILMAYDI. Ular tarixda
+    //    qoladi va o'quvchilar allaqachon kelishga rozi bo'lgan.
+    //    Yangi yozilish esa `requireSupport` bilan to'siladi.
+    res.json({
+      success: true,
+      enabled,
+      message: enabled ? "Xizmat yoqildi" : "Xizmat o'chirildi",
+    });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+};
 
 // ══ QABUL VAQTLARI ══════════════════════════════════════════
 
@@ -212,6 +263,48 @@ exports.updateBooking = async (req, res) => {
     }
 
     res.json({ success: true, booking });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+};
+
+// ── GET /api/lc/support/bookings/:bookingId/qr ──────────────
+// Ustoz o'quvchi kartochkasini bosganda ochiladigan QR.
+// Interfeys buni har ~10 soniyada qayta so'raydi.
+exports.getQr = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+
+    const booking = await SupportBooking.findOne({
+      _id: req.params.bookingId,
+      director: ctx.directorId,
+    });
+    if (!booking) {
+      return res.status(404).json({ success: false, error: "Yozuv topilmadi" });
+    }
+    if (String(booking.teacher) !== String(ctx.staffId)) {
+      requirePermission(ctx, "manageGroups");
+    }
+    if (booking.attendedAt) {
+      return res.json({
+        success: true,
+        alreadyAttended: true,
+        attendedAt: booking.attendedAt,
+      });
+    }
+    if (!["pending", "confirmed"].includes(booking.status)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Bu yozuv uchun QR berilmaydi" });
+    }
+
+    const t = currentToken(String(booking._id));
+    res.json({
+      success: true,
+      payload: t.payload,
+      expiresIn: t.expiresIn,
+      windowSec: WINDOW_SEC,
+    });
   } catch (e) {
     res.status(e.status || 500).json({ success: false, error: e.message });
   }
