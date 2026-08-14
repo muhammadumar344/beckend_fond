@@ -252,36 +252,57 @@ exports.getGroups = async (req, res) => {
       .populate("branch", "name color")
       .sort({ createdAt: -1 });
 
-    const withDetails = await Promise.all(
-      groups.map(async (g) => {
-        const now = new Date();
-        const [studentCount, schedule, monthPayments] = await Promise.all([
-          countGroupStudents(g._id),
-          Schedule.find({ class: g._id, isActive: { $ne: false } }).sort({
-            dayOfWeek: 1,
-          }),
-          MonthlyPayment.find({
-            class: g._id,
+    // ⚠️ Ilgari bu yerda HAR BIR guruh uchun uchta alohida so'rov
+    //    yuborilardi. 15 ta guruhda 46 ta so'rov — sahifa shu sababdan
+    //    sekin ochilardi. Endi guruh soni qancha bo'lishidan qat'i
+    //    nazar beshta so'rov: bittasi yuqorida, qolgan to'rttasi shu yerda.
+    const groupIds = groups.map((g) => g._id);
+    const now = new Date();
+
+    const [studentMap, schedules, paidRows] = await Promise.all([
+      buildGroupStudentMap(groupIds),
+      Schedule.find({
+        class: { $in: groupIds },
+        isActive: { $ne: false },
+      }).sort({ dayOfWeek: 1 }),
+      // Summani baza o'zi hisoblaydi — minglab to'lov hujjatini
+      // Node'ga tortib kelib qo'shishning hojati yo'q
+      MonthlyPayment.aggregate([
+        {
+          $match: {
+            class: { $in: groupIds },
             month: now.getMonth() + 1,
             year: now.getFullYear(),
             status: "paid",
-          }),
-        ]);
-        const collectedThisMonth = monthPayments.reduce((s, p) => s + p.amount, 0);
-        return {
-          ...g.toObject(),
-          studentCount,
-          collectedThisMonth,
-          schedule: schedule.map((s) => ({
-            id: s._id,
-            day: DAY_NAMES[s.dayOfWeek],
-            dayOfWeek: s.dayOfWeek,
-            startTime: s.startTime,
-            endTime: s.endTime,
-          })),
-        };
-      }),
-    );
+          },
+        },
+        { $group: { _id: "$class", total: { $sum: "$amount" } } },
+      ]),
+    ]);
+
+    const schedByGroup = new Map();
+    for (const s of schedules) {
+      const k = String(s.class);
+      if (!schedByGroup.has(k)) schedByGroup.set(k, []);
+      schedByGroup.get(k).push(s);
+    }
+    const paidByGroup = new Map(paidRows.map((r) => [String(r._id), r.total]));
+
+    const withDetails = groups.map((g) => {
+      const k = String(g._id);
+      return {
+        ...g.toObject(),
+        studentCount: studentMap.get(k)?.size || 0,
+        collectedThisMonth: paidByGroup.get(k) || 0,
+        schedule: (schedByGroup.get(k) || []).map((s) => ({
+          id: s._id,
+          day: DAY_NAMES[s.dayOfWeek],
+          dayOfWeek: s.dayOfWeek,
+          startTime: s.startTime,
+          endTime: s.endTime,
+        })),
+      };
+    });
 
     res.json({ success: true, groups: withDetails });
   } catch (err) {

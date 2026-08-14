@@ -2,7 +2,10 @@
 const Branch = require("../models/Branch");
 const Class = require("../models/Class");
 const Student = require("../models/Student");
-const { countUniqueStudents } = require("../utils/enrollment");
+const {
+  countUniqueStudents,
+  buildGroupStudentMap,
+} = require("../utils/enrollment");
 const Staff = require("../models/Staff");
 const MonthlyPayment = require("../models/MonthlyPayment");
 const Expense = require("../models/Expense");
@@ -71,72 +74,116 @@ exports.getBranches = async (req, res) => {
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    const branchStats = await Promise.all(
-      branches.map(async (b) => {
-        const classes = await Class.find({ teacher: teacherId, branch: b._id });
-        const classIds = classes.map((c) => c._id);
+    // ⚠️ Ilgari har bir filial uchun BESHTA so'rov ketma-ket yuborilardi
+    //    (sinflar → o'quvchilar → oylik to'lovlar → butun to'lovlar →
+    //    xarajatlar). 5 ta filialda 25 ta so'rov, ustiga ular filial
+    //    ichida navbat bilan kutilardi. Endi filial soni qancha bo'lsa
+    //    ham beshta so'rov — hammasi bir vaqtda.
+    const allClasses = await Class.find({ teacher: teacherId }).select(
+      "_id branch initialBalance",
+    );
+    const allClassIds = allClasses.map((c) => c._id);
 
-        const studentCount = await Student.countDocuments({
-          class: { $in: classIds },
-        });
-
-        const payments = await MonthlyPayment.find({
-          class: { $in: classIds },
-          month: currentMonth,
-          year: currentYear,
-        });
-        const paidPayments = payments.filter((p) => p.status === "paid");
-        const collectedThisMonth = paidPayments.reduce(
-          (s, p) => s + p.amount,
-          0,
-        );
-
-        const allPaid = await MonthlyPayment.find({
-          class: { $in: classIds },
-          status: "paid",
-        });
-        const totalCollected = allPaid.reduce((s, p) => s + p.amount, 0);
-        const totalInitial = classes.reduce(
-          (s, c) => s + (c.initialBalance || 0),
-          0,
-        );
-
-        const allExpenses = await Expense.find({
-          teacher: teacherId,
-          class: { $in: classIds },
-        });
-        const totalExpenses = allExpenses.reduce((s, e) => s + e.amount, 0);
-
-        return {
-          _id: b._id,
-          name: b.name,
-          address: b.address,
-          phone: b.phone,
-          color: b.color,
-          classCount: classes.length,
-          studentCount,
-          paidCount: paidPayments.length,
-          unpaidCount: payments.length - paidPayments.length,
-          collectedThisMonth,
-          totalCollected,
-          totalInitial,
-          totalExpenses,
-          realBalance: totalInitial + totalCollected - totalExpenses,
-          createdAt: b.createdAt,
-        };
-      }),
+    // classId → branchId ("" = filialsiz)
+    const classBranch = new Map(
+      allClasses.map((c) => [String(c._id), c.branch ? String(c.branch) : ""]),
     );
 
-    // Filialsiz sinflar (branch = null)
-    const unassigned = await Class.find({ teacher: teacherId, branch: null });
-    const unassignedIds = unassigned.map((c) => c._id);
-    let unassignedStats = null;
-    if (unassigned.length > 0) {
-      const sc = await Student.countDocuments({
-        class: { $in: unassignedIds },
-      });
-      unassignedStats = { classCount: unassigned.length, studentCount: sc };
+    const [studentMap, monthRows, allPaidRows, expenseRows] = await Promise.all([
+      // Noyob o'quvchi: bitta bola ikki guruhda bo'lsa ham bir marta
+      buildGroupStudentMap(allClassIds),
+      // Joriy oy — to'langan/to'lanmagan sonini ham shu yerda sanaymiz
+      MonthlyPayment.aggregate([
+        {
+          $match: {
+            class: { $in: allClassIds },
+            month: currentMonth,
+            year: currentYear,
+          },
+        },
+        {
+          $group: {
+            _id: { class: "$class", status: "$status" },
+            n: { $sum: 1 },
+            sum: { $sum: "$amount" },
+          },
+        },
+      ]),
+      MonthlyPayment.aggregate([
+        { $match: { class: { $in: allClassIds }, status: "paid" } },
+        { $group: { _id: "$class", sum: { $sum: "$amount" } } },
+      ]),
+      Expense.aggregate([
+        { $match: { class: { $in: allClassIds } } },
+        { $group: { _id: "$class", sum: { $sum: "$amount" } } },
+      ]),
+    ]);
+
+    /** Filial bo'yicha yig'indi tayyorlash */
+    const blank = () => ({
+      classCount: 0,
+      students: new Set(),
+      paidCount: 0,
+      unpaidCount: 0,
+      collectedThisMonth: 0,
+      totalCollected: 0,
+      totalInitial: 0,
+      totalExpenses: 0,
+    });
+    const acc = new Map();
+    const bucket = (bid) => {
+      if (!acc.has(bid)) acc.set(bid, blank());
+      return acc.get(bid);
+    };
+
+    for (const c of allClasses) {
+      const b = bucket(classBranch.get(String(c._id)));
+      b.classCount += 1;
+      b.totalInitial += c.initialBalance || 0;
+      for (const sid of studentMap.get(String(c._id)) || []) b.students.add(sid);
     }
+    for (const r of monthRows) {
+      const b = bucket(classBranch.get(String(r._id.class)) ?? "");
+      if (r._id.status === "paid") {
+        b.paidCount += r.n;
+        b.collectedThisMonth += r.sum;
+      } else {
+        b.unpaidCount += r.n;
+      }
+    }
+    for (const r of allPaidRows) {
+      bucket(classBranch.get(String(r._id)) ?? "").totalCollected += r.sum;
+    }
+    for (const r of expenseRows) {
+      bucket(classBranch.get(String(r._id)) ?? "").totalExpenses += r.sum;
+    }
+
+    const branchStats = branches.map((b) => {
+      const s = acc.get(String(b._id)) || blank();
+      return {
+        _id: b._id,
+        name: b.name,
+        address: b.address,
+        phone: b.phone,
+        color: b.color,
+        classCount: s.classCount,
+        studentCount: s.students.size,
+        paidCount: s.paidCount,
+        unpaidCount: s.unpaidCount,
+        collectedThisMonth: s.collectedThisMonth,
+        totalCollected: s.totalCollected,
+        totalInitial: s.totalInitial,
+        totalExpenses: s.totalExpenses,
+        realBalance: s.totalInitial + s.totalCollected - s.totalExpenses,
+        createdAt: b.createdAt,
+      };
+    });
+
+    // Filialsiz sinflar (branch = null) — yuqoridagi "" chelagida
+    const free = acc.get("");
+    const unassignedStats = free?.classCount
+      ? { classCount: free.classCount, studentCount: free.students.size }
+      : null;
 
     res.json({
       success: true,
