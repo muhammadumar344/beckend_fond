@@ -3,9 +3,14 @@ const TelegramBot = require("node-telegram-bot-api");
 
 let bot = null;
 let isRestarting = false; // ✅ YANGI: bir vaqtda bir nechta restart bo'lishini oldini olish
-const BOT_TOKEN =
-  process.env.TELEGRAM_BOT_TOKEN ||
-  "8864838291:AAEPQCVZey0nJjFAOpX3rSLV5oZBujir8Mo";
+
+// ⚠️ TOKEN FAQAT ENV DAN. Ilgari shu yerda jonli token zaxira qiymat
+//    sifatida YOZIB QO'YILGAN edi — ya'ni repozitoriyni ko'ra olgan
+//    har kim botni to'liq boshqara olardi: xabar yuborish, o'qish,
+//    ota-onalar ro'yxatini olish. Kod tarixida ham qolgan, shuning
+//    uchun eski tokenni @BotFather → /revoke bilan BEKOR QILISH shart,
+//    bu yerdan o'chirish yetarli emas.
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 
 // ✅ XATO TUZATILDI: ":" belgisini "-" ga almashtiramiz
 const SAFE_PATH_TOKEN = BOT_TOKEN.replace(/:/g, "-");
