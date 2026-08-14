@@ -6,9 +6,15 @@ const paymentRequestSchema = new mongoose.Schema({
   plan:     { type: String, enum: ['pro', 'premium'], required: true },
   months:   { type: Number, default: 1, min: 1, max: 12 },
 
-  // To'lov screenshoti — base64 (max ~2MB)
+  // To'lov cheki. `Teacher.logo` bilan bir xil yondashuv: Cloudinary
+  // yoqilgan bo'lsa CDN manzili, aks holda base64. Ikkalasi ham
+  // <img src> ga to'g'ridan-to'g'ri tushadi.
+  // Sozlash: config/cloudinary.js, batafsil: docs/CLOUDINARY.md
   screenshot:     { type: String, required: true },
   screenshotSize: { type: Number, default: 0 },   // bytes
+  // Cloudinary identifikatori — so'rov o'chirilganda rasmni ham
+  // tozalash uchun. base64 chekda bo'sh.
+  screenshotPublicId: { type: String, default: '' },
 
   status: {
     type: String,

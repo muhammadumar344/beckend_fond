@@ -70,7 +70,20 @@ async function purgeDirector(directorId) {
     await cloudinary.destroyImage(teacher.logoPublicId);
   }
 
-  // 2) O'quvchilar — ularda direktor maydoni YO'Q, faqat `class`.
+  // 2) To'lov cheklari ham CDN da bo'lishi mumkin. Hujjatlar
+  //    o'chib ketgach publicId larni boshqa topib bo'lmaydi, shuning
+  //    uchun o'chirishdan OLDIN yig'ib olamiz.
+  const PaymentRequest = mongoose.model("PaymentRequest");
+  const receiptIds = await PaymentRequest.find({
+    teacher: directorId,
+    screenshotPublicId: { $nin: ["", null] },
+  }).distinct("screenshotPublicId");
+  for (const id of receiptIds) {
+    await cloudinary.destroyImage(id);
+  }
+  counts.cdnReceipts = receiptIds.length;
+
+  // 3) O'quvchilar — ularda direktor maydoni YO'Q, faqat `class`.
   //    Shuning uchun avval sinf id larini yig'amiz.
   const classIds = await Class.find({ teacher: directorId }).distinct("_id");
   if (classIds.length) {
@@ -80,14 +93,14 @@ async function purgeDirector(directorId) {
     counts.Student = 0;
   }
 
-  // 3) Egasi bo'yicha to'g'ridan-to'g'ri o'chadiganlar
+  // 4) Egasi bo'yicha to'g'ridan-to'g'ri o'chadiganlar
   for (const [name, field] of OWNED) {
     const Model = mongoose.model(name);
     const r = await Model.deleteMany({ [field]: directorId });
     counts[name] = r.deletedCount || 0;
   }
 
-  // 4) Referal bog'lanishi — bu direktor kimnidir taklif qilgan
+  // 5) Referal bog'lanishi — bu direktor kimnidir taklif qilgan
   //    bo'lsa, o'sha hisoblarda osilgan havola qolmasin
   const ref = await Teacher.updateMany(
     { referredBy: directorId },
@@ -95,7 +108,7 @@ async function purgeDirector(directorId) {
   );
   counts.referralsCleared = ref.modifiedCount || 0;
 
-  // 5) Eng oxirida — direktorning o'zi
+  // 6) Eng oxirida — direktorning o'zi
   await Teacher.deleteOne({ _id: directorId });
   counts.Teacher = 1;
 

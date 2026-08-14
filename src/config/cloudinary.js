@@ -50,6 +50,7 @@ module.exports = {
   // Papkalar — hisob ichida tartib bo'lishi uchun
   folders: {
     logos: `${folder}/logos`,
+    receipts: `${folder}/receipts`,
   },
 
   apiBase: `https://api.cloudinary.com/v1_1/${cloudName}`,

@@ -9,6 +9,18 @@ const { applyReferralBonus } = require("./referralController");
 // jadval LC direktoridan Fond narxini undirardi. Yagona manba:
 // utils/planHelper.js
 const { priceFor } = require("../utils/planHelper");
+const cloudinary = require("../services/cloudinary");
+const cloudinaryCfg = require("../config/cloudinary");
+
+// Chek hajmi. CDN yoqilganda kattaroq faylga ruxsat — u bazaga
+// emas, Cloudinary'ga ketadi. Telefonda olingan skrinshot ko'pincha
+// 2MB dan oshadi va foydalanuvchi uni siqishni bilmaydi.
+const SHOT_MAX_BYTES = 2 * 1024 * 1024;
+const SHOT_MAX_BYTES_CDN = 5 * 1024 * 1024;
+
+// ⚠️ Logotipdan farqli — chek O'QILISHI kerak (summa, sana, karta
+//    raqami). 512px ga kichraytirsak admin hech narsani ko'rmaydi.
+const SHOT_MAX_SIDE = 1600;
 
 // ── TEACHER: So'rov yuborish ─────────────────────────────────
 exports.createRequest = async (req, res) => {
@@ -23,8 +35,12 @@ exports.createRequest = async (req, res) => {
       return res.status(400).json({ success: false, error: "Screenshot (rasm) majburiy" });
     }
 
+    const useCdn = cloudinary.enabled();
     const sizeBytes = Math.round((screenshot.length * 3) / 4);
-    if (sizeBytes > 2 * 1024 * 1024) {
+    if (useCdn && sizeBytes > SHOT_MAX_BYTES_CDN) {
+      return res.status(400).json({ success: false, error: "Rasm hajmi 5MB dan oshmasligi kerak" });
+    }
+    if (!useCdn && sizeBytes > SHOT_MAX_BYTES) {
       return res.status(400).json({ success: false, error: "Rasm hajmi 2MB dan oshmasligi kerak" });
     }
 
@@ -42,12 +58,40 @@ exports.createRequest = async (req, res) => {
     );
     const amount = (priceFor(plan, teacherDoc)?.monthly || 0) * Number(months);
 
+    // Chekni saqlash joyi: CDN yoki baza
+    let shot = screenshot;
+    let shotSize = sizeBytes;
+    let shotPublicId = "";
+
+    if (useCdn) {
+      try {
+        // ⚠️ Logotipdan farqli — HAR BIR chek alohida saqlanadi.
+        //    Doimiy nom bersak keyingi so'rov oldingisining ustiga
+        //    yozilardi va admin eski to'lovni tekshira olmasdi.
+        const up = await cloudinary.uploadImage(screenshot, {
+          folder: cloudinaryCfg.folders.receipts,
+          publicId: `receipt-${teacherId}-${Date.now()}`,
+          maxSide: SHOT_MAX_SIDE,
+        });
+        shot = up.url;
+        shotSize = up.bytes;
+        shotPublicId = up.publicId;
+      } catch (err) {
+        console.error("Chek yuklash xatosi:", cloudinary.errorText(err));
+        return res.status(502).json({
+          success: false,
+          error: "Chekni yuklab bo'lmadi, birozdan keyin urinib ko'ring",
+        });
+      }
+    }
+
     const request = await PaymentRequest.create({
       teacher: teacherId,
       plan,
       months: Number(months),
-      screenshot,
-      screenshotSize: sizeBytes,
+      screenshot: shot,
+      screenshotSize: shotSize,
+      screenshotPublicId: shotPublicId,
       amount,
     });
 

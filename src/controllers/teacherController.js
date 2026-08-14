@@ -2063,6 +2063,12 @@ const getSubscriptionInfo = async (req, res) => {
         multi_lang: hasFeature(teacher, "multi_lang"),
         sms_reminder: hasFeature(teacher, "sms_reminder"),
       },
+      // Chek hajmi cheklovi — interfeys o'zi o'ylab topmasin.
+      // CDN yoqilgan bo'lsa 5MB, aks holda 2MB
+      // (controllers/paymentRequestController.js).
+      screenshotMaxBytes: cloudinary.enabled()
+        ? 5 * 1024 * 1024
+        : 2 * 1024 * 1024,
     });
   } catch (err) {
     console.error("getSubscriptionInfo error:", err);

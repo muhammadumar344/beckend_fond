@@ -1,4 +1,20 @@
-# Cloudinary — logotiplarni saqlash
+# Cloudinary — rasmlarni saqlash
+
+Ikkita joyda ishlatiladi:
+
+| Nima | Papka | Cheklov (CDN yoqiq / o'chiq) | O'lcham |
+|---|---|---|---|
+| Muassasa logotipi | `lumo/logos` | 3MB / 300KB | 512px gacha |
+| To'lov cheki | `lumo/receipts` | 5MB / 2MB | 1600px gacha |
+
+⚠️ Chek **o'qilishi** kerak (summa, sana, karta raqami) — shuning
+uchun logotipdan ancha kattaroq o'lchamda saqlanadi.
+
+⚠️ Logotipda har bir direktorga **bitta doimiy nom** beriladi
+(yangisi eskisi ustiga yoziladi). Chekda esa **har biri alohida** —
+doimiy nom bersak keyingi so'rov oldingisini o'chirib yuborardi va
+admin eski to'lovni tekshira olmasdi.
+
 
 ## Hozirgi holat: O'CHIQ
 
@@ -30,14 +46,17 @@ logotip avvalgidek base64 bo'lib MongoDB ga yoziladi.
 
 | | O'chiq | Yoqiq |
 |---|---|---|
-| Logotip qayerda | MongoDB (base64) | Cloudinary CDN |
-| Hajm cheklovi | 300 KB | 3 MB |
-| Saqlashdan oldin | o'zgarmaydi | 512px gacha kichraytiriladi |
+| Rasm qayerda | MongoDB (base64) | Cloudinary CDN |
+| Saqlashdan oldin | o'zgarmaydi | o'lchami cheklanadi |
 | Yetkazish | baza → server → brauzer | CDN → brauzer |
 | Format | yuklangani | brauzer qo'llasa WebP/AVIF (`f_auto`) |
 
-Interfeys cheklovni o'zi bilib oladi — `GET /api/teacher/branding`
-javobida `logoMaxBytes` keladi.
+Interfeys cheklovni o'zi o'ylab topmaydi, backend aytadi:
+
+| Endpoint | Maydon |
+|---|---|
+| `GET /api/teacher/branding` | `logoMaxBytes` |
+| `GET /api/teacher/subscription` | `screenshotMaxBytes` |
 
 ## Eski logotiplarni ko'chirish
 
@@ -56,6 +75,8 @@ node scripts/migrate-logos-cloudinary.js --apply  # rostdan
 | `src/config/cloudinary.js` | Kalitlar, papkalar, `enabled` |
 | `src/services/cloudinary.js` | `uploadImage`, `destroyImage`, imzo |
 | `src/controllers/teacherController.js` | `updateBranding` — CDN yoki base64 |
+| `src/controllers/paymentRequestController.js` | `createRequest` — chek |
+| `src/utils/accountPurge.js` | hisob o'chirilganda CDN rasmlarini tozalash |
 | `test/cloudinary.test.js` | Imzo qoidasi va o'chiq holat |
 
 ## Imzo — eng ko'p adashiladigan joy

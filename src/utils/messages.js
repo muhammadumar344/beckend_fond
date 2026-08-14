@@ -259,6 +259,8 @@ const MESSAGES = {
 
   "Logotip hajmi 3MB dan oshmasligi kerak": { ru: "Размер логотипа не должен превышать 3МБ", en: "The logo must be under 3MB" },
   "Logotipni yuklab bo'lmadi, birozdan keyin urinib ko'ring": { ru: "Не удалось загрузить логотип, попробуйте позже", en: "Could not upload the logo, please try again shortly" },
+  "Rasm hajmi 5MB dan oshmasligi kerak": { ru: "Размер изображения не должен превышать 5МБ", en: "The image must be under 5MB" },
+  "Chekni yuklab bo'lmadi, birozdan keyin urinib ko'ring": { ru: "Не удалось загрузить чек, попробуйте позже", en: "Could not upload the receipt, please try again shortly" },
 
   // ── Hisobni o'chirish ───────────────────────────────────
   "Parol majburiy": { ru: "Пароль обязателен", en: "Password is required" },
