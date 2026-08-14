@@ -257,6 +257,20 @@ const MESSAGES = {
   "Brend saqlandi": { ru: "Бренд сохранён", en: "Branding saved" },
   "Muassasa nomi majburiy": { ru: "Название учреждения обязательно", en: "Institution name is required" },
 
+  "Logotip hajmi 3MB dan oshmasligi kerak": { ru: "Размер логотипа не должен превышать 3МБ", en: "The logo must be under 3MB" },
+  "Logotipni yuklab bo'lmadi, birozdan keyin urinib ko'ring": { ru: "Не удалось загрузить логотип, попробуйте позже", en: "Could not upload the logo, please try again shortly" },
+
+  // ── Hisobni o'chirish ───────────────────────────────────
+  "Parol majburiy": { ru: "Пароль обязателен", en: "Password is required" },
+  "Parol noto'g'ri": { ru: "Неверный пароль", en: "Incorrect password" },
+  "Hisob allaqachon o'chirish navbatida": { ru: "Аккаунт уже в очереди на удаление", en: "The account is already scheduled for deletion" },
+  "Tiklab bo'lmadi — ma'lumotlarni tekshiring": { ru: "Не удалось восстановить — проверьте данные", en: "Could not restore — check your details" },
+  "Tiklash muddati o'tib ketgan": { ru: "Срок восстановления истёк", en: "The restore window has expired" },
+  "Hisob tiklandi — endi tizimga kirishingiz mumkin": { ru: "Аккаунт восстановлен — теперь вы можете войти", en: "Account restored — you can sign in now" },
+  "Hisob o'chirish navbatida": { ru: "Аккаунт в очереди на удаление", en: "The account is scheduled for deletion" },
+  "Muassasa hisobi o'chirilmoqda": { ru: "Аккаунт учреждения удаляется", en: "The institution's account is being deleted" },
+  "Muassasa hisobi o'chirilmoqda. Direktor bilan bog'laning.": { ru: "Аккаунт учреждения удаляется. Свяжитесь с директором.", en: "The institution's account is being deleted. Contact the director." },
+
   // ── Telegram / SMS ──────────────────────────────────────
   "Bot ishlamayapti": { ru: "Бот не работает", en: "The bot is not running" },
   "Eslatmalar yuborildi": { ru: "Напоминания отправлены", en: "Reminders sent" },

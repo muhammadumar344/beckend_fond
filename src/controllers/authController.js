@@ -206,6 +206,25 @@ exports.resendVerificationCode = async (req, res) => {
   }
 }
 
+/** Direktor hisobi o'chirish navbatidami — xodim login qilishidan oldin */
+const isDirectorClosing = async (directorId) => {
+  if (!directorId) return false
+  const d = await Teacher.findById(directorId).select('deletionScheduledFor')
+  return Boolean(d && d.deletionScheduledFor)
+}
+
+// ── O'chirish navbatidagi hisob uchun javob ──────────────────────────────────
+// Parol TO'G'RI, lekin direktor hisobni o'chirishga qo'ygan. Frontend
+// `pendingDeletion` ni ko'rib "tiklash" tugmasini chiqaradi.
+// Sana ham yuboriladi — necha kun qolganini foydalanuvchi ko'rsin.
+const pendingDeletionResponse = (res, teacher) =>
+  res.status(403).json({
+    error: "Hisob o'chirish navbatida",
+    pendingDeletion: true,
+    deletionScheduledFor: teacher.deletionScheduledFor,
+    email: teacher.email,
+  })
+
 // ══ TEACHER — LOGIN (alohida, backward-compat uchun saqlanadi) ═══════════════
 exports.teacherLogin = async (req, res) => {
   try {
@@ -214,6 +233,7 @@ exports.teacherLogin = async (req, res) => {
     const teacher = await Teacher.findOne({ email: email.toLowerCase().trim() }).select('+password')
     if (!teacher || !(await teacher.comparePassword(password)))
       return res.status(401).json({ error: "Email yoki parol noto'g'ri" })
+    if (teacher.deletionScheduledFor) return pendingDeletionResponse(res, teacher)
     if (!teacher.isActive) return res.status(403).json({ error: 'Akkaunt bloklangan' })
     if (!teacher.emailVerified) {
       return res.status(403).json({ error: 'Email hali tasdiqlanmagan', needsVerification: true, email: teacher.email })
@@ -301,6 +321,14 @@ exports.staffLogin = async (req, res) => {
     const isMatch = await staff.comparePassword(password)
     if (!isMatch) return res.status(401).json({ message: "Email yoki parol noto'g'ri" })
 
+    // Direktor markazni o'chirishga qo'ygan bo'lsa xodim ham kira olmaydi —
+    // aks holda yopilayotgan markazning ma'lumotlari ochiq qolardi
+    if (await isDirectorClosing(staff.director)) {
+      return res.status(403).json({
+        message: "Muassasa hisobi o'chirilmoqda. Direktor bilan bog'laning.",
+      })
+    }
+
     const token = generateToken(staff._id, 'staff')
     res.json({
       token,
@@ -337,6 +365,7 @@ exports.unifiedLogin = async (req, res) => {
     if (teacher) {
       const isMatch = await teacher.comparePassword(password)
       if (!isMatch) return res.status(401).json({ error: "Email yoki parol noto'g'ri" })
+      if (teacher.deletionScheduledFor) return pendingDeletionResponse(res, teacher)
       if (!teacher.isActive) return res.status(403).json({ error: 'Akkaunt bloklangan' })
       if (!teacher.emailVerified) {
         return res.status(403).json({
@@ -375,6 +404,11 @@ exports.unifiedLogin = async (req, res) => {
       if (!isMatch) return res.status(401).json({ error: "Email yoki parol noto'g'ri" })
       if (!staff.isActive) {
         return res.status(403).json({ error: "Hisobingiz bloklangan. Direktor bilan bog'laning." })
+      }
+      if (await isDirectorClosing(staff.director)) {
+        return res.status(403).json({
+          error: "Muassasa hisobi o'chirilmoqda. Direktor bilan bog'laning.",
+        })
       }
 
       const token = generateToken(staff._id, 'staff')

@@ -21,7 +21,13 @@ const DIRS = ["controllers", "utils", "services", "middleware"];
 
 // Ataylab tarjima qilinmaydiganlar:
 //  - oxiri ": " bilan tugaydigan prefikslar (keyin xato matni qo'shiladi)
-const SKIP = new Set(["Excel export xatosi: ", "Word export xatosi: "]);
+//  - ichki xatolar: foydalanuvchiga YETIB BORMAYDI, controller ularni
+//    ushlab, o'rniga tushunarli matn qaytaradi. Faqat logda ko'rinadi.
+const SKIP = new Set([
+  "Excel export xatosi: ",
+  "Word export xatosi: ",
+  "Cloudinary sozlanmagan",
+]);
 
 /** Manba kodidagi "\'" ni haqiqiy qiymatga aylantiradi */
 function unescape(s) {

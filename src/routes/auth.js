@@ -31,6 +31,12 @@ router.post("/reset-password/:token", pwReset.resetPassword);
 router.post("/staff/forgot-password", pwReset.forgotPassword);
 router.post("/staff/reset-password/:token", pwReset.resetPassword);
 
+// ── Hisobni tiklash (o'chirish muhlati ichida) ──────────────
+// Login TALAB QILINMAYDI: o'chirish navbatidagi hisob kira olmaydi,
+// shuning uchun bu yerda email+parol qaytadan so'raladi.
+const accountCtrl = require("../controllers/accountController");
+router.post("/restore-account", accountCtrl.restoreAccount);
+
 // O'z parolini o'zgartirish (login kerak)
 router.post("/staff/change-password", auth, staffCtrl.changeOwnPassword);
 

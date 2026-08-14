@@ -363,6 +363,55 @@ qo'ying, kod o'zgarmaydi. Batafsil: **`docs/PAYMENTS.md`**.
 
 ⚠️ Payme summani **tiyinda**, Click **so'mda** yuboradi.
 
+## Logotiplar — Cloudinary (o'chiq turibdi)
+
+Kalit yo'q → logotip avvalgidek **base64 bo'lib bazaga** yoziladi.
+Ya'ni o'chiq holat ham to'liq ishlaydi, 503 qaytarmaydi (to'lovdan
+farqi shu — yarim sozlangan rasm zarar keltirmaydi).
+
+`Teacher.logo` **ikki xil** qiymat tutadi va ikkalasi ham
+`<img src>` ga tushadi:
+
+| | Qiymat |
+|---|---|
+| Yangi (CDN yoqiq) | `https://res.cloudinary.com/...` |
+| Eski / CDN o'chiq | `data:image/png;base64,...` |
+
+Shuning uchun yoqishda **migratsiya shart emas**. Ixtiyoriy:
+`node scripts/migrate-logos-cloudinary.js --apply`
+
+Batafsil: **`docs/CLOUDINARY.md`**
+
+⚠️ Cheklovni frontend **o'zi hisoblamaydi** — `GET /teacher/branding`
+javobidagi `logoMaxBytes` ni ishlatadi (CDN yoqiq: 3MB, o'chiq: 300KB).
+
+## Hisobni o'chirish — 30 kunlik muhlat
+
+Direktor `POST /teacher/account/delete` (parol + `O'CHIRISH` so'zi)
+yuborganda ma'lumot **darhol yo'qolmaydi**:
+
+```
+so'rov ──▶ deletionScheduledFor = +30 kun ──▶ login YOPIQ
+                                              (direktor ham, xodimlar ham)
+                     │
+      30 kun ichida  ├──▶ POST /auth/restore-account ──▶ tiklandi
+                     │
+      muhlat o'tgach └──▶ cron/accountCleanupCron.js ──▶ butunlay o'chdi
+```
+
+⚠️ **`isActive` GA TEGILMAYDI.** U admin blokirovkasi uchun. Ikkalasini
+bitta maydonga yig'sak, admin bloklagan direktor "tiklash" tugmasi
+bilan o'zini ochib olardi.
+
+⚠️ Login'da tekshirish **yetarli emas edi**: allaqachon berilgan token
+muddati tugagunicha ishlayverardi. Shuning uchun `utils/resolveContext.js`
+xodim yo'lida direktorning holatini ham o'qiydi.
+
+⚠️ **Yangi model qo'shsangiz `utils/accountPurge.js` ro'yxatiga ham
+qo'shing** — aks holda o'chirilgan direktorning hujjatlari bazada
+egasiz qoladi. `test/accountPurge.test.js` buni ushlaydi (modellar
+papkasini o'zi skanerlaydi).
+
 ## Tarif limitlari — `effectivePlan`
 
 `Class.plan` — sinf ochilgandagi tarifning nusxasi. O'quvchi limiti
@@ -421,6 +470,20 @@ xato bermaydi. `check:messages` aynan shuni topadi.
 ⚠️ `X-Lang` `server.js` dagi CORS `allowedHeaders` ro'yxatida bo'lishi
 shart. Bo'lmasa brauzer sarlavhani umuman yubormaydi va hamma narsa
 o'zbekcha chiqaveradi.
+
+## Cron
+
+`server.js` **bazaga ulangandan keyin** ishga tushiradi:
+
+| Fayl | Vaqt | Vazifasi |
+|---|---|---|
+| `cron/reminderCron.js` | 1-sana 09:00 | Ota-onalarga Telegram eslatma |
+| `cron/accountCleanupCron.js` | har kuni 03:30 | Muhlati o'tgan hisoblarni o'chirish |
+
+⚠️ `startReminderCron` yozilgan edi, lekin **hech qayerdan
+chaqirilmagan** — ya'ni Pro/Premium da sotilayotgan "oylik eslatma"
+xususiyati hech qachon ishlamagan. 2026-08-14 da ulandi. Yangi cron
+qo'shsangiz `server.js` dagi shu blokka qo'shishni unutmang.
 
 ## Ma'lum texnik qarzlar
 

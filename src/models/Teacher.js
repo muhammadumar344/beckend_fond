@@ -37,13 +37,21 @@ const teacherSchema = new mongoose.Schema({
   // ✅ Muassasa brendi (white-label) — o'quv markazi o'z logotipini
   // qo'yadi va sidebar'da Lumo nomi o'rniga o'zi ko'rinadi.
   //
-  // base64 data URL sifatida saqlanadi (PaymentRequest.screenshot bilan
-  // bir xil yondashuv). NEGA fayl xizmati emas: loyihada hech qanday
-  // S3/Cloudinary yo'q va logotip kichik — bitta qo'shimcha xizmatga
-  // bog'lanishdan ko'ra 300KB ni bazada saqlash arzonroq va soddaroq.
-  // Cheklov controller'da: 300KB va faqat image/*.
+  // `logo` IKKI xil qiymat tutishi mumkin:
+  //   1. Cloudinary manzili — `https://res.cloudinary.com/...`  (yangi)
+  //   2. base64 data URL  — `data:image/png;base64,...`         (eski)
+  //
+  // Ikkalasi ham <img src> ga to'g'ridan-to'g'ri tushadi, shuning
+  // uchun frontend uchun farqi yo'q va migratsiya shart emas.
+  // Cloudinary yoqilganda yangi yuklamalar 1-turga o'tadi; eski
+  // yozuvlarni ko'chirish uchun: scripts/migrate-logos-cloudinary.js
+  //
+  // Sozlash: config/cloudinary.js
   logo:      { type: String, default: '' },
   logoSize:  { type: Number, default: 0 },   // bytes
+  // Cloudinary'dagi identifikator — almashtirishda/o'chirishda eskisini
+  // tozalash uchun kerak. base64 logotipda bo'sh.
+  logoPublicId: { type: String, default: '' },
   // Brend rangi — sidebar sarlavhasi va urg'u elementlari uchun
   brandColor: { type: String, default: '' },
   studentCountRange:   { type: String, enum: ['1-50','51-150','151-300','300+', null], default: null },
@@ -54,6 +62,18 @@ const teacherSchema = new mongoose.Schema({
   referralBonusDays:   { type: Number, default: 0 },
 
   isActive:       { type: Boolean, default: true },
+
+  // ── Hisobni o'chirish (30 kunlik muhlat bilan) ──────────────
+  // `deletionScheduledFor` qo'yilgan bo'lsa hisobga KIRIB BO'LMAYDI,
+  // lekin ma'lumot hali joyida — shu sanagacha tiklash mumkin.
+  // Muhlat o'tgach cron/accountCleanupCron.js butunlay o'chiradi.
+  //
+  // ⚠️ `isActive` GA TEGILMAYDI. U admin blokirovkasi uchun. Ikkalasini
+  //    bitta maydonga yig'sak, admin bloklagan direktor "tiklash"
+  //    tugmasini bosib o'zini o'zi ochib olardi.
+  deletionRequestedAt:  { type: Date, default: null },
+  deletionScheduledFor: { type: Date, default: null },
+
   registeredDate: { type: Date, default: Date.now },
 }, {
   timestamps: true

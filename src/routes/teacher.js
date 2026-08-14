@@ -27,6 +27,12 @@ router.use(auth);
 router.get("/branding", allowTeacherOrStaff, ctrl.getBranding);
 router.put("/branding", onlyTeacher, ctrl.updateBranding);
 
+// ══ HISOBNI O'CHIRISH — faqat direktorning o'zi ═════════════
+// Tiklash `/api/auth/restore-account` da (login talab qilinmaydi).
+const accountCtrl = require("../controllers/accountController");
+router.get("/account/deletion-status", onlyTeacher, accountCtrl.deletionStatus);
+router.post("/account/delete", onlyTeacher, accountCtrl.requestDeletion);
+
 router.get("/dashboard", onlyTeacher, ctrl.getDashboard);
 router.get("/subscription", onlyTeacher, ctrl.getSubscriptionInfo);
 router.put("/onboarding", onlyTeacher, ctrl.completeOnboarding);

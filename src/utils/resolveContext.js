@@ -1,4 +1,5 @@
 const Staff = require('../models/Staff');
+const Teacher = require('../models/Teacher');
 
 /**
  * Teacher (Director) yoki Staff bo'lishidan qat'i nazar
@@ -29,6 +30,22 @@ async function resolveContext(req) {
     }
     if (!staff.isActive) {
       const err = new Error('Xodim hisobi faol emas');
+      err.status = 403;
+      throw err;
+    }
+
+    // ⚠️ Direktor markazni o'chirishga qo'ygan bo'lsa xodim ham
+    //    kira olmaydi. Login'da tekshirish YETARLI EMAS: allaqachon
+    //    berilgan token muddati tugagunicha ishlayverardi, ya'ni
+    //    yopilayotgan markazning ma'lumotlari haftalab ochiq qolardi.
+    //
+    //    Bu qo'shimcha bitta indekslangan _id o'qish — direktor
+    //    yo'lida umuman yo'q (u yerda so'rovning o'zi bo'lmaydi).
+    const director = await Teacher.findById(staff.director)
+      .select('deletionScheduledFor')
+      .lean();
+    if (director && director.deletionScheduledFor) {
+      const err = new Error("Muassasa hisobi o'chirilmoqda");
       err.status = 403;
       throw err;
     }

@@ -9,6 +9,8 @@ const {
   countGroupStudents,
 } = require("../utils/enrollment");
 const TelegramParent = require("../models/TelegramParent");
+const cloudinary = require("../services/cloudinary");
+const cloudinaryCfg = require("../config/cloudinary");
 const XLSX = require("xlsx");
 const {
   Document,
@@ -189,9 +191,14 @@ const getProfile = async (req, res) => {
 // ============================================================
 //  BRENDLASH (white-label) — muassasa o'z logotipini qo'yadi
 // ============================================================
-// Logotip base64 data URL sifatida Teacher hujjatida saqlanadi.
-// Sabab va cheklovlar: models/Teacher.js dagi `logo` izohi.
+// Logotip qayerda saqlanishi Cloudinary yoqilgan-yoqilmaganiga
+// bog'liq — models/Teacher.js dagi `logo` izohiga qarang.
 const LOGO_MAX_BYTES = 300 * 1024; // 300KB — sidebar uchun yetarlidan ortiq
+
+// Cloudinary yoqilganda kattaroq faylga ruxsat: bazaga emas, CDN ga
+// ketadi va yuklashda 512px gacha kichraytiriladi. Foydalanuvchi
+// telefondan olingan logotipni qayta o'lchamasdan tashlay oladi.
+const LOGO_MAX_BYTES_CDN = 3 * 1024 * 1024; // 3MB
 
 const updateBranding = async (req, res) => {
   try {
@@ -210,27 +217,72 @@ const updateBranding = async (req, res) => {
         .json({ success: false, error: "Teacher topilmadi" });
     }
 
+    // Eski Cloudinary nusxasi — yangisi BAZAGA YOZILGANDAN keyin
+    // o'chiriladi. Teskarisi xavfli: o'chirib bo'lib saqlash xato
+    // bersa, direktor logotipsiz va tiklab bo'lmaydigan holda qolardi.
+    let staleId = "";
+
     if (logo !== undefined) {
+      const oldPublicId = teacher.logoPublicId || "";
+
       if (logo === null || logo === "") {
         // Logotipni olib tashlash
         teacher.logo = "";
         teacher.logoSize = 0;
+        teacher.logoPublicId = "";
+        staleId = oldPublicId;
       } else {
         if (typeof logo !== "string" || !logo.startsWith("data:image/")) {
           return res
             .status(400)
             .json({ success: false, error: "Logotip rasm bo'lishi kerak" });
         }
+
+        const useCdn = cloudinary.enabled();
         // base64 uzunligidan taxminiy bayt hajmi (screenshot bilan bir xil)
         const sizeBytes = Math.round((logo.length * 3) / 4);
-        if (sizeBytes > LOGO_MAX_BYTES) {
+        if (useCdn && sizeBytes > LOGO_MAX_BYTES_CDN) {
+          return res.status(400).json({
+            success: false,
+            error: "Logotip hajmi 3MB dan oshmasligi kerak",
+          });
+        }
+        if (!useCdn && sizeBytes > LOGO_MAX_BYTES) {
           return res.status(400).json({
             success: false,
             error: "Logotip hajmi 300KB dan oshmasligi kerak",
           });
         }
-        teacher.logo = logo;
-        teacher.logoSize = sizeBytes;
+
+        if (useCdn) {
+          try {
+            const up = await cloudinary.uploadImage(logo, {
+              folder: cloudinaryCfg.folders.logos,
+              // Har bir direktorga bitta doimiy nom — yangisi eskisi
+              // ustiga yoziladi, hisobda axlat to'planmaydi.
+              publicId: `director-${teacher._id}`,
+            });
+            teacher.logo = up.url;
+            teacher.logoSize = up.bytes;
+            teacher.logoPublicId = up.publicId;
+          } catch (err) {
+            console.error("Logotip yuklash xatosi:", cloudinary.errorText(err));
+            return res.status(502).json({
+              success: false,
+              error: "Logotipni yuklab bo'lmadi, birozdan keyin urinib ko'ring",
+            });
+          }
+        } else {
+          // Cloudinary sozlanmagan — eski yo'l, bazaga base64
+          teacher.logo = logo;
+          teacher.logoSize = sizeBytes;
+          teacher.logoPublicId = "";
+        }
+
+        // Nom o'zgarmagan bo'lsa yuqoridagi yuklash o'zi ustiga yozgan
+        if (oldPublicId && oldPublicId !== teacher.logoPublicId) {
+          staleId = oldPublicId;
+        }
       }
     }
 
@@ -257,6 +309,9 @@ const updateBranding = async (req, res) => {
 
     await teacher.save();
 
+    // Saqlangandan keyin — eskisini tozalash. `destroyImage` otmaydi.
+    if (staleId) await cloudinary.destroyImage(staleId);
+
     return res.json({
       success: true,
       message: "Brend saqlandi",
@@ -265,6 +320,7 @@ const updateBranding = async (req, res) => {
         brandColor: teacher.brandColor || "",
         institutionName: teacher.institutionName || "",
       },
+      logoMaxBytes: cloudinary.enabled() ? LOGO_MAX_BYTES_CDN : LOGO_MAX_BYTES,
     });
   } catch (err) {
     console.error("updateBranding error:", err);
@@ -295,6 +351,11 @@ const getBranding = async (req, res) => {
         institutionName: director.institutionName || "",
         institutionType: director.institutionType || null,
       },
+      // Interfeys cheklovni O'ZI o'ylab topmasligi uchun shu yerdan
+      // aytiladi: CDN yoqilgan bo'lsa 3MB, bo'lmasa 300KB.
+      logoMaxBytes: cloudinary.enabled()
+        ? LOGO_MAX_BYTES_CDN
+        : LOGO_MAX_BYTES,
     });
   } catch (err) {
     console.error("getBranding error:", err);

@@ -139,6 +139,23 @@ mongoose.connect(MONGODB_URI)
       console.warn('⚠️  bot init topilmadi yoki xato berdi:', e.message || e);
     }
 
+    // ── CRON ────────────────────────────────────────────────
+    // ⚠️ Bazaga ULANGANDAN KEYIN ishga tushiriladi, aks holda
+    //    birinchi so'rov ulanishsiz osilib qolardi.
+    //
+    // ⚠️ `startReminderCron` ilgari YOZILGAN, LEKIN HECH QAYERDA
+    //    CHAQIRILMAGAN edi — ya'ni Pro/Premium da sotilayotgan
+    //    "oylik Telegram eslatma" xususiyati hech qachon
+    //    ishlamagan. Shu yerda ulandi.
+    try {
+      const { startReminderCron } = require('./cron/reminderCron');
+      startReminderCron();
+      const { startAccountCleanupCron } = require('./cron/accountCleanupCron');
+      startAccountCleanupCron();
+    } catch (e) {
+      console.error('⚠️  cron ishga tushmadi:', e.message || e);
+    }
+
     // (DEV) print registered routes once (helpful log)
     if (process.env.NODE_ENV !== 'production') {
       setTimeout(() => {
