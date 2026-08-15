@@ -21,7 +21,6 @@
 
 const Role = require("../models/Role");
 const Staff = require("../models/Staff");
-const SupportSlot = require("../models/SupportSlot");
 
 const LEGACY_SLUG = "support_teacher";
 
@@ -44,14 +43,9 @@ async function supportRoleIds(directorId) {
  * @param {string} p.directorId
  * @param {string} [p.branchId]   Berilsa — faqat shu filial (va
  *                                filialsiz, markaz bo'ylab ishlaydiganlar)
- * @param {boolean} [p.withSlotsOnly]  Faqat qabul vaqti bor bo'lganlar
  * @returns {Promise<Array<{id, name, phone, branch}>>}
  */
-async function listSupportStaff({
-  directorId,
-  branchId = null,
-  withSlotsOnly = false,
-}) {
+async function listSupportStaff({ directorId, branchId = null }) {
   const roleIds = await supportRoleIds(directorId);
   if (!roleIds.length) return [];
 
@@ -68,21 +62,12 @@ async function listSupportStaff({
     query.$or = [{ branch: branchId }, { branch: null }];
   }
 
-  let staff = await Staff.find(query).select("name phone branch").lean();
-
-  if (withSlotsOnly && staff.length) {
-    // ⚠️ Qabul vaqti belgilanmagan ustoz KO'RSATILMAYDI. Aks
-    //    holda o'quvchi uni tanlab, "bo'sh vaqt yo'q" degan
-    //    bo'sh ekranga tushardi va nima qilishni bilmasdi.
-    const withSlots = await SupportSlot.find({
-      director: directorId,
-      teacher: { $in: staff.map((s) => s._id) },
-      isActive: true,
-    }).distinct("teacher");
-
-    const ok = new Set(withSlots.map(String));
-    staff = staff.filter((s) => ok.has(String(s._id)));
-  }
+  // ⚠️ QO'SHIMCHA FILTR YO'Q. Ilgari "qabul vaqti belgilanganlar"
+  //    deb filtrlanardi va bu support ustoziga o'zini ro'yxatdan
+  //    yashirish yo'lini ochib qo'yardi: hech narsa qilmasa,
+  //    o'quvchi uni ko'rmasdi. Endi support rolidagi har bir
+  //    xodim markazning ish vaqti davomida ro'yxatda turadi.
+  const staff = await Staff.find(query).select("name phone branch").lean();
 
   return staff.map((s) => ({
     id: s._id,

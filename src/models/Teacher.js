@@ -71,6 +71,33 @@ const teacherSchema = new mongoose.Schema({
   // interfeysni yashirish yetarli emas.
   supportEnabled: { type: Boolean, default: false },
 
+  // ── Support qabul vaqti — MARKAZ BO'YICHA, ustoz bo'yicha emas ──
+  //
+  // ⚠️ ILGARI HAR USTOZ O'ZIGA "QABUL VAQTI" QO'YARDI (SupportSlot)
+  //    va bu NOTO'G'RI model edi. Support ustozi — alohida ishga
+  //    olingan odam; uning butun ish kuni shu ish uchun. U qachon
+  //    qabul qilishini tanlamaydi: ish vaqti davomida qabul HAR
+  //    DOIM ochiq, faqat boshqa o'quvchi band qilgan 30 daqiqa
+  //    bandligicha qoladi.
+  //
+  //    Eski modelda ustoz qabul vaqtini belgilamasa — o'quvchi
+  //    uni umuman ko'rmasdi. Ya'ni ishga olingan odam, hech narsa
+  //    qilmasdan, o'zini ro'yxatdan yashirib qo'ya olardi.
+  //
+  // ⚠️ "Har doim ochiq" ham chegarasiz emas: markaz kechasi soat
+  //    3 da ishlamaydi. Shu sababli ish vaqti va ish kunlari
+  //    markaz darajasida bir marta belgilanadi.
+  supportHours: {
+    start: { type: String, default: '09:00' },
+    end: { type: String, default: '18:00' },
+    // ⚠️ 0 = DUSHANBA … 6 = Yakshanba — loyihadagi `Schedule`
+    //    bilan bir xil. JS `getDay()` boshqacha (0 = Yakshanba).
+    //    Standart: dushanbadan shanbagacha.
+    days: { type: [Number], default: [0, 1, 2, 3, 4, 5] },
+    // Bitta uchrashuv necha daqiqa
+    slotMinutes: { type: Number, default: 30, min: 10, max: 120 },
+  },
+
   isActive:       { type: Boolean, default: true },
 
   // ── Hisobni o'chirish (30 kunlik muhlat bilan) ──────────────

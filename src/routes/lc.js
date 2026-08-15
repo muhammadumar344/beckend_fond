@@ -150,9 +150,10 @@ const requireSupport = require("../middleware/support");
 router.get("/support/settings", allowTeacherOrStaff, supportCtrl.getSettings);
 router.put("/support/settings", onlyTeacher, supportCtrl.updateSettings);
 
-router.get("/support/slots", allowTeacherOrStaff, requireSupport, supportCtrl.getSlots);
-router.post("/support/slots", allowTeacherOrStaff, requireSupport, supportCtrl.createSlot);
-router.delete("/support/slots/:slotId", allowTeacherOrStaff, requireSupport, supportCtrl.deleteSlot);
+// ⚠️ `/support/slots` YO'Q. Support ustozining "qabul vaqti"
+//    degan tushuncha olib tashlandi: qabul markazning ish vaqti
+//    davomida har doim ochiq, faqat band qilingan 30 daqiqa
+//    bandligicha qoladi. Ish vaqti — `/support/settings` ichida.
 
 router.get("/support/free", allowTeacherOrStaff, requireSupport, supportCtrl.getFree);
 router.get("/support/bookings", allowTeacherOrStaff, requireSupport, supportCtrl.getBookings);

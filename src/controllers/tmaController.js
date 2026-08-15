@@ -21,8 +21,6 @@ const MonthlyPayment = require("../models/MonthlyPayment");
 const Teacher = require("../models/Teacher");
 const StudentLink = require("../models/StudentLink");
 const InviteCode = require("../models/InviteCode");
-const Staff = require("../models/Staff");
-const SupportSlot = require("../models/SupportSlot");
 const SupportBooking = require("../models/SupportBooking");
 const Homework = require("../models/Homework");
 const HomeworkResult = require("../models/HomeworkResult");
@@ -347,7 +345,6 @@ exports.getSupportTeachers = async (req, res) => {
     const teachers = await listSupportStaff({
       directorId: link.director,
       branchId: group?.branch || null,
-      withSlotsOnly: true,
     });
 
     res.json({

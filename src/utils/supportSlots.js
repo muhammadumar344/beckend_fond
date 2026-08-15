@@ -4,12 +4,20 @@
 //
 // Bo'sh vaqtlar bazada saqlanmaydi — har safar hisoblanadi:
 //
-//     qabul oynasi  (SupportSlot)
-//   − dars jadvali  (Schedule)          ← ustoz o'sha payt darsda
-//   − band vaqtlar  (SupportBooking)    ← boshqa o'quvchi yozilgan
-//   − o'tgan vaqt                       ← bugungi kun uchun
+//     markaz ish vaqti (Teacher.supportHours)
+//   − dars jadvali     (Schedule)          ← ustoz o'sha payt darsda
+//   − band vaqtlar     (SupportBooking)    ← boshqa o'quvchi yozilgan
+//   − o'tgan vaqt                          ← bugungi kun uchun
 //   ─────────────────────────────────
 //   = bo'sh vaqtlar
+//
+// ⚠️ ILGARI BIRINCHI QATOR "USTOZNING QABUL VAQTI" (SupportSlot)
+//    EDI VA BU NOTO'G'RI MODEL EDI. Support ustozi — shu ish
+//    uchun alohida olingan odam. U qachon qabul qilishini
+//    tanlamaydi: ish vaqti davomida qabul HAR DOIM ochiq.
+//    Eski modelda esa ustoz hech narsa qilmasdan o'zini
+//    ro'yxatdan yashirib qo'ya olardi — qabul vaqti
+//    belgilamasa, o'quvchi uni ko'rmasdi.
 //
 // ⚠️ Kesishishni aniqlash YANGIDAN YOZILMAYDI. `timesOverlap`
 //    allaqachon bor va `test/schedule.test.js` da yettita holat
@@ -24,8 +32,8 @@
 // ════════════════════════════════════════════════════════════
 
 const Schedule = require("../models/Schedule");
-const SupportSlot = require("../models/SupportSlot");
 const SupportBooking = require("../models/SupportBooking");
+const Teacher = require("../models/Teacher");
 const { timesOverlap } = require("./teacherAvailability");
 
 /** "HH:MM" → kun boshidan beri daqiqalar */
@@ -64,8 +72,33 @@ function nowMinutes() {
 }
 
 // O'tgan vaqtga yozilmasin, lekin "10 daqiqadan keyin" ham
-// mantiqsiz — tayyorlanish uchun oz bo'lsa-da vaqt kerak
+// mantiqsiz — tayyorlanish uchun oz bo'lsa-da vaqt kerak.
+//
+// ⚠️ O'quvchi baribir bugunga yozila olmaydi (utils/supportWindow.js).
+//    Bu chegara xodim CRM'dan bugunga yozayotgan holat uchun.
 const MIN_LEAD_MINUTES = 60;
+
+// Markaz sozlamasi yo'q bo'lsa ishlatiladigan qiymatlar.
+// ⚠️ Modeldagi `default` bilan BIR XIL bo'lishi shart: eski
+//    hujjatlarda `supportHours` umuman bo'lmasligi mumkin va
+//    Mongoose ularga standart qiymatni O'QISHDA qo'shmaydi.
+const FALLBACK_HOURS = {
+  start: "09:00",
+  end: "18:00",
+  days: [0, 1, 2, 3, 4, 5],
+  slotMinutes: 30,
+};
+
+/** Markazning support ish vaqti (bo'sh maydonlar to'ldirilgan) */
+function normalizeHours(raw) {
+  const h = raw || {};
+  return {
+    start: h.start || FALLBACK_HOURS.start,
+    end: h.end || FALLBACK_HOURS.end,
+    days: Array.isArray(h.days) && h.days.length ? h.days : FALLBACK_HOURS.days,
+    slotMinutes: h.slotMinutes || FALLBACK_HOURS.slotMinutes,
+  };
+}
 
 /**
  * Berilgan ustoz va kun uchun bo'sh vaqtlar.
@@ -74,21 +107,31 @@ const MIN_LEAD_MINUTES = 60;
  * @param {string} p.directorId
  * @param {string} p.teacherId   Staff._id
  * @param {string} p.date        "YYYY-MM-DD"
+ * @param {object} [p.hours]     Tayyor sozlama (bir necha marta
+ *                               chaqirilganda qayta so'ramaslik uchun)
  * @returns {Promise<Array<{startTime, endTime}>>}
  */
-async function freeSlots({ directorId, teacherId, date }) {
+async function freeSlots({ directorId, teacherId, date, hours }) {
   if (!teacherId || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return [];
 
-  const dow = projectDayOfWeek(date);
+  let cfg = hours;
+  if (!cfg) {
+    const director = await Teacher.findById(directorId)
+      .select("supportHours")
+      .lean();
+    cfg = director?.supportHours;
+  }
+  const h = normalizeHours(cfg);
 
-  const [windows, lessons, booked] = await Promise.all([
-    SupportSlot.find({
-      director: directorId,
-      teacher: teacherId,
-      dayOfWeek: dow,
-      isActive: true,
-    }).lean(),
-    // Ustozning o'sha kundagi darslari
+  const dow = projectDayOfWeek(date);
+  // ⚠️ Dam olish kuni — markaz yopiq, hech qanday vaqt yo'q
+  if (!h.days.includes(dow)) return [];
+
+  const [lessons, booked] = await Promise.all([
+    // Ustozning o'sha kundagi darslari.
+    // ⚠️ Support ustozi odatda dars o'tmaydi, lekin kichik
+    //    markazda bitta odam ikkala ishni ham qilishi mumkin —
+    //    o'sha paytga yozib qo'ymaylik.
     Schedule.find({
       teacher: teacherId,
       dayOfWeek: dow,
@@ -105,34 +148,28 @@ async function freeSlots({ directorId, teacherId, date }) {
       .lean(),
   ]);
 
-  if (!windows.length) return [];
-
   const today = isToday(date);
   const earliest = today ? nowMinutes() + MIN_LEAD_MINUTES : -1;
 
+  const step = h.slotMinutes;
+  const from = toMin(h.start);
+  const to = toMin(h.end);
+
   const out = [];
+  for (let s = from; s + step <= to; s += step) {
+    const startTime = toTime(s);
+    const endTime = toTime(s + step);
 
-  for (const w of windows) {
-    const step = w.slotMinutes || 30;
-    const from = toMin(w.startTime);
-    const to = toMin(w.endTime);
+    if (today && s < earliest) continue;
 
-    for (let s = from; s + step <= to; s += step) {
-      const startTime = toTime(s);
-      const endTime = toTime(s + step);
+    const clash =
+      lessons.some((l) => timesOverlap(startTime, endTime, l.startTime, l.endTime)) ||
+      booked.some((b) => timesOverlap(startTime, endTime, b.startTime, b.endTime));
 
-      if (today && s < earliest) continue;
-
-      const clash =
-        lessons.some((l) => timesOverlap(startTime, endTime, l.startTime, l.endTime)) ||
-        booked.some((b) => timesOverlap(startTime, endTime, b.startTime, b.endTime));
-
-      if (!clash) out.push({ startTime, endTime });
-    }
+    if (!clash) out.push({ startTime, endTime });
   }
 
-  // Bir nechta qabul oynasi bo'lsa vaqt bo'yicha tartiblab beramiz
-  return out.sort((a, b) => a.startTime.localeCompare(b.startTime));
+  return out;
 }
 
 /**
@@ -148,9 +185,11 @@ async function isSlotFree({ directorId, teacherId, date, startTime }) {
 module.exports = {
   freeSlots,
   isSlotFree,
+  normalizeHours,
   projectDayOfWeek,
   toMin,
   toTime,
   isToday,
   MIN_LEAD_MINUTES,
+  FALLBACK_HOURS,
 };

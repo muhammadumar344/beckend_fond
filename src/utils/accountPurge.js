@@ -46,7 +46,10 @@ const OWNED = [
   ["StudentLink", "director"],
   ["Subject", "director"],
   ["SupportBooking", "director"],
-  ["SupportSlot", "director"],
+  // ⚠️ `SupportSlot` olib tashlandi — model umuman yo'q endi.
+  //    Support ustozining qabul vaqti degan tushuncha yo'qoldi:
+  //    qabul markazning ish vaqti davomida har doim ochiq
+  //    (utils/supportSlots.js dagi izoh).
   ["TelegramParent", "teacherId"],
   ["Transaction", "teacher"],
 ];

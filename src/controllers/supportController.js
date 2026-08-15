@@ -6,13 +6,11 @@
 // yozuvlarni tasdiqlaydi. O'quvchi tomoni — tmaController.js
 // ════════════════════════════════════════════════════════════
 
-const SupportSlot = require("../models/SupportSlot");
 const SupportBooking = require("../models/SupportBooking");
-const Staff = require("../models/Staff");
 const Teacher = require("../models/Teacher");
 const Student = require("../models/Student");
 const { resolveContext, requirePermission } = require("../utils/resolveContext");
-const { freeSlots, toMin } = require("../utils/supportSlots");
+const { freeSlots, toMin, normalizeHours } = require("../utils/supportSlots");
 const { notifyBooking, inBackground } = require("../services/notify");
 const { currentToken, WINDOW_SEC } = require("../services/supportQr");
 const { MIN_DAYS_AHEAD, MAX_DAYS_AHEAD } = require("../utils/supportWindow");
@@ -33,7 +31,7 @@ exports.getSettings = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
     const director = await Teacher.findById(ctx.directorId)
-      .select("supportEnabled")
+      .select("supportEnabled supportHours")
       .lean();
 
     // ⚠️ Support ustozlari ro'yxati ham qaytariladi. Sabab:
@@ -53,6 +51,11 @@ exports.getSettings = async (req, res) => {
       enabled: Boolean(director?.supportEnabled),
       canEdit: ctx.isDirector,
       staff,
+      // ⚠️ Eski hujjatlarda `supportHours` umuman bo'lmasligi
+      //    mumkin — Mongoose standart qiymatni O'QISHDA qo'shmaydi.
+      //    `normalizeHours` bo'sh maydonlarni to'ldiradi.
+      hours: normalizeHours(director?.supportHours),
+      dayNames: DAY_NAMES,
       // Interfeys "ertadan 7 kungacha" deb yozib qo'yishi uchun
       window: {
         minDaysAhead: MIN_DAYS_AHEAD,
@@ -64,162 +67,109 @@ exports.getSettings = async (req, res) => {
   }
 };
 
-// PUT /api/lc/support/settings  { enabled }
+// PUT /api/lc/support/settings  { enabled, hours }
 exports.updateSettings = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
-    const enabled = Boolean(req.body?.enabled);
 
     const director = await Teacher.findById(ctx.directorId);
     if (!director) {
       return res.status(404).json({ success: false, error: "Teacher topilmadi" });
     }
 
-    director.supportEnabled = enabled;
+    if (req.body?.enabled !== undefined) {
+      director.supportEnabled = Boolean(req.body.enabled);
+    }
+
+    // ── Ish vaqti ────────────────────────────────────────────
+    // ⚠️ Bu MARKAZ sozlamasi, ustozniki emas. Support ustozi
+    //    qachon qabul qilishini tanlamaydi — ish vaqti davomida
+    //    qabul har doim ochiq.
+    if (req.body?.hours) {
+      const h = req.body.hours;
+      const cur = normalizeHours(director.supportHours);
+
+      const start = h.start ?? cur.start;
+      const end = h.end ?? cur.end;
+      const slotMinutes = Number(h.slotMinutes ?? cur.slotMinutes);
+      const days = Array.isArray(h.days) ? h.days.map(Number) : cur.days;
+
+      if (!isTime(start) || !isTime(end)) {
+        return res.status(400).json({
+          success: false,
+          error: "Vaqt HH:MM formatida bo'lsin",
+        });
+      }
+      if (toMin(end) <= toMin(start)) {
+        return res.status(400).json({
+          success: false,
+          error: "Tugash vaqti boshlanishdan keyin bo'lsin",
+        });
+      }
+      if (!Number.isInteger(slotMinutes) || slotMinutes < 10 || slotMinutes > 120) {
+        return res.status(400).json({
+          success: false,
+          error: "Uchrashuv davomiyligi 10–120 daqiqa oralig'ida",
+        });
+      }
+      if (toMin(end) - toMin(start) < slotMinutes) {
+        return res.status(400).json({
+          success: false,
+          error: "Ish vaqti bitta uchrashuvga ham yetmaydi",
+        });
+      }
+      if (!days.length || days.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
+        return res.status(400).json({
+          success: false,
+          error: "Kamida bitta ish kuni tanlansin",
+        });
+      }
+
+      director.supportHours = {
+        start,
+        end,
+        slotMinutes,
+        days: [...new Set(days)].sort((a, b) => a - b),
+      };
+    }
+
     await director.save();
 
     // ⚠️ O'chirilganda mavjud yozuvlar TEGILMAYDI. Ular tarixda
     //    qoladi va o'quvchilar allaqachon kelishga rozi bo'lgan.
     //    Yangi yozilish esa `requireSupport` bilan to'siladi.
+    //
+    // ⚠️ Ish vaqti QISQARTIRILGANDA ham mavjud yozuvlar qoladi.
+    //    Ular o'quvchi bilan kelishilgan va bekor qilinsa,
+    //    o'quvchi sababini bilmay qolardi. Xodim kerak bo'lsa
+    //    yozuvlar ro'yxatidan qo'lda bekor qiladi.
     res.json({
       success: true,
-      enabled,
-      message: enabled ? "Xizmat yoqildi" : "Xizmat o'chirildi",
+      enabled: director.supportEnabled,
+      hours: normalizeHours(director.supportHours),
+      message: "Saqlandi",
     });
   } catch (e) {
     res.status(e.status || 500).json({ success: false, error: e.message });
   }
 };
 
-// ══ QABUL VAQTLARI ══════════════════════════════════════════
-
-// GET /api/lc/support/slots
-exports.getSlots = async (req, res) => {
-  try {
-    const ctx = await resolveContext(req);
-
-    const query = { director: ctx.directorId };
-    if (ctx.branchFilter) query.branch = ctx.branchFilter;
-    // Xodim faqat o'z qabul vaqtini ko'radi (agar boshqarish
-    // huquqi bo'lmasa)
-    if (!ctx.isDirector && !ctx.permissions?.includes("manageGroups")) {
-      query.teacher = ctx.staffId;
-    }
-
-    const slots = await SupportSlot.find(query)
-      .populate("teacher", "name")
-      .sort({ dayOfWeek: 1, startTime: 1 })
-      .lean();
-
-    res.json({
-      success: true,
-      slots: slots.map((s) => ({
-        ...s,
-        dayName: DAY_NAMES[s.dayOfWeek],
-      })),
-    });
-  } catch (e) {
-    res.status(e.status || 500).json({ success: false, error: e.message });
-  }
-};
-
-// POST /api/lc/support/slots
-exports.createSlot = async (req, res) => {
-  try {
-    const ctx = await resolveContext(req);
-    const { teacherId, dayOfWeek, startTime, endTime, slotMinutes } = req.body;
-
-    // ⚠️ Xodim O'ZIGA qabul vaqti qo'sha oladi. Boshqa ustozga
-    //    qo'yish uchun `manageGroups` kerak — aks holda har kim
-    //    hammaning jadvaliga aralashardi.
-    const target = teacherId || ctx.staffId;
-    if (String(target) !== String(ctx.staffId)) {
-      requirePermission(ctx, "manageGroups");
-    }
-    if (!target) {
-      return res.status(400).json({ success: false, error: "Ustoz tanlanmagan" });
-    }
-
-    const day = Number(dayOfWeek);
-    if (!Number.isInteger(day) || day < 0 || day > 6) {
-      return res.status(400).json({ success: false, error: "Hafta kuni noto'g'ri" });
-    }
-    if (!isTime(startTime) || !isTime(endTime)) {
-      return res.status(400).json({ success: false, error: "Vaqt HH:MM formatida bo'lsin" });
-    }
-    if (toMin(endTime) <= toMin(startTime)) {
-      return res.status(400).json({ success: false, error: "Tugash vaqti boshlanishdan keyin bo'lsin" });
-    }
-
-    const step = Number(slotMinutes) || 30;
-    if (toMin(endTime) - toMin(startTime) < step) {
-      return res.status(400).json({
-        success: false,
-        error: "Oraliq bitta uchrashuvga ham yetmaydi",
-      });
-    }
-
-    // Ustoz shu markazniki ekanini tasdiqlaymiz
-    const staff = await Staff.findOne({
-      _id: target,
-      director: ctx.directorId,
-    }).select("branch");
-    if (!staff) {
-      return res.status(404).json({ success: false, error: "Ustoz topilmadi" });
-    }
-
-    // ⚠️ Qabul vaqti FAQAT support rolidagi xodimga qo'yiladi.
-    //    Bo'lmasa vaqt yozilardi-yu, o'quvchi ro'yxatida u
-    //    ko'rinmasdi (ro'yxat rolga qarab tuziladi) — direktor
-    //    esa "nega ishlamayapti?" deb sababini topolmasdi.
-    const { isSupportStaff } = require("../services/supportStaff");
-    if (!(await isSupportStaff(ctx.directorId, target))) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "Bu xodim support ustozi emas. Xodimlar bo'limida uning rolini " +
-          "\"Support Teacher\" ga o'zgartiring.",
-      });
-    }
-
-    const slot = await SupportSlot.create({
-      director: ctx.directorId,
-      branch: staff.branch || null,
-      teacher: target,
-      dayOfWeek: day,
-      startTime,
-      endTime,
-      slotMinutes: step,
-    });
-
-    res.status(201).json({ success: true, slot });
-  } catch (e) {
-    res.status(e.status || 500).json({ success: false, error: e.message });
-  }
-};
-
-// DELETE /api/lc/support/slots/:slotId
-exports.deleteSlot = async (req, res) => {
-  try {
-    const ctx = await resolveContext(req);
-
-    const slot = await SupportSlot.findOne({
-      _id: req.params.slotId,
-      director: ctx.directorId,
-    });
-    if (!slot) {
-      return res.status(404).json({ success: false, error: "Qabul vaqti topilmadi" });
-    }
-    if (String(slot.teacher) !== String(ctx.staffId)) {
-      requirePermission(ctx, "manageGroups");
-    }
-
-    await slot.deleteOne();
-    res.json({ success: true, message: "O'chirildi" });
-  } catch (e) {
-    res.status(e.status || 500).json({ success: false, error: e.message });
-  }
-};
+// ══ QABUL VAQTLARI YO'Q ═════════════════════════════════════
+//
+// ⚠️ `getSlots` / `createSlot` / `deleteSlot` OLIB TASHLANDI va
+//    `SupportSlot` modeli ham o'chirildi.
+//
+//    Sabab: support ustozi — shu ish uchun alohida olingan odam.
+//    U qachon qabul qilishini TANLAMAYDI: markazning ish vaqti
+//    davomida qabul har doim ochiq, faqat boshqa o'quvchi band
+//    qilgan 30 daqiqa bandligicha qoladi.
+//
+//    Eski modelda ustoz qabul vaqti belgilamasa — o'quvchi uni
+//    umuman ko'rmasdi. Ya'ni ishga olingan odam hech narsa
+//    qilmasdan o'zini ro'yxatdan yashirib qo'ya olardi.
+//
+//    Ish vaqti endi markaz darajasida: `Teacher.supportHours`
+//    (yuqoridagi `updateSettings`).
 
 // ══ YOZUVLAR ════════════════════════════════════════════════
 
