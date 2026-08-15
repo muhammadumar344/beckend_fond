@@ -34,7 +34,7 @@ const createRole = async (req, res) => {
     if (req.user.role !== 'teacher') {
       return res.status(403).json({ message: 'Faqat direktor rol yarata oladi' });
     }
-    const { name, permissions = [], color = '#4299e1' } = req.body;
+    const { name, permissions = [], color = '#4299e1', isSupport = false } = req.body;
     if (!name) return res.status(400).json({ message: 'Rol nomi majburiy' });
 
     const role = new Role({
@@ -42,6 +42,9 @@ const createRole = async (req, res) => {
       slug: name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''),
       permissions,
       color,
+      // Shu roldagilar o'quvchining "qo'shimcha dars" ro'yxatida
+      // chiqadi (services/supportStaff.js)
+      isSupport: Boolean(isSupport),
       director: req.user.id,
       isDefault: false,
     });
@@ -66,10 +69,11 @@ const updateRole = async (req, res) => {
     if (role.isDefault) {
       return res.status(400).json({ message: "Default rolni o'zgartirish mumkin emas" });
     }
-    const { name, permissions, color } = req.body;
+    const { name, permissions, color, isSupport } = req.body;
     if (name !== undefined) role.name = name;
     if (permissions !== undefined) role.permissions = permissions;
     if (color !== undefined) role.color = color;
+    if (isSupport !== undefined) role.isSupport = Boolean(isSupport);
     await role.save();
     res.json({ success: true, role });
   } catch (err) {
@@ -135,6 +139,9 @@ const createDefaultRoles = async (directorId) => {
       slug: 'support_teacher',
       color: '#9f7aea',
       permissions: ['manageAttendance'],
+      // Qo'shimcha mashg'ulotga yoziladigan ustozlar shu roldan
+      // olinadi — services/supportStaff.js
+      isSupport: true,
     },
   ];
 

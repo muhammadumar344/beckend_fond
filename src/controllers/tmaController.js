@@ -29,6 +29,8 @@ const HomeworkResult = require("../models/HomeworkResult");
 const { canSee, isVerified, visibleSections } = require("../utils/tmaAccess");
 const { getStudentGroupIds } = require("../utils/enrollment");
 const { freeSlots } = require("../utils/supportSlots");
+const { bookableDates, isBookable } = require("../utils/supportWindow");
+const { listSupportStaff } = require("../services/supportStaff");
 const { bookSlot } = require("../services/supportBooking");
 const { verifyPayload } = require("../services/supportQr");
 
@@ -329,39 +331,31 @@ exports.getSupportTeachers = async (req, res) => {
     const link = requireLink(req, res, studentId, "booking");
     if (!link) return;
 
-    // O'quvchi qatnashadigan guruhlar (asosiy + qo'shimcha)
-    const groupIds = await getStudentGroupIds(studentId);
-    if (!groupIds.length) return res.json({ success: true, teachers: [] });
+    // ⚠️ RO'YXAT ROLGA QARAB TUZILADI, guruh ustoziga emas.
+    //    Ilgari o'quvchiga o'z guruhlarining ustozlari
+    //    ko'rsatilardi — ya'ni dars o'tayotgan ustozdan ustiga
+    //    qo'shimcha mashg'ulot ham kutilardi. Markazlarda esa
+    //    buning uchun ALOHIDA odam olinadi (services/supportStaff.js).
+    //
+    //    O'quvchi filialini guruhidan olamiz: bir nechta filialli
+    //    markazda boshqa shahardagi ustozni ko'rsatish ma'nosiz.
+    const student = await Student.findById(studentId).select("class").lean();
+    const group = student?.class
+      ? await Class.findById(student.class).select("branch").lean()
+      : null;
 
-    const groups = await Class.find({ _id: { $in: groupIds } })
-      .select("assignedTeacher name")
-      .lean();
-
-    const teacherIds = [
-      ...new Set(groups.map((g) => g.assignedTeacher).filter(Boolean).map(String)),
-    ];
-    if (!teacherIds.length) return res.json({ success: true, teachers: [] });
-
-    // ⚠️ Faqat qabul vaqti BOR ustozlar ko'rsatiladi. Aks holda
-    //    o'quvchi ustozni tanlab, keyin "bo'sh vaqt yo'q" degan
-    //    bo'sh ekranga tushardi.
-    const withSlots = await SupportSlot.find({
-      teacher: { $in: teacherIds },
-      director: link.director,
-      isActive: true,
-    }).distinct("teacher");
-
-    const staff = await Staff.find({ _id: { $in: withSlots } })
-      .select("name position")
-      .lean();
+    const teachers = await listSupportStaff({
+      directorId: link.director,
+      branchId: group?.branch || null,
+      withSlotsOnly: true,
+    });
 
     res.json({
       success: true,
-      teachers: staff.map((s) => ({
-        id: s._id,
-        name: s.name,
-        position: s.position || "",
-      })),
+      teachers: teachers.map((s) => ({ id: s.id, name: s.name })),
+      // Interfeys qaysi kunlarni ko'rsatishini serverdan oladi —
+      // qoida ikki joyda ikki xil bo'lib qolmasin
+      dates: bookableDates(),
     });
   } catch (err) {
     console.error("[tma] getSupportTeachers", err);
@@ -381,6 +375,15 @@ exports.getFreeSlots = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, error: "teacherId va date majburiy" });
+    }
+
+    // ⚠️ Oyna tashqarisidagi kun uchun bo'sh vaqt QAYTARILMAYDI.
+    //    Ro'yxatni ko'rsatib, keyin yozishda rad etish — yomon
+    //    tajriba: o'quvchi vaqt tanlab, "Yozilish" bosib, xato
+    //    olardi va sababi tushunarsiz bo'lardi.
+    const window = isBookable(date);
+    if (!window.ok) {
+      return res.json({ success: true, date, slots: [], reason: window.error });
     }
 
     const slots = await freeSlots({

@@ -13,9 +13,16 @@ const Staff = require("../models/Staff");
 const Student = require("../models/Student");
 const Teacher = require("../models/Teacher");
 const { isSlotFree } = require("../utils/supportSlots");
+const { isBookable } = require("../utils/supportWindow");
+const { isSupportStaff } = require("./supportStaff");
 
 // Kelmagan o'quvchi necha kun yozila olmaydi
 const BLOCK_DAYS = 3;
+
+// Mavzu eng kamida shuncha belgidan iborat bo'lsin.
+// ⚠️ Nol emas: "." yoki "a" yozib o'tib ketishga yo'l qo'ymaymiz,
+//    lekin uzun matn ham talab qilinmaydi — "logarifm" yetarli.
+const TOPIC_MIN = 5;
 
 // Bir o'quvchi haftada nechta faol yozuv qila oladi.
 // ⚠️ Cheklovsiz bo'lsa bitta o'quvchi ustozning butun haftasini
@@ -81,6 +88,50 @@ async function bookSlot({
     };
   }
 
+  // ⚠️ Quyidagi ikki qoida FAQAT O'QUVCHIGA tegishli.
+  //    Xodim CRM'dan yozayotgan bo'lsa ular qo'llanmaydi: eshikdan
+  //    kirib kelgan o'quvchini bugunga yozish — odatiy hol, va
+  //    xodim mavzuni keyinroq to'ldirishi mumkin. O'quvchining
+  //    o'zi uchun esa qoidalar qat'iy.
+  const fromStudent = via === "app";
+
+  // ⚠️ SANA OYNASI SERVERDA TEKSHIRILADI. Interfeysda faqat
+  //    ertadan 7 kungacha ko'rsatiladi, lekin tugmani yashirish
+  //    himoya emas — so'rovni qo'lda yuborib bugunga yoki bir
+  //    oy keyinga yozib qo'yish mumkin edi.
+  if (fromStudent) {
+    const window = isBookable(date);
+    if (!window.ok) {
+      return { ok: false, status: 400, error: window.error };
+    }
+  }
+
+  // ⚠️ MAVZU MAJBURIY. Bu shunchaki maydon emas — butun g'oyaning
+  //    ma'nosi shunda: support ustozi bir kun oldin nima
+  //    so'ralishini biladi va TAYYORLANADI. Mavzusiz uchrashuv
+  //    "nima bilan yordam beray?" dan boshlanadi va 30 daqiqaning
+  //    yarmi shunga ketadi.
+  const cleanTopic = String(topic || "").trim();
+  if (fromStudent && cleanTopic.length < TOPIC_MIN) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Mavzuni yozing — ustoz shunga tayyorlanadi",
+    };
+  }
+
+  // ⚠️ Xodim SUPPORT ROLIDAMI. Ro'yxatni interfeysda cheklash
+  //    yetarli emas: so'rovga istalgan xodim id sini qo'yib
+  //    yuborish mumkin va o'quvchi buxgalterga "qo'shimcha
+  //    dars"ga yozilib olardi.
+  if (!(await isSupportStaff(directorId, teacherId))) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Bu xodim qo'shimcha mashg'ulot o'tkazmaydi",
+    };
+  }
+
   // ⚠️ Bo'shligini QAYTA tekshiramiz: ro'yxat ko'rsatilgandan keyin
   //    boshqa o'quvchi o'sha vaqtni olgan bo'lishi mumkin.
   const slot = await isSlotFree({ directorId, teacherId, date, startTime });
@@ -120,7 +171,7 @@ async function bookSlot({
       date,
       startTime,
       endTime: slot.endTime,
-      topic: String(topic || "").slice(0, 200),
+      topic: cleanTopic.slice(0, 200),
       createdVia: via,
     });
     return { ok: true, booking };
@@ -176,5 +227,6 @@ module.exports = {
   weekRange,
   MAX_ACTIVE_PER_WEEK,
   BLOCK_DAYS,
+  TOPIC_MIN,
   ACTIVE,
 };

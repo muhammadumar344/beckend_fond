@@ -15,6 +15,7 @@ const { resolveContext, requirePermission } = require("../utils/resolveContext")
 const { freeSlots, toMin } = require("../utils/supportSlots");
 const { notifyBooking, inBackground } = require("../services/notify");
 const { currentToken, WINDOW_SEC } = require("../services/supportQr");
+const { MIN_DAYS_AHEAD, MAX_DAYS_AHEAD } = require("../utils/supportWindow");
 
 const DAY_NAMES = [
   "Dushanba", "Seshanba", "Chorshanba",
@@ -35,10 +36,28 @@ exports.getSettings = async (req, res) => {
       .select("supportEnabled")
       .lean();
 
+    // ⚠️ Support ustozlari ro'yxati ham qaytariladi. Sabab:
+    //    xizmatni yoqish YETARLI EMAS — o'quvchiga ro'yxat
+    //    rolga qarab tuziladi, ya'ni "Support Teacher" rolidagi
+    //    xodim bo'lmasa o'quvchi bo'sh ekran ko'radi. Direktor
+    //    buni sozlamalar sahifasidayoq bilsin, o'quvchi
+    //    shikoyat qilgandan keyin emas.
+    const { listSupportStaff } = require("../services/supportStaff");
+    const staff = await listSupportStaff({
+      directorId: ctx.directorId,
+      branchId: ctx.branchFilter || null,
+    });
+
     res.json({
       success: true,
       enabled: Boolean(director?.supportEnabled),
       canEdit: ctx.isDirector,
+      staff,
+      // Interfeys "ertadan 7 kungacha" deb yozib qo'yishi uchun
+      window: {
+        minDaysAhead: MIN_DAYS_AHEAD,
+        maxDaysAhead: MAX_DAYS_AHEAD,
+      },
     });
   } catch (e) {
     res.status(e.status || 500).json({ success: false, error: e.message });
@@ -147,6 +166,20 @@ exports.createSlot = async (req, res) => {
     }).select("branch");
     if (!staff) {
       return res.status(404).json({ success: false, error: "Ustoz topilmadi" });
+    }
+
+    // ⚠️ Qabul vaqti FAQAT support rolidagi xodimga qo'yiladi.
+    //    Bo'lmasa vaqt yozilardi-yu, o'quvchi ro'yxatida u
+    //    ko'rinmasdi (ro'yxat rolga qarab tuziladi) — direktor
+    //    esa "nega ishlamayapti?" deb sababini topolmasdi.
+    const { isSupportStaff } = require("../services/supportStaff");
+    if (!(await isSupportStaff(ctx.directorId, target))) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Bu xodim support ustozi emas. Xodimlar bo'limida uning rolini " +
+          "\"Support Teacher\" ga o'zgartiring.",
+      });
     }
 
     const slot = await SupportSlot.create({

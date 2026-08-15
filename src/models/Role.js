@@ -81,6 +81,21 @@ const roleSchema = new mongoose.Schema(
       default: '#4299e1',
     },
 
+    // ── Qo'shimcha mashg'ulot ────────────────────────────────
+    // Shu roldagi xodimlar o'quvchiga "qo'shimcha dars"ga
+    // yozilish ro'yxatida chiqadi.
+    //
+    // ⚠️ HAR QANDAY USTOZ SUPPORT USTOZI EMAS. Ilgari o'quvchiga
+    //    o'z guruhlarining ustozlari ko'rsatilardi — ya'ni dars
+    //    o'tayotgan ustoz ustiga-ustak qo'shimcha mashg'ulot ham
+    //    o'tkazishi kutilardi. Markazlarda esa buning uchun
+    //    ALOHIDA odam olinadi. Endi ro'yxat rolga qarab tuziladi.
+    //
+    // ⚠️ Bayroq ROLDA, xodimda emas: markaz "Support Teacher"
+    //    rolini bir marta belgilaydi, keyin unga qancha odam
+    //    qo'shsa ham qo'shimcha sozlash kerak emas.
+    isSupport: { type: Boolean, default: false },
+
     isDefault: { type: Boolean, default: false }, // tizim tomonidan avtomatik yaratilgan
     isActive: { type: Boolean, default: true },
   },
