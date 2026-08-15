@@ -107,6 +107,56 @@ test("tasdiq klaviaturasida ha va yo'q bor", () => {
   );
 });
 
+// ── Ma'lumot buyruqlari ─────────────────────────────────────
+test("summa uch xonadan ajratiladi", () => {
+  const { money } = require("../src/bot/commands");
+  assert.strictEqual(money(1234567), "1 234 567");
+  assert.strictEqual(money(500), "500");
+  assert.strictEqual(money(0), "0");
+  assert.strictEqual(money(null), "0");
+});
+
+test("sana qisqa va tilga mos yoziladi", () => {
+  const { shortDate } = require("../src/bot/commands");
+  assert.strictEqual(shortDate("2026-08-15", "uz"), "15 avgust");
+  assert.strictEqual(shortDate("2026-01-03", "ru"), "3 январь");
+  // Date obyekti ham qabul qilinadi — Grade.date shunday keladi
+  assert.ok(shortDate(new Date("2026-08-15T10:00:00Z"), "uz").includes("avgust"));
+});
+
+test("⚠️ har bir buyruq mavjud ruxsat bo'limiga tayanadi", () => {
+  // Xato yozilgan bo'lim nomi `canSee` da `false` qaytaradi va
+  // buyruq HAMMAGA "ruxsat yo'q" deb javob berardi — jimgina
+  // ishlamay qo'yardi.
+  const { SECTIONS } = require("../src/utils/tmaAccess");
+  const { RENDER } = require("../src/bot/commands");
+  const ACCESS = { support: "booking" };
+
+  for (const section of Object.keys(RENDER)) {
+    const need = ACCESS[section] || section;
+    assert.ok(
+      SECTIONS[need],
+      `"${section}" buyrug'i "${need}" bo'limiga tayanadi, lekin bunday bo'lim yo'q`,
+    );
+  }
+});
+
+test("buyruq sarlavhalari ikkala tilda ham bor", () => {
+  const { RENDER } = require("../src/bot/commands");
+  const TITLE_KEY = {
+    grades: "cmdGrades",
+    attendance: "cmdAttendance",
+    payments: "cmdPayments",
+    homework: "cmdHomework",
+    support: "cmdSupport",
+  };
+  for (const section of Object.keys(RENDER)) {
+    const key = TITLE_KEY[section];
+    assert.ok(key, `"${section}" uchun sarlavha kaliti yo'q`);
+    assert.ok(PACKS.uz[key] && PACKS.ru[key], `${key} tarjimasi yetishmaydi`);
+  }
+});
+
 // ── Mini App manzili ────────────────────────────────────────
 test("TMA_URL asosiy shakli — /tma.html qo'shiladi", () => {
   process.env.TMA_URL = "https://schoolfonds.uz";

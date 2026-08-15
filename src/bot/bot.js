@@ -192,6 +192,27 @@ const _attachHandlers = () => {
     handleReset(bot, msg);
   });
 
+  // ── Ma'lumot buyruqlari ───────────────────────────────────
+  // ⚠️ Har biriga O'ZBEKCHA taxallus ham bor. Buyruqning asosiy
+  //    nomi inglizcha, chunki Telegram bitta bot uchun bitta
+  //    nom saqlaydi — tarjima faqat IZOHIGA tegishli. Menyudan
+  //    bosadigan odam farqni sezmaydi, qo'lda yozadigan odam
+  //    esa o'zbekchasini yozishi tabiiy. Ikkalasi ham ishlasin.
+  const { handleDigest } = require("./commands");
+  const DIGEST = [
+    ["grades", "baholar", "baho"],
+    ["attendance", "davomat"],
+    ["payments", "tolov", "tolovlar"],
+    ["homework", "vazifa", "uyvazifasi"],
+    ["support", "mashgulot", "qoshimcha"],
+  ];
+  for (const [section, ...aliases] of DIGEST) {
+    const names = [section, ...aliases].join("|");
+    bot.onText(new RegExp(`^\\/(?:${names})(?:@\\w+)?(?:\\s|$)`), (msg) => {
+      handleDigest(bot, msg, section);
+    });
+  }
+
   // ⚠️ Raqam MATNDAN OLDIN tekshiriladi: kontakt xabarida `text`
   //    bo'lmaydi, lekin tartib chalkashsa oson yo'qolib qoladi.
   bot.on("contact", (msg) => {
@@ -268,16 +289,30 @@ const _attachHandlers = () => {
   //    bilishning imkoni yo'q edi, chunki uni hech qayerda
   //    ko'rsatmasdik. Bu bir marta yuboriladi va Telegram'da
   //    saqlanib qoladi.
+  //
+  // ⚠️ Tartib MUHIM: menyuda shu ketma-ketlikda chiqadi. Eng
+  //    ko'p so'raladigani yuqorida — /reset esa pastda, chunki
+  //    u kamdan-kam kerak bo'ladi va tasodifan bosilmasin.
   const commands = {
     uz: [
       { command: "start", description: "Boshlash / ilovani ochish" },
-      { command: "reset", description: "Bog'lanishni uzib, boshidan" },
+      { command: "grades", description: "Baholar" },
+      { command: "attendance", description: "Davomat (shu oy)" },
+      { command: "homework", description: "Uy vazifasi" },
+      { command: "payments", description: "To'lovlar va qarz" },
+      { command: "support", description: "Qo'shimcha mashg'ulot" },
       { command: "help", description: "Yordam" },
+      { command: "reset", description: "Bog'lanishni uzib, boshidan" },
     ],
     ru: [
       { command: "start", description: "Начать / открыть приложение" },
-      { command: "reset", description: "Отключиться и начать сначала" },
+      { command: "grades", description: "Оценки" },
+      { command: "attendance", description: "Посещаемость (этот месяц)" },
+      { command: "homework", description: "Домашние задания" },
+      { command: "payments", description: "Оплаты и задолженность" },
+      { command: "support", description: "Дополнительное занятие" },
       { command: "help", description: "Помощь" },
+      { command: "reset", description: "Отключиться и начать сначала" },
     ],
   };
   bot

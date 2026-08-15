@@ -68,6 +68,11 @@ const UZ = {
     "ℹ️ *Yordam*\n\n" +
     "📌 *Buyruqlar:*\n" +
     "/start — Boshlash yoki ilovani ochish\n" +
+    "/grades — Baholar _(/baholar ham ishlaydi)_\n" +
+    "/attendance — Davomat _(/davomat)_\n" +
+    "/homework — Uy vazifasi _(/vazifa)_\n" +
+    "/payments — To'lovlar va qarz _(/tolov)_\n" +
+    "/support — Qo'shimcha mashg'ulot _(/mashgulot)_\n" +
     "/reset — Bog'lanishni uzib, boshidan boshlash\n" +
     "/help — Shu yordam\n\n" +
     "🔗 *Bog'lanish ikki yo'l bilan:*\n" +
@@ -79,6 +84,48 @@ const UZ = {
     "ro'yxatdagi raqamni yangilashsin.",
 
   genericError: "❌ Xatolik yuz berdi. /start bosib qayta urining.",
+
+  // ── Buyruq javoblari ──────────────────────────────────────
+  cmdNotLinked:
+    "Avval bog'lanishingiz kerak. /start bosing va raqamingizni yuboring.",
+  cmdNoAccess:
+    "🔒 Buni ko'rish uchun hisobingiz tasdiqlanishi kerak.\n" +
+    "/start bosib raqamingizni yuboring.",
+  cmdMore: "\n_Batafsil — ilovada._",
+
+  cmdGrades: "📊 *Baholar*",
+  cmdNoGrades: "hozircha baho yo'q",
+  cmdAvg: "O'rtacha",
+  cmdOfN: (n) => `${n} ta baho`,
+  cmdWeakest: "Eng past",
+  cmdRecent: "Oxirgi",
+
+  cmdAttendance: "📅 *Davomat* — shu oy",
+  cmdNoAttendance: "bu oyda yozuv yo'q",
+  cmdAttPresent: "keldi",
+  cmdAttLate: "kechikdi",
+  cmdAttAbsent: "kelmadi",
+  cmdAttExcused: "sababli",
+
+  cmdPayments: "💳 *To'lovlar*",
+  cmdNoDebt: "qarz yo'q ✅",
+  cmdDebt: "Qarz",
+  cmdSum: "so'm",
+
+  cmdHomework: "📚 *Uy vazifasi*",
+  cmdNoHomework: "bajarilmagan vazifa yo'q ✅",
+  cmdHwPending: (n) => `${n} ta bajarilmagan`,
+  cmdOverdue: "muddati o'tgan",
+  cmdDue: "muddat",
+
+  cmdSupport: "🎓 *Qo'shimcha mashg'ulot*",
+  cmdNoSupport: "yozuv yo'q",
+  cmdSupNext: "Keyingi mashg'ulot",
+  cmdSupOff:
+    "Bu o'quv markazida qo'shimcha mashg'ulot xizmati yoqilmagan.",
+  cmdSupScan:
+    "Kelganingizda ustozning QR kodini ilovadan skanerlang — " +
+    "aks holda kelmagan hisoblanasiz.",
 
   // ── Tugmalar ──────────────────────────────────────────────
   btnPhone: "📱 Raqamimni yuborish",
@@ -137,6 +184,11 @@ const RU = {
     "ℹ️ *Помощь*\n\n" +
     "📌 *Команды:*\n" +
     "/start — Начать или открыть приложение\n" +
+    "/grades — Оценки\n" +
+    "/attendance — Посещаемость за месяц\n" +
+    "/homework — Домашние задания\n" +
+    "/payments — Оплаты и задолженность\n" +
+    "/support — Дополнительное занятие\n" +
     "/reset — Разорвать подключение и начать сначала\n" +
     "/help — Эта справка\n\n" +
     "🔗 *Подключиться можно двумя способами:*\n" +
@@ -148,6 +200,46 @@ const RU = {
     "обновили номер в списке.",
 
   genericError: "❌ Произошла ошибка. Нажмите /start и попробуйте снова.",
+
+  cmdNotLinked:
+    "Сначала нужно подключиться. Нажмите /start и отправьте свой номер.",
+  cmdNoAccess:
+    "🔒 Чтобы это увидеть, аккаунт должен быть подтверждён.\n" +
+    "Нажмите /start и отправьте свой номер.",
+  cmdMore: "\n_Подробнее — в приложении._",
+
+  cmdGrades: "📊 *Оценки*",
+  cmdNoGrades: "оценок пока нет",
+  cmdAvg: "Средний балл",
+  cmdOfN: (n) => `${n} оценок`,
+  cmdWeakest: "Слабее всего",
+  cmdRecent: "Последние",
+
+  cmdAttendance: "📅 *Посещаемость* — этот месяц",
+  cmdNoAttendance: "в этом месяце записей нет",
+  cmdAttPresent: "был",
+  cmdAttLate: "опоздал",
+  cmdAttAbsent: "пропустил",
+  cmdAttExcused: "по уважительной",
+
+  cmdPayments: "💳 *Оплаты*",
+  cmdNoDebt: "задолженности нет ✅",
+  cmdDebt: "Долг",
+  cmdSum: "сум",
+
+  cmdHomework: "📚 *Домашние задания*",
+  cmdNoHomework: "невыполненных заданий нет ✅",
+  cmdHwPending: (n) => `${n} не выполнено`,
+  cmdOverdue: "просрочено",
+  cmdDue: "срок",
+
+  cmdSupport: "🎓 *Дополнительное занятие*",
+  cmdNoSupport: "записей нет",
+  cmdSupNext: "Ближайшее занятие",
+  cmdSupOff: "В этом центре дополнительные занятия не подключены.",
+  cmdSupScan:
+    "Придя на занятие, отсканируйте QR-код преподавателя в приложении — " +
+    "иначе будет отмечено, что вы не пришли.",
 
   btnPhone: "📱 Отправить номер",
   btnOpen: "📊 Открыть приложение",
