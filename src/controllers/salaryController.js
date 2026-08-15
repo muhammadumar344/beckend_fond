@@ -268,3 +268,71 @@ module.exports = {
   deleteSalary,
   getSalarySummary,
 };
+// ══ FOIZLI MAOSH ════════════════════════════════════════════
+//
+// ⚠️ Hisob-kitob FAQAT TAKLIF qaytaradi. `Salary` yozuvini odam
+//    tasdiqlab yaratadi (`setSalary`). Maosh — eng nozik raqam;
+//    tizim uni jimgina o'zgartirsa, birinchi xatoda unga bo'lgan
+//    ishonch butunlay yo'qoladi.
+
+const { computeAll } = require("../services/salaryCalc");
+
+// GET /api/lc/salaries/computed?month=YYYY-MM
+const getComputed = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageSalaries");
+
+    const month = String(req.query.month || "");
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      return res.status(400).json({ success: false, error: "Oy formati: YYYY-MM" });
+    }
+
+    const rows = await computeAll({
+      directorId: ctx.directorId,
+      branchId: ctx.branchFilter || null,
+      month,
+    });
+
+    res.json({ success: true, month, staff: rows });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+};
+
+// PUT /api/lc/staff/:staffId/salary-rule  { percent, fixedAmount }
+const setSalaryRule = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageSalaries");
+
+    const percent = Number(req.body?.percent ?? 0);
+    const fixedAmount = Number(req.body?.fixedAmount ?? 0);
+
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+      return res.status(400).json({ success: false, error: "Foiz 0–100 oralig'ida" });
+    }
+    if (!Number.isFinite(fixedAmount) || fixedAmount < 0) {
+      return res.status(400).json({ success: false, error: "Summa manfiy bo'lmasin" });
+    }
+
+    const Staff = require("../models/Staff");
+    const r = await Staff.updateOne(
+      // ⚠️ `director` sharti SHART: id manzildan keladi va
+      //    tekshiruvsiz boshqa markazning xodimiga maosh qoidasi
+      //    yozib qo'yish mumkin bo'lardi.
+      { _id: req.params.staffId, director: ctx.directorId },
+      { $set: { "salaryRule.percent": percent, "salaryRule.fixedAmount": fixedAmount } },
+    );
+    if (!r.matchedCount) {
+      return res.status(404).json({ success: false, error: "Xodim topilmadi" });
+    }
+
+    res.json({ success: true, message: "Saqlandi" });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+};
+
+module.exports.getComputed = getComputed;
+module.exports.setSalaryRule = setSalaryRule;

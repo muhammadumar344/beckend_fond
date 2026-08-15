@@ -21,6 +21,29 @@ const staffSchema = new mongoose.Schema({
   resetPasswordToken:   { type: String, default: null, select: false },
   resetPasswordExpires: { type: Date,   default: null },
 
+  // ── Maosh qoidasi ───────────────────────────────────────
+  //
+  // ⚠️ HAQIQIY MARKAZLAR USTOZGA FOIZ TO'LAYDI. Hozirgacha
+  //    maosh qo'lda yoziladigan qat'iy son edi va shu sababli
+  //    buxgalter Excel'ni tashlamasdi: har oy har bir ustozning
+  //    guruhlaridan tushgan pulni sanab, foizini hisoblab
+  //    o'tirardi. CRM esa faqat natijani saqlardi.
+  //
+  // ⚠️ Foiz TUSHGAN puldan olinadi, hisoblangan puldan emas.
+  //    Markaz ustozga o'zi olmagan puldan to'lay olmaydi. Bu
+  //    ustozning ham manfaatini davomat va saqlab qolishga
+  //    bog'laydi.
+  //
+  // Ikkalasi birga ishlaydi: `fixedAmount` — kafolatlangan
+  // asos, `percent` — ustiga qo'shiladigan qism. Bittasi nol
+  // bo'lsa faqat ikkinchisi qoladi.
+  salaryRule: {
+    // Guruh daromadining foizi (0–100)
+    percent: { type: Number, default: 0, min: 0, max: 100 },
+    // Qat'iy qism (so'm)
+    fixedAmount: { type: Number, default: 0, min: 0 },
+  },
+
   // ── Director ham branch manager bo'lishi mumkin ──────────
   isAlsoDirector: { type: Boolean, default: false },
 

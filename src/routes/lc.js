@@ -45,6 +45,10 @@ router.get("/salaries", allowTeacherOrStaff, salaryCtrl.getSalaries);
 router.post("/salaries", allowTeacherOrStaff, salaryCtrl.setSalary);
 router.put("/salaries/:id/pay", allowTeacherOrStaff, salaryCtrl.markSalaryPaid);
 router.delete("/salaries/:id", allowTeacherOrStaff, salaryCtrl.deleteSalary);
+// ⚠️ Hisob-kitob FAQAT TAKLIF qaytaradi — `Salary` yozuvini
+//    odam `POST /salaries` bilan tasdiqlab yaratadi.
+router.get("/salaries/computed", allowTeacherOrStaff, salaryCtrl.getComputed);
+router.put("/staff/:staffId/salary-rule", allowTeacherOrStaff, salaryCtrl.setSalaryRule);
 
 // ─── SUBJECTS (Fanlar) — ✅ YANGI ────────────────────────────────────────────
 // GET — Director + barcha Staff ko'radi (guruh yaratishda dropdown uchun)
