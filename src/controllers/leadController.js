@@ -1,6 +1,14 @@
 // src/controllers/leadController.js
 // Lidlar (CRM voronkasi) — qiziqish bildirgan mijozdan o'quvchigacha
 const Lead = require("../models/Lead");
+// ⚠️ Ishlatilmaydiganday ko'rinadi, LEKIN KERAK: quyida
+//    `.populate("branch")` bor va Mongoose modelni NOMI bo'yicha
+//    qidiradi. Model hech qayerda `require` qilinmasa ro'yxatdan
+//    o'tmaydi va populate `MissingSchemaError` bilan yiqiladi.
+//    Hozir u boshqa fayl orqali TASODIFAN ro'yxatga tushib
+//    turibdi — bunday tasodifga tayanmaymiz.
+require("../models/Branch");
+
 const Class = require("../models/Class");
 const Student = require("../models/Student");
 const Teacher = require("../models/Teacher");
@@ -63,12 +71,47 @@ const getLeads = async (req, res) => {
       ];
     }
 
-    const leads = await Lead.find(query)
+    let leads = await Lead.find(query)
       .populate("subject", "name")
       .populate("branch", "name color")
       .populate("assignedTo", "name")
       .populate("convertedStudent", "name")
-      .sort({ updatedAt: -1 });
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    // ── Unutilgan lidlar ─────────────────────────────────────
+    //
+    // ⚠️ MARKAZ REKLAMAGA HAQIQIY PUL SARFLAYDI. Yo'qolgan lid —
+    //    to'g'ridan-to'g'ri yoqib yuborilgan pul. Lekin lid
+    //    ro'yxati "yangi" holatda turaveradi va hech kim
+    //    eslatmaydi: uch kun o'tgach odam boshqa markazga
+    //    yozilib bo'lgan bo'ladi.
+    //
+    // ⚠️ Aloqa vaqti — `lastContactedAt`, u yo'q bo'lsa yaratilgan
+    //    sana. Yangi qo'shilgan lid ham birinchi kundanoq
+    //    "kutilmoqda" holatida bo'ladi.
+    const STALE_DAYS = 3;
+    const now = Date.now();
+    const OPEN = ["new", "contacted"];
+
+    leads = leads.map((l) => {
+      const since = l.lastContactedAt || l.createdAt;
+      const days = Math.floor((now - new Date(since).getTime()) / 86400000);
+
+      // Sinov darsi sanasi o'tgan, lekin holat o'zgarmagan —
+      // ya'ni sinovdan keyin hech kim so'ramagan
+      const trialMissed =
+        l.status === "trial" &&
+        l.trialDate &&
+        new Date(l.trialDate).getTime() < now;
+
+      return {
+        ...l,
+        daysSinceContact: days,
+        stale: (OPEN.includes(l.status) && days >= STALE_DAYS) || Boolean(trialMissed),
+        trialMissed: Boolean(trialMissed),
+      };
+    });
 
     // Voronka statistikasi — qidiruv/status filtridan mustaqil
     const all = await Lead.find(scopeQuery(ctx)).select("status createdAt");
@@ -88,6 +131,11 @@ const getLeads = async (req, res) => {
         // Yopilgan lidlardan nechtasi o'quvchiga aylandi
         conversionRate: closed > 0 ? Math.round((byStatus.won / closed) * 100) : 0,
         active: all.length - closed,
+        // ⚠️ Bu raqam ekranning tepasida turadi: "5 ta lid
+        //    kutmoqda". Ro'yxatning ichida ko'milib ketsa,
+        //    aynan shu lidlar yana unutilardi.
+        stale: leads.filter((l) => l.stale).length,
+        staleDays: STALE_DAYS,
       },
     });
   } catch (err) {

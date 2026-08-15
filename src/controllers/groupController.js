@@ -20,6 +20,14 @@ const {
   buildGroupStudentMap,
 } = require("../utils/enrollment");
 const Subject = require("../models/Subject");
+// ⚠️ Ishlatilmaydiganday ko'rinadi, LEKIN KERAK: quyida
+//    `.populate("branch")` bor va Mongoose modelni NOMI bo'yicha
+//    qidiradi. Model hech qayerda `require` qilinmasa ro'yxatdan
+//    o'tmaydi va populate `MissingSchemaError` bilan yiqiladi.
+//    Hozir u boshqa fayl orqali TASODIFAN ro'yxatga tushib
+//    turibdi — bunday tasodifga tayanmaymiz.
+require("../models/Branch");
+
 const Staff = require("../models/Staff");
 const Schedule = require("../models/Schedule");
 const Attendance = require("../models/Attendance");
@@ -290,9 +298,25 @@ exports.getGroups = async (req, res) => {
 
     const withDetails = groups.map((g) => {
       const k = String(g._id);
+      const studentCount = studentMap.get(k)?.size || 0;
+
+      // ⚠️ BO'SH JOY — administratorga har kuni kerak bo'ladigan
+      //    yagona savol: "qaysi guruhga joy bor?". Sig'im bazada
+      //    allaqachon saqlanardi, lekin hech qayerda
+      //    ko'rsatilmasdi — xodim har safar o'quvchilarni sanab
+      //    chiqardi yoki ustozdan so'rardi.
+      //
+      // ⚠️ Sig'im belgilanmagan bo'lsa `null` qaytadi, nol emas:
+      //    "joy yo'q" bilan "chegara qo'yilmagan" butunlay
+      //    boshqa narsa.
+      const capacity = g.capacity || null;
+
       return {
         ...g.toObject(),
-        studentCount: studentMap.get(k)?.size || 0,
+        studentCount,
+        capacity,
+        freeSeats: capacity ? Math.max(0, capacity - studentCount) : null,
+        isFull: capacity ? studentCount >= capacity : false,
         collectedThisMonth: paidByGroup.get(k) || 0,
         schedule: (schedByGroup.get(k) || []).map((s) => ({
           id: s._id,
