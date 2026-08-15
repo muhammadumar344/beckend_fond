@@ -204,4 +204,14 @@ const churnCtrl = require("../controllers/churnController");
 router.get("/at-risk", allowTeacherOrStaff, churnCtrl.list);
 router.post("/at-risk/:studentId/contacted", allowTeacherOrStaff, churnCtrl.markContacted);
 
+// ─── O'QUVCHI KARTOCHKASI VA QIDIRUV ────────────────────────────────────────
+//
+// Administrator bitta bola haqida bilish uchun besh sahifani
+// aylanib chiqardi. Endi bitta sahifa va istalgan joydan
+// qidirish mumkin.
+const cardCtrl = require("../controllers/studentCardController");
+
+router.get("/search", allowTeacherOrStaff, cardCtrl.search);
+router.get("/student/:studentId/card", allowTeacherOrStaff, cardCtrl.card);
+
 module.exports = router;
