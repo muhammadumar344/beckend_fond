@@ -43,6 +43,7 @@ const OWNED = [
   ["Salary", "director"],
   ["Schedule", "teacher"],
   ["Staff", "director"],
+  ["StaffAttendance", "director"],
   ["StudentLink", "director"],
   ["Subject", "director"],
   ["SupportBooking", "director"],

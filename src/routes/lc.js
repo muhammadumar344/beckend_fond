@@ -168,4 +168,17 @@ router.post("/support/bookings", allowTeacherOrStaff, requireSupport, supportCtr
 router.put("/support/bookings/:bookingId", allowTeacherOrStaff, requireSupport, supportCtrl.updateBooking);
 router.get("/support/bookings/:bookingId/qr", allowTeacherOrStaff, requireSupport, supportCtrl.getQr);
 
+// ─── XODIM DAVOMATI ─────────────────────────────────────────────────────────
+//
+// ⚠️ Egasi — filial boshqaruvchisi (`manageStaff`). Sozlamalar
+//    esa `enabled` bayrog'idan qat'i nazar ochiq: o'chirilgan
+//    xususiyatni qayta yoqish yo'li yopilib qolmasin.
+const staffAttCtrl = require("../controllers/staffAttendanceController");
+
+router.get("/staff-attendance/settings", allowTeacherOrStaff, staffAttCtrl.getSettings);
+router.put("/staff-attendance/settings", allowTeacherOrStaff, staffAttCtrl.updateSettings);
+router.get("/staff-attendance/day", allowTeacherOrStaff, staffAttCtrl.getDay);
+router.post("/staff-attendance/mark", allowTeacherOrStaff, staffAttCtrl.mark);
+router.get("/staff-attendance/month", allowTeacherOrStaff, staffAttCtrl.getMonth);
+
 module.exports = router;

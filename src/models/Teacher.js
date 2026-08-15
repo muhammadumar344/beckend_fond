@@ -98,6 +98,32 @@ const teacherSchema = new mongoose.Schema({
     slotMinutes: { type: Number, default: 30, min: 10, max: 120 },
   },
 
+  // ── Xodim davomati ─────────────────────────────────────────
+  // Ustoz ishga o'z vaqtida keldimi — filial boshqaruvchisi
+  // kuzatadi, maosh hisobiga ta'sir qiladi.
+  //
+  // ⚠️ Standart holda O'CHIQ. Bu nozik xususiyat: xodim
+  //    kuzatilayotganini bilishi kerak va markaz o'zi qaror
+  //    qilsin. Yoqilmagan bo'lsa menyuda ham ko'rinmaydi.
+  //
+  // ⚠️ Jarima MIQDORI nolga teng bo'lishi mumkin va standart
+  //    shunday. Kechikish sanaladi, lekin puldan ushlab qolish —
+  //    markazning o'z qarori. Jimgina pul ushlab qoladigan
+  //    tizim ishonchni buzadi.
+  staffAttendance: {
+    enabled: { type: Boolean, default: false },
+    // Shuncha daqiqagacha kechikish "kechikish" deb sanalmaydi.
+    // Nol bo'lsa bir daqiqalik kechikish ham jarima bo'lardi va
+    // xodimlar tizimga ishonmay qo'yardi.
+    graceMinutes: { type: Number, default: 5, min: 0, max: 60 },
+    // Darsi yo'q xodimlar (buxgalter, qabulxona) uchun
+    workStart: { type: String, default: "09:00" },
+    // Bir marta kechikkani uchun (so'm). 0 = jarima yo'q
+    latePenalty: { type: Number, default: 0, min: 0 },
+    // Sababsiz kelmagan kun uchun (so'm)
+    absentPenalty: { type: Number, default: 0, min: 0 },
+  },
+
   isActive:       { type: Boolean, default: true },
 
   // ── Hisobni o'chirish (30 kunlik muhlat bilan) ──────────────
