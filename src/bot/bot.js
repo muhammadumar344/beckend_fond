@@ -163,41 +163,33 @@ const _attachHandlers = () => {
 
   const {
     handleStart,
+    handleHelp,
+    handleReset,
     handleContact,
     handleMessage,
     handleCallbackQuery,
   } = require("./handlers");
+  const { langOf } = require("./texts");
 
   console.log("✅ Handlerlari o'rnatilmoqda...");
 
-  // /start command
-  bot.onText(/\/start/, (msg) => {
-    console.log(`📨 /start keldi — chatId: ${msg.chat.id}, username: ${msg.from.username || "N/A"}`);
+  // ⚠️ `^` MUHIM. Ilgari shablon `/\/start/` edi va u matnning
+  //    ISTALGAN joyidan mos kelardi: "kecha /start bosdim, ishlamadi"
+  //    deb yozgan odamga bot boshlang'ich ekranni qaytarardi.
+  bot.onText(/^\/start(?:@\w+)?(?:\s|$)/, (msg) => {
+    console.log(`📨 /start — chatId: ${msg.chat.id}`);
     handleStart(bot, msg);
   });
 
-  // /help command
-  bot.onText(/\/help/, async (msg) => {
-    console.log(`📨 /help keldi — chatId: ${msg.chat.id}`);
-    try {
-      await bot.sendMessage(
-        msg.chat.id,
-        `ℹ️ *Yordam*\n\n` +
-          `Bu bot orqali farzandingizning baholari, davomati va ` +
-          `to'lovlarini kuzatasiz.\n\n` +
-          `📌 *Buyruqlar:*\n` +
-          `/start — Bog'lanish yoki ilovani ochish\n` +
-          `/help — Yordam\n\n` +
-          `🔗 *Bog'lanish ikki yo'l bilan:*\n` +
-          `1️⃣ Raqamingizni yuborish — markazdagi ro'yxat bilan ` +
-          `solishtiriladi\n` +
-          `2️⃣ Markazdan olingan bir martalik kodni yozish\n\n` +
-          `❓ Raqamingiz topilmasa — o'quv markaziga murojaat qiling.`,
-        { parse_mode: "Markdown" }
-      );
-    } catch (e) {
-      console.error("Help xabar yuborish xatosi:", e.message);
-    }
+  bot.onText(/^\/help(?:@\w+)?(?:\s|$)/, (msg) => {
+    handleHelp(bot, msg.chat.id, langOf(msg.from));
+  });
+
+  // ⚠️ YANGI. Ilgari bog'langan odam uchun orqaga yo'l umuman
+  //    yo'q edi — /start faqat "siz bog'langansiz" deb qaytarardi.
+  bot.onText(/^\/reset(?:@\w+)?(?:\s|$)/, (msg) => {
+    console.log(`📨 /reset — chatId: ${msg.chat.id}`);
+    handleReset(bot, msg);
   });
 
   // ⚠️ Raqam MATNDAN OLDIN tekshiriladi: kontakt xabarida `text`
@@ -270,6 +262,29 @@ const _attachHandlers = () => {
   bot.on("error", (err) => {
     console.error("❌ Bot xatosi:", err.message);
   });
+
+  // ⚠️ Buyruqlar ro'yxati Telegram'ning "/" menyusida ko'rinadi.
+  //    Ilgari sozlanmagan edi — foydalanuvchi /reset borligini
+  //    bilishning imkoni yo'q edi, chunki uni hech qayerda
+  //    ko'rsatmasdik. Bu bir marta yuboriladi va Telegram'da
+  //    saqlanib qoladi.
+  const commands = {
+    uz: [
+      { command: "start", description: "Boshlash / ilovani ochish" },
+      { command: "reset", description: "Bog'lanishni uzib, boshidan" },
+      { command: "help", description: "Yordam" },
+    ],
+    ru: [
+      { command: "start", description: "Начать / открыть приложение" },
+      { command: "reset", description: "Отключиться и начать сначала" },
+      { command: "help", description: "Помощь" },
+    ],
+  };
+  bot
+    .setMyCommands(commands.uz)
+    .then(() => bot.setMyCommands(commands.ru, { language_code: "ru" }))
+    .then(() => console.log("✅ Buyruqlar ro'yxati o'rnatildi (uz, ru)"))
+    .catch((e) => console.warn("⚠️  setMyCommands:", e.message));
 
   console.log("✅ Barcha handlerlari o'rnatildi");
 };

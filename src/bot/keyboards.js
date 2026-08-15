@@ -1,4 +1,14 @@
-// backend/src/bot/keyboards.js
+// src/bot/keyboards.js
+// ════════════════════════════════════════════════════════════
+// ⚠️ ESKI SINF/O'QUVCHI TANLASH KLAVIATURALARI OLIB TASHLANDI.
+//    Ular isbotsiz bog'lanish oqimiga tegishli edi: o'qituvchi
+//    emailini bilgan har kim ro'yxatdan istalgan bolani tanlab,
+//    "ota-onasi" bo'lib qolardi. Oqim o'chirilgan, klaviaturalari
+//    esa qolib ketgan edi — o'chirilmasa, kimdir "tayyor kod
+//    ekan" deb qaytadan ulab yuborishi mumkin.
+// ════════════════════════════════════════════════════════════
+
+const { t } = require("./texts");
 
 /**
  * Raqam so'rash tugmasi.
@@ -8,72 +18,57 @@
  *    birovning raqamini yozib qo'ya olmaydi. Aynan shu narsa
  *    "men shu bolaning ota-onasiman" degan da'voni isbotga
  *    aylantiradi.
+ *
+ * ⚠️ `one_time_keyboard` ATAYLAB YO'Q. Ilgari bor edi va tugma
+ *    bir bosilgach yo'qolardi: raqami ro'yxatda topilmagan
+ *    ota-ona boshqa urinolmasdi — qaytadan /start yozishi
+ *    kerakligini esa hech kim aytmagan edi.
  */
-const phoneKeyboard = () => ({
-  keyboard: [[{ text: '📱 Raqamimni yuborish', request_contact: true }]],
+const phoneKeyboard = (lang) => ({
+  keyboard: [[{ text: t(lang, "btnPhone"), request_contact: true }]],
   resize_keyboard: true,
-  one_time_keyboard: true,
-})
+});
 
 /** Oddiy klaviaturani yopish */
-const removeKeyboard = () => ({ remove_keyboard: true })
+const removeKeyboard = () => ({ remove_keyboard: true });
 
 /**
- * Mini App'ni ochadigan tugma.
- * @param {string} url  https bo'lishi SHART — Telegram http'ni ochmaydi
+ * Bog'langan foydalanuvchining asosiy menyusi.
+ *
+ * ⚠️ Hammasi BITTA inline klaviaturada. Sabab: Telegram bitta
+ *    xabarga faqat bitta `reply_markup` beradi — ya'ni pastdagi
+ *    doimiy klaviatura va inline tugmalarni birga yuborib
+ *    bo'lmaydi. Inline tanlandi, chunki `web_app` tugmasi shu
+ *    yerda ishonchli ishlaydi va xabar bilan birga saqlanadi:
+ *    foydalanuvchi yuqoriga surib topa oladi.
+ *
+ * @param {string} url  https bo'lishi SHART — Telegram http'ni ochmaydi.
+ *                      Bo'sh bo'lsa "Ochish" tugmasi umuman qo'shilmaydi
+ *                      (buzuq tugmadan ko'ra tugmasiz xabar yaxshiroq).
  */
-const openAppKeyboard = (url, text = '📊 Ochish') => ({
-  inline_keyboard: [[{ text, web_app: { url } }]],
-})
+const mainKeyboard = (lang, url) => {
+  const rows = [];
+  if (url) rows.push([{ text: t(lang, "btnOpen"), web_app: { url } }]);
+  rows.push([
+    { text: t(lang, "btnRelink"), callback_data: "relink" },
+    { text: t(lang, "btnHelp"), callback_data: "help" },
+  ]);
+  return { inline_keyboard: rows };
+};
 
-/**
- * Inline keyboard — sinflar ro'yxati uchun
- * @param {Array} classes - [{_id, name}]
- */
-const classesKeyboard = (classes) => ({
-  inline_keyboard: classes.map((cls, i) => ([{
-    text: `${i + 1}️⃣ ${cls.name}`,
-    callback_data: `class_${cls._id}`,
-  }])),
-})
-
-/**
- * Inline keyboard — o'quvchilar ro'yxati uchun
- * @param {Array} students - [{_id, name, rollNumber}]
- */
-const studentsKeyboard = (students) => ({
-  inline_keyboard: students.map((s) => ([{
-    text: `${s.rollNumber}. ${s.name}`,
-    callback_data: `student_${s._id}`,
-  }])),
-})
-
-/**
- * Tasdiqlash keyboard
- * @param {string} studentId
- */
-const confirmKeyboard = (studentId) => ({
-  inline_keyboard: [[
-    { text: '✅ Ha, tasdiqlash', callback_data: `confirm_${studentId}` },
-    { text: '❌ Bekor qilish', callback_data: 'cancel' },
-  ]],
-})
-
-/**
- * Orqaga qaytish tugmasi
- */
-const backKeyboard = () => ({
-  inline_keyboard: [[
-    { text: '⬅️ Boshidan boshlash', callback_data: 'restart' },
-  ]],
-})
+/** "Rostdan uzamizmi?" — tasodifan bosib yuborishga qarshi */
+const confirmResetKeyboard = (lang) => ({
+  inline_keyboard: [
+    [
+      { text: t(lang, "btnYes"), callback_data: "relink_yes" },
+      { text: t(lang, "btnNo"), callback_data: "relink_no" },
+    ],
+  ],
+});
 
 module.exports = {
   phoneKeyboard,
   removeKeyboard,
-  openAppKeyboard,
-  classesKeyboard,
-  studentsKeyboard,
-  confirmKeyboard,
-  backKeyboard,
-}
+  mainKeyboard,
+  confirmResetKeyboard,
+};

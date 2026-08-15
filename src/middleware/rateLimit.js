@@ -91,6 +91,36 @@ function clearKey(name, id) {
   buckets.delete(`${name}:${id}`);
 }
 
+/**
+ * Express'siz cheklash — bot uchun.
+ *
+ * ⚠️ KERAK BO'LDI, chunki taklif kodini bot orqali ham kiritish
+ *    mumkin va u yerda HECH QANDAY cheklov yo'q edi. Mini App
+ *    tomonida (`routes/tma.js`) soatiga 10 ta urinish chegarasi
+ *    turardi, bot esa cheksiz qabul qilardi — ya'ni himoya
+ *    yonidan aylanib o'tish yo'li ochiq edi. Kod bilan bolaning
+ *    baholari ochiladi, demak u parolga teng.
+ *
+ * @returns {{ok: boolean, retryAfterSec: number}}
+ */
+function hit(name, id, { windowMs, max }) {
+  const now = Date.now();
+  sweep(now);
+  if (!id) return { ok: true, retryAfterSec: 0 };
+
+  const key = `${name}:${id}`;
+  let b = buckets.get(key);
+  if (!b || b.resetAt <= now) {
+    b = { count: 0, resetAt: now + windowMs };
+    buckets.set(key, b);
+  }
+  b.count += 1;
+
+  return b.count > max
+    ? { ok: false, retryAfterSec: Math.ceil((b.resetAt - now) / 1000) }
+    : { ok: true, retryAfterSec: 0 };
+}
+
 // ── Tayyor cheklovlar ───────────────────────────────────────
 
 /** Email/parol tekshiruvi — IP bo'yicha */
@@ -143,6 +173,7 @@ const uploadLimiter = rateLimit({
 module.exports = {
   rateLimit,
   clearKey,
+  hit,
   loginLimiter,
   loginByEmailLimiter,
   forgotLimiter,

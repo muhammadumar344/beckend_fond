@@ -25,13 +25,25 @@ const Class = require('../models/Class')
 const StudentLink = require('../models/StudentLink')
 const InviteCode = require('../models/InviteCode')
 const { phoneKey } = require('../utils/phone')
+const { hit } = require('../middleware/rateLimit')
+const { t, langOf } = require('./texts')
 const {
   phoneKeyboard,
   removeKeyboard,
-  openAppKeyboard,
+  mainKeyboard,
+  confirmResetKeyboard,
 } = require('./keyboards')
 
 const MD = { parse_mode: 'Markdown' }
+
+// Taklif kodini terib topishga qarshi.
+//
+// ⚠️ ILGARI BOT TOMONIDA UMUMAN YO'Q EDI. Mini App'da soatiga 10
+//    ta urinish chegarasi turardi (routes/tma.js), botda esa
+//    cheksiz — ya'ni himoyani chetlab o'tish yo'li ochiq edi.
+//    Kod bilan bolaning baholari ochiladi, demak u parolga teng.
+const CODE_WINDOW_MS = 60 * 60 * 1000
+const CODE_MAX = 10
 
 /**
  * Mini App manzili.
@@ -72,37 +84,21 @@ function appUrl() {
  *    ("nega menga baho haqida yozyapti, biz faqat pul yig'amiz-ku")
  *    botga ishonchi yo'qoladi. Shuning uchun matn har doim
  *    o'quvchining markazidan kelib chiqadi.
- *
- *    Ikkita alohida bot qilish SHART EMAS — farq faqat so'zlarda,
- *    ma'lumot va xavfsizlik mantig'i bir xil.
  */
-const isLC = (type) => type === 'learning_center'
+const afterKey = (type) =>
+  type === 'learning_center' ? 'linkedAfterLC' : 'linkedAfterFond'
 
-const modeWords = (type) =>
-  isLC(type)
-    ? {
-        place: "o'quv markazi",
-        sees: "*baholari*, *davomati* va *to'lovlari*",
-        after: "Endi baho, davomat va to'lovlarni ko'rishingiz mumkin.",
-      }
-    : {
-        place: 'maktab',
-        sees: "*fond to'lovlari*",
-        after: "Endi to'lovlarni ko'rishingiz va oylik eslatma olasiz.",
-      }
-
-/** Bog'langandan keyingi xabar — Mini App tugmasi bilan */
-async function sendLinked(bot, chatId, names, type) {
+/** Bog'langan foydalanuvchiga ko'rsatiladigan asosiy ekran */
+async function sendLinked(bot, chatId, lang, names, type, { fresh } = {}) {
   const url = appUrl()
   const list = names.map((n) => `• *${n}*`).join('\n')
-  const w = modeWords(type)
 
   await bot.sendMessage(
     chatId,
-    `✅ *Bog'landingiz!*\n\n${list}\n\n${w.after}`,
-    url
-      ? { ...MD, reply_markup: openAppKeyboard(url) }
-      : { ...MD, reply_markup: removeKeyboard() },
+    `${t(lang, fresh ? 'linkedTitle' : 'linkedAlready')}\n\n` +
+      `${list}\n\n${t(lang, afterKey(type))}` +
+      (url ? t(lang, 'openHint') : ''),
+    { ...MD, reply_markup: mainKeyboard(lang, url) },
   )
 }
 
@@ -113,24 +109,42 @@ async function typeOfDirector(directorId) {
   return t?.institutionType || null
 }
 
+/** Shu Telegram hisobiga bog'langan faol yozuvlar */
+const activeLinks = (userId) =>
+  StudentLink.find({ telegramUserId: String(userId), isActive: true })
+    .populate('student', 'name')
+    .lean()
+
+/** Boshlang'ich ekran — raqam so'raladi */
+async function askPhone(bot, chatId, lang, prefix = '') {
+  await bot.sendMessage(chatId, prefix + t(lang, 'welcome'), {
+    ...MD,
+    reply_markup: phoneKeyboard(lang),
+  })
+}
+
 // ── /start ────────────────────────────────────────────────────
+//
+// ⚠️ /start HECH QACHON BOSHI BERK KO'CHA BO'LMASLIGI KERAK.
+//    Ilgari bog'langan odam /start bossa qisqa "siz bog'langansiz"
+//    xabarini olardi, xolos — orqaga yo'l yo'q edi. Raqamini
+//    almashtirgan yoki noto'g'ri bolaga ulanib qolgan ota-ona
+//    o'zi hech narsa qila olmasdi, faqat markazga qo'ng'iroq
+//    qilardi. Endi har safar to'liq menyu keladi va "Qayta
+//    bog'lanish" tugmasi doim ko'rinib turadi.
 const handleStart = async (bot, msg) => {
   const chatId = msg.chat.id
+  const lang = langOf(msg.from)
 
   try {
-    // Allaqachon bog'langan bo'lsa qaytadan so'ramaymiz
-    const existing = await StudentLink.find({
-      telegramUserId: String(msg.from.id),
-      isActive: true,
-    })
-      .populate('student', 'name')
-      .lean()
+    const existing = await activeLinks(msg.from.id)
 
     if (existing.length) {
       const type = await typeOfDirector(existing[0].director)
       await sendLinked(
         bot,
         chatId,
+        lang,
         existing.map((l) => l.student?.name || '—'),
         type,
       )
@@ -138,29 +152,71 @@ const handleStart = async (bot, msg) => {
     }
 
     // ⚠️ Bu yerda muassasa turi HALI NOMA'LUM — foydalanuvchi
-    //    bog'lanmagan. Shuning uchun matn NEYTRAL: "maktab yoki
-    //    o'quv markazi". Bog'langandan keyin barcha xabarlar
-    //    aniq turga moslashadi (`modeWords`).
-    await bot.sendMessage(
-      chatId,
-      `👋 *Assalomu alaykum!*\n\n` +
-        `Bu bot orqali farzandingiz haqidagi ma'lumotlarni ` +
-        `kuzatasiz — to'lovlar, baholar va davomat.\n\n` +
-        `▶️ Boshlash uchun pastdagi tugma bilan *raqamingizni yuboring*. ` +
-        `Raqam maktab yoki o'quv markazidagi ro'yxat bilan solishtiriladi.\n\n` +
-        `_Agar raqamingiz topilmasa, muassasadan bir martalik kod so'rang ` +
-        `va shu yerga yozing._`,
-      { ...MD, reply_markup: phoneKeyboard() },
-    )
+    //    bog'lanmagan. Shuning uchun matn NEYTRAL.
+    await askPhone(bot, chatId, lang)
   } catch (err) {
     console.error('handleStart xatosi:', err.message)
   }
+}
+
+// ── /help ─────────────────────────────────────────────────────
+const handleHelp = async (bot, chatId, lang) => {
+  try {
+    await bot.sendMessage(chatId, t(lang, 'help'), MD)
+  } catch (e) {
+    console.error('Help xabar yuborish xatosi:', e.message)
+  }
+}
+
+// ── /reset — bog'lanishni uzish ───────────────────────────────
+//
+// ⚠️ TASDIQ SO'RALADI. Uzish o'zi zararsiz ko'rinadi, lekin
+//    KODLA bog'langan odam uchun qaytish yo'li yo'q: uning
+//    raqami ro'yxatda bo'lmagani uchun kod berilgan edi, ya'ni
+//    markazdan YANGI kod so'rashi kerak bo'ladi. Bir bosishda
+//    shunday holatga tushib qolmasin.
+const handleReset = async (bot, msg) => {
+  const chatId = msg.chat.id
+  const lang = langOf(msg.from)
+
+  try {
+    const existing = await activeLinks(msg.from.id)
+    if (!existing.length) {
+      await askPhone(bot, chatId, lang, `${t(lang, 'resetNothing')}\n\n`)
+      return
+    }
+
+    await bot.sendMessage(chatId, t(lang, 'resetAsk'), {
+      ...MD,
+      reply_markup: confirmResetKeyboard(lang),
+    })
+  } catch (err) {
+    console.error('handleReset xatosi:', err.message)
+  }
+}
+
+/** Tasdiqdan keyin — hamma bog'lanishni o'chirib, boshidan */
+async function doReset(bot, chatId, from) {
+  const lang = langOf(from)
+
+  // ⚠️ O'CHIRILMAYDI, faqat `isActive: false`. Sabab: yozuv
+  //    tarixni saqlaydi va noyob indeks (telegramUserId+student)
+  //    tufayli qaytadan bog'langanda o'sha yozuv tiklanadi —
+  //    ikkinchi nusxa yaratilmaydi.
+  await StudentLink.updateMany(
+    { telegramUserId: String(from.id), isActive: true },
+    { $set: { isActive: false } },
+  )
+  console.log(`[bot] bog'lanish uzildi: ${from.id}`)
+
+  await askPhone(bot, chatId, lang, `${t(lang, 'resetDone')}\n\n`)
 }
 
 // ── Raqam kelganda ────────────────────────────────────────────
 const handleContact = async (bot, msg) => {
   const chatId = msg.chat.id
   const contact = msg.contact
+  const lang = langOf(msg.from)
 
   try {
     // ⚠️ Boshqa odamning kontaktini yuborish mumkin. Telegram
@@ -168,17 +224,19 @@ const handleContact = async (bot, msg) => {
     //    yuboruvchiga teng bo'ladi. Tekshirmasak, birov
     //    qo'shnisining raqamini yuborib uning bolasini ko'rardi.
     if (!contact?.phone_number || String(contact.user_id) !== String(msg.from.id)) {
-      await bot.sendMessage(
-        chatId,
-        `⚠️ Iltimos, *o'zingizning* raqamingizni yuboring — pastdagi tugma orqali.`,
-        { ...MD, reply_markup: phoneKeyboard() },
-      )
+      await bot.sendMessage(chatId, t(lang, 'notMyContact'), {
+        ...MD,
+        reply_markup: phoneKeyboard(lang),
+      })
       return
     }
 
     const key = phoneKey(contact.phone_number)
     if (!key) {
-      await bot.sendMessage(chatId, `⚠️ Raqamni o'qib bo'lmadi.`)
+      await bot.sendMessage(chatId, t(lang, 'phoneUnreadable'), {
+        ...MD,
+        reply_markup: phoneKeyboard(lang),
+      })
       return
     }
 
@@ -195,13 +253,13 @@ const handleContact = async (bot, msg) => {
     const matched = candidates.filter((s) => phoneKey(s.parentPhone) === key)
 
     if (!matched.length) {
+      // ⚠️ Klaviatura QOLDIRILADI: raqamini yangilatgan ota-ona
+      //    darrov qayta urinib ko'rishi kerak, /start yozishga
+      //    majbur bo'lmasin.
       await bot.sendMessage(
         chatId,
-        `🔍 *${contact.phone_number}* raqami ro'yxatdan topilmadi.\n\n` +
-          `Ikki yo'l bor:\n` +
-          `1️⃣ O'quv markazidan *bir martalik kod* so'rang va shu yerga yozing\n` +
-          `2️⃣ Markazga murojaat qilib, raqamingizni yangilashni so'rang`,
-        { ...MD, reply_markup: removeKeyboard() },
+        t(lang, 'phoneNotFound', contact.phone_number),
+        { ...MD, reply_markup: phoneKeyboard(lang) },
       )
       return
     }
@@ -242,33 +300,48 @@ const handleContact = async (bot, msg) => {
     }
 
     if (!names.length) {
-      await bot.sendMessage(chatId, `⚠️ Bog'lashda xatolik. Markazga murojaat qiling.`)
+      await bot.sendMessage(chatId, t(lang, 'linkFailed'), MD)
       return
     }
 
-    console.log(`[bot] raqam orqali bog'landi: ${msg.from.id} → ${names.join(', ')}`)
+    console.log(`[bot] raqam orqali bog'landi: ${msg.from.id} → ${names.length} ta`)
+
+    // Raqam klaviaturasi endi keraksiz — yopamiz, keyin menyu
+    await bot.sendMessage(chatId, '✅', { reply_markup: removeKeyboard() })
+
     const type = await typeOfDirector(directorOf.get(String(matched[0].class)))
-    await sendLinked(bot, chatId, names, type)
+    await sendLinked(bot, chatId, lang, names, type, { fresh: true })
   } catch (err) {
     console.error('handleContact xatosi:', err.message)
-    await bot.sendMessage(chatId, `❌ Xatolik yuz berdi. /start bosib qayta urining.`)
+    await bot.sendMessage(chatId, t(lang, 'genericError'))
   }
 }
 
 // ── Matn xabarlar — taklif kodi ───────────────────────────────
 const handleMessage = async (bot, msg) => {
   const chatId = msg.chat.id
+  const lang = langOf(msg.from)
   const text = msg.text?.trim()
   if (!text) return
 
   const code = InviteCode.normalizeCode(text)
 
-  // Kodga o'xshamasa — yo'riqnomani eslatamiz
+  // Kodga o'xshamasa — yo'riqnomani eslatamiz.
+  // ⚠️ Cheklovdan OLDIN turadi: "salom" deb yozgan odam
+  //    urinish sanagichini bo'shatib yubormasin.
   if (code.length < 6 || code.length > 16) {
+    await bot.sendMessage(chatId, t(lang, 'codeHint'), MD)
+    return
+  }
+
+  const gate = hit('bot-code', String(msg.from.id), {
+    windowMs: CODE_WINDOW_MS,
+    max: CODE_MAX,
+  })
+  if (!gate.ok) {
     await bot.sendMessage(
       chatId,
-      `Boshlash uchun /start bosing va raqamingizni yuboring.\n\n` +
-        `Agar sizda *bir martalik kod* bo'lsa, uni shu yerga yozing.`,
+      t(lang, 'codeTooMany', Math.ceil(gate.retryAfterSec / 60)),
       MD,
     )
     return
@@ -280,13 +353,13 @@ const handleMessage = async (bot, msg) => {
     // Yo'q / ishlatilgan / eskirgan — bir xil javob (kod terib
     // topishga urinayotgan odam farqni bilmasin)
     if (!invite || invite.usedAt || invite.expiresAt <= new Date()) {
-      await bot.sendMessage(chatId, `❌ Kod noto'g'ri yoki muddati o'tgan.`)
+      await bot.sendMessage(chatId, t(lang, 'codeBad'))
       return
     }
 
     const student = await Student.findById(invite.student).select('name').lean()
     if (!student) {
-      await bot.sendMessage(chatId, `❌ Kod noto'g'ri yoki muddati o'tgan.`)
+      await bot.sendMessage(chatId, t(lang, 'codeBad'))
       return
     }
 
@@ -309,29 +382,78 @@ const handleMessage = async (bot, msg) => {
     invite.usedByTelegramId = String(msg.from.id)
     await invite.save()
 
-    console.log(`[bot] kod orqali bog'landi: ${msg.from.id} → ${student.name}`)
+    console.log(`[bot] kod orqali bog'landi: ${msg.from.id}`)
+
+    await bot.sendMessage(chatId, '✅', { reply_markup: removeKeyboard() })
+
     const type = await typeOfDirector(invite.director)
-    await sendLinked(bot, chatId, [student.name], type)
+    await sendLinked(bot, chatId, lang, [student.name], type, { fresh: true })
   } catch (err) {
     console.error('Kod tekshirish xatosi:', err.message)
-    await bot.sendMessage(chatId, `❌ Xatolik yuz berdi. Qayta urinib ko'ring.`)
+    await bot.sendMessage(chatId, t(lang, 'genericError'))
   }
 }
 
 // ── Inline tugmalar ───────────────────────────────────────────
-// Eski oqim olib tashlangani uchun hozircha faqat "qaytadan".
 const handleCallbackQuery = async (bot, query) => {
+  const chatId = query.message?.chat?.id
+  const lang = langOf(query.from)
+
+  // ⚠️ Avval javob beramiz: aks holda Telegram tugmada aylanma
+  //    ko'rsatib turadi va foydalanuvchi qayta-qayta bosadi.
   try {
     await bot.answerCallbackQuery(query.id)
   } catch (_) {}
 
-  if (query.data === 'restart' || query.data === 'cancel') {
-    await handleStart(bot, { chat: query.message.chat, from: query.from })
+  if (!chatId) return
+
+  try {
+    switch (query.data) {
+      case 'help':
+        await handleHelp(bot, chatId, lang)
+        break
+
+      case 'relink':
+        await handleReset(bot, { chat: query.message.chat, from: query.from })
+        break
+
+      case 'relink_yes':
+        // Tasdiq tugmalarini olib tashlaymiz — ikkinchi marta
+        // bosib bo'lmasin
+        try {
+          await bot.editMessageReplyMarkup(
+            { inline_keyboard: [] },
+            { chat_id: chatId, message_id: query.message.message_id },
+          )
+        } catch (_) {}
+        await doReset(bot, chatId, query.from)
+        break
+
+      case 'relink_no':
+        try {
+          await bot.editMessageReplyMarkup(
+            { inline_keyboard: [] },
+            { chat_id: chatId, message_id: query.message.message_id },
+          )
+        } catch (_) {}
+        await bot.sendMessage(chatId, t(lang, 'resetCancel'))
+        break
+
+      // Eski oqimdan qolgan tugmalar
+      case 'restart':
+      case 'cancel':
+        await handleStart(bot, { chat: query.message.chat, from: query.from })
+        break
+    }
+  } catch (err) {
+    console.error('handleCallbackQuery xatosi:', err.message)
   }
 }
 
 module.exports = {
   handleStart,
+  handleHelp,
+  handleReset,
   handleContact,
   handleMessage,
   handleCallbackQuery,
