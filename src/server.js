@@ -79,9 +79,32 @@ const { langMiddleware } = require('./middleware/lang');
 app.use(langMiddleware);
 
 app.use((req, res, next) => {
-  console.log(`[REQ] ${new Date().toISOString()} ${req.method} ${req.originalUrl} Origin=${req.headers.origin || '-'} Auth=${!!req.headers.authorization}`);
+  // ⚠️ Bot webhook manzili ichida TOKEN bor
+  //    (`/bot-webhook-8551…-AAG…`). Uni shundayligicha yozsak,
+  //    token Render loglarida qoladi va logni ko'ra oladigan har
+  //    kim botni to'liq egallaydi. Shuning uchun kesib tashlanadi.
+  const url = req.originalUrl.startsWith('/bot-webhook-')
+    ? '/bot-webhook-***'
+    : req.originalUrl;
+  console.log(`[REQ] ${new Date().toISOString()} ${req.method} ${url} Origin=${req.headers.origin || '-'} Auth=${!!req.headers.authorization}`);
   next();
 });
+
+// ⚠️ BOT WEBHOOK UCHUN JOY — SHU YERDA BAND QILINADI.
+//
+//    Sabab: `initBot` bazaga ulangandan KEYIN, ya'ni ASINXRON
+//    ishlaydi. U paytda quyidagi 404-tutuvchi (`app.use`) allaqachon
+//    ro'yxatga olingan bo'ladi, Express esa middleware'larni
+//    QO'SHILISH TARTIBIDA yuradi. Natijada webhook route'i 404 dan
+//    KEYIN turib qolardi va Telegram yuborgan har bir yangilanish
+//    "Route topilmadi" bo'lib qaytardi — bot jim, log toza,
+//    sababi ko'rinmaydi.
+//
+//    Router'ni oldindan ulab qo'yish bu muammoni yechadi: Router
+//    o'z ichidagi route'larni SO'ROV PAYTIDA qaraydi, shuning
+//    uchun keyin qo'shilgani ham ishlaydi.
+const botWebhook = express.Router();
+app.use(botWebhook);
 
 app.get('/', (req, res) => res.json({ status: 'ok', app: 'Lumo API' }));
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
@@ -156,8 +179,11 @@ mongoose.connect(MONGODB_URI)
       //    ko'radi. `await` bo'lmasa "Bot initialized" yozuvi
       //    tekshiruv natijasidan OLDIN chiqib, yaroqsiz tokenda
       //    ham "hammasi joyida" degan taassurot qoldirardi.
+      // ⚠️ `app` EMAS, `botWebhook` uzatiladi — yuqoridagi izohga
+      //    qarang. Router'da ham `.post()` bor, bot/bot.js ga
+      //    o'zgartirish kerak emas.
       const { initBot } = require('./bot/bot');
-      if (typeof initBot === 'function') await initBot(app);
+      if (typeof initBot === 'function') await initBot(botWebhook);
     } catch (e) {
       console.warn('⚠️  bot init topilmadi yoki xato berdi:', e.message || e);
     }
