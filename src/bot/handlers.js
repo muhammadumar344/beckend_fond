@@ -23,6 +23,7 @@ const Student = require('../models/Student')
 const Teacher = require('../models/Teacher')
 const Class = require('../models/Class')
 const StudentLink = require('../models/StudentLink')
+const TelegramParent = require('../models/TelegramParent')
 const InviteCode = require('../models/InviteCode')
 const { phoneKey } = require('../utils/phone')
 const { hit } = require('../middleware/rateLimit')
@@ -182,7 +183,11 @@ const handleReset = async (bot, msg) => {
   try {
     const existing = await activeLinks(msg.from.id)
     if (!existing.length) {
-      await askPhone(bot, chatId, lang, `${t(lang, 'resetNothing')}\n\n`)
+      // ⚠️ Bog'lanish ko'rinmasa ham TOZALAB o'tamiz: eski
+      //    `TelegramParent` yozuvi qolgan bo'lishi mumkin va u
+      //    ko'rinmasdan turib eslatma yuboraverardi. Tasdiq
+      //    so'ralmaydi — yo'qotadigan narsa yo'q.
+      await doReset(bot, chatId, msg.from, 'resetNothing')
       return
     }
 
@@ -196,20 +201,36 @@ const handleReset = async (bot, msg) => {
 }
 
 /** Tasdiqdan keyin — hamma bog'lanishni o'chirib, boshidan */
-async function doReset(bot, chatId, from) {
+async function doReset(bot, chatId, from, textKey = 'resetDone') {
   const lang = langOf(from)
 
   // ⚠️ O'CHIRILMAYDI, faqat `isActive: false`. Sabab: yozuv
   //    tarixni saqlaydi va noyob indeks (telegramUserId+student)
   //    tufayli qaytadan bog'langanda o'sha yozuv tiklanadi —
   //    ikkinchi nusxa yaratilmaydi.
-  await StudentLink.updateMany(
-    { telegramUserId: String(from.id), isActive: true },
-    { $set: { isActive: false } },
+  //
+  // ⚠️ ESKI `TelegramParent` YOZUVI HAM O'CHIRILADI. Xabar
+  //    yuboruvchi kod ikkala jadvaldan ro'yxat oladi
+  //    (utils/notifyTargets.js). Faqat `StudentLink` ni
+  //    o'chirsak, "bog'lanishni uzdim" degan odam to'lov
+  //    eslatmalarini olishda davom etardi va bot buzuq
+  //    ko'rinardi.
+  const chatIds = [String(from.id), String(chatId)]
+  const [links, legacy] = await Promise.all([
+    StudentLink.updateMany(
+      { telegramUserId: String(from.id), isActive: true },
+      { $set: { isActive: false } },
+    ),
+    TelegramParent.updateMany(
+      { telegramChatId: { $in: chatIds }, isActive: true },
+      { $set: { isActive: false } },
+    ),
+  ])
+  console.log(
+    `[bot] bog'lanish uzildi: ${from.id} — ${links.modifiedCount} link, ${legacy.modifiedCount} eski`,
   )
-  console.log(`[bot] bog'lanish uzildi: ${from.id}`)
 
-  await askPhone(bot, chatId, lang, `${t(lang, 'resetDone')}\n\n`)
+  await askPhone(bot, chatId, lang, `${t(lang, textKey)}\n\n`)
 }
 
 // ── Raqam kelganda ────────────────────────────────────────────
