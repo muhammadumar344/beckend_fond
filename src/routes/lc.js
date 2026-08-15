@@ -194,4 +194,14 @@ router.put("/payment-claims/:claimId", allowTeacherOrStaff, claimCtrl.review);
 router.get("/payment-details", allowTeacherOrStaff, claimCtrl.getDetails);
 router.put("/payment-details", allowTeacherOrStaff, claimCtrl.updateDetails);
 
+// ─── KETISH ARAFASIDAGI O'QUVCHILAR ─────────────────────────────────────────
+//
+// Markaz o'quvchini yo'qotganini u ketgandan KEYIN biladi —
+// navbatdagi to'lov kelmaganda. Belgilar esa oldin ko'rinadi va
+// allaqachon bazamizda: bola ketishdan oldin kelmay qo'yadi.
+const churnCtrl = require("../controllers/churnController");
+
+router.get("/at-risk", allowTeacherOrStaff, churnCtrl.list);
+router.post("/at-risk/:studentId/contacted", allowTeacherOrStaff, churnCtrl.markContacted);
+
 module.exports = router;

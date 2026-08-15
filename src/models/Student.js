@@ -16,6 +16,16 @@ const studentSchema = new mongoose.Schema({
   // Cron o'zi qo'yadi: cron/supportCron.js
   supportBlockedUntil: { type: Date, default: null },
 
+  // ⚠️ "Ketish arafasida" ro'yxatidan vaqtincha olib turadi.
+  //    Xodim qo'ng'iroq qilgach shu sana qo'yiladi va o'quvchi
+  //    bir hafta ro'yxatda ko'rinmaydi.
+  //
+  //    Busiz ro'yxat ishlamay qolardi: bir marta chiqqan ism
+  //    u yerda abadiy turib, xodim ro'yxatga umuman qaramay
+  //    qo'yardi. Har kuni bir xil beshta ismni ko'rgan odam
+  //    oltinchisini ham ko'rmaydi.
+  riskContactedAt: { type: Date, default: null },
+
   createdAt: { type: Date, default: Date.now }
 });
 
