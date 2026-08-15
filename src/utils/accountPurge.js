@@ -38,6 +38,7 @@ const OWNED = [
   ["InviteCode", "director"],
   ["Lead", "director"],
   ["MonthlyPayment", "teacher"],
+  ["PaymentClaim", "director"],
   ["PaymentRequest", "teacher"],
   ["Role", "director"],
   ["Salary", "director"],

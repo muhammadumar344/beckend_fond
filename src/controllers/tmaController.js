@@ -22,6 +22,7 @@ const Teacher = require("../models/Teacher");
 const StudentLink = require("../models/StudentLink");
 const InviteCode = require("../models/InviteCode");
 const SupportBooking = require("../models/SupportBooking");
+const PaymentClaim = require("../models/PaymentClaim");
 const Homework = require("../models/Homework");
 const HomeworkResult = require("../models/HomeworkResult");
 const { canSee, isVerified, visibleSections } = require("../utils/tmaAccess");
@@ -30,6 +31,7 @@ const { freeSlots } = require("../utils/supportSlots");
 const { bookableDates, isBookable, qrWindow } = require("../utils/supportWindow");
 const { listSupportStaff } = require("../services/supportStaff");
 const { bookSlot } = require("../services/supportBooking");
+const { create: createClaim } = require("../services/paymentClaim");
 const { verifyPayload } = require("../services/supportQr");
 
 /** Bog'lanishni topadi va bo'limga ruxsatni tekshiradi */
@@ -242,11 +244,47 @@ exports.getPayments = async (req, res) => {
     const unpaid = payments.filter((p) => p.status !== "paid");
     const debt = unpaid.reduce((s, p) => s + (p.amount || 0), 0);
 
+    const link = req.tma.linkFor(studentId);
+
+    // ⚠️ Markazning karta rekvizitlari SHU YERDA qaytariladi,
+    //    `getMe` da emas: ular faqat to'lovlar ekranida kerak va
+    //    har ilova ochilishida uzatib yurish ortiqcha.
+    const [director, claims] = await Promise.all([
+      Teacher.findById(link.director).select("paymentDetails").lean(),
+      PaymentClaim.find({
+        student: studentId,
+        status: { $in: ["pending", "rejected"] },
+      })
+        .sort({ createdAt: -1 })
+        .limit(12)
+        .select("month year status reviewNote createdAt")
+        .lean(),
+    ]);
+
+    const pd = director?.paymentDetails || {};
+    const hasCard = Boolean(pd.cardNumber);
+
     res.json({
       success: true,
       debt,
       unpaidCount: unpaid.length,
       payments,
+      // Rekvizit sozlanmagan bo'lsa interfeys "To'lash" tugmasini
+      // umuman ko'rsatmaydi — bosilganda bo'sh oyna chiqmasin
+      payTo: hasCard
+        ? {
+            cardNumber: pd.cardNumber,
+            cardHolder: pd.cardHolder || "",
+            instructions: pd.instructions || "",
+          }
+        : null,
+      // Yuborilgan da'volar — "tekshirilmoqda" holatini ko'rsatish uchun
+      claims: claims.map((c) => ({
+        month: c.month,
+        year: c.year,
+        status: c.status,
+        reviewNote: c.reviewNote || "",
+      })),
     });
   } catch (err) {
     console.error("[tma] getPayments", err);
@@ -618,6 +656,49 @@ exports.redeemCode = async (req, res) => {
     });
   } catch (err) {
     console.error("[tma] redeemCode", err);
+    res.status(500).json({ success: false, error: "Server xatosi" });
+  }
+};
+
+// ── POST /api/tma/student/:studentId/pay ─────────────────────
+//
+// Ota-ona "to'ladim" deydi. Pul BIZDAN O'TMAYDI — u markazning
+// kartasiga to'g'ridan-to'g'ri o'tkaziladi. Bu tugma faqat
+// markazga xabar beradi: "tekshiring".
+//
+// ⚠️ QARZNI O'CHIRMAYDI. Pul haqiqatan kelganini faqat markaz
+//    biladi. Tugma to'lovni tasdiqlasa, istalgan odam bir
+//    bosishda qarzini yo'q qilib qo'yardi.
+exports.claimPayment = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const link = requireLink(req, res, studentId, "payments");
+    if (!link) return;
+
+    const { month, year, note } = req.body || {};
+
+    const r = await createClaim({
+      directorId: link.director,
+      studentId,
+      month,
+      year,
+      note,
+      telegramId: req.tma.user.id,
+    });
+
+    if (!r.ok) {
+      return res.status(r.status || 400).json({ success: false, error: r.error });
+    }
+
+    console.log(`[tma] to'lov da'vosi: ${studentId} ${month}/${year}`);
+
+    res.status(201).json({
+      success: true,
+      message: "Yuborildi. Markaz tasdiqlagach qarz yopiladi.",
+      claim: { month: r.claim.month, year: r.claim.year, status: r.claim.status },
+    });
+  } catch (err) {
+    console.error("[tma] claimPayment", err);
     res.status(500).json({ success: false, error: "Server xatosi" });
   }
 };

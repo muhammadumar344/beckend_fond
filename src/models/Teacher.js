@@ -124,6 +124,25 @@ const teacherSchema = new mongoose.Schema({
     absentPenalty: { type: Number, default: 0, min: 0 },
   },
 
+  // ── Markazning to'lov rekvizitlari ─────────────────────────
+  // Ota-ona ilovada shuni ko'radi va shu kartaga o'tkazadi.
+  //
+  // ⚠️ PUL BIZDAN O'TMAYDI. Ota-ona to'g'ridan-to'g'ri markazning
+  //    kartasiga o'tkazadi. Boshqa odamlarning pulini ushlab
+  //    turish O'zbekistonda alohida litsenziya talab qiladi va
+  //    biz uni olishga urinmaymiz — bizning ishimiz hisob
+  //    yuritish, pul tashish emas.
+  //
+  // ⚠️ Karta raqami MAXFIY EMAS: u ota-onalarga berish uchun
+  //    mo'ljallangan. Shunga qaramay faqat bog'langan ota-onaga
+  //    ko'rsatiladi, ochiq sahifada emas.
+  paymentDetails: {
+    cardNumber: { type: String, default: "", trim: true },
+    cardHolder: { type: String, default: "", trim: true },
+    // "To'lovdan keyin chekni administratorga yuboring" kabi
+    instructions: { type: String, default: "", trim: true },
+  },
+
   isActive:       { type: Boolean, default: true },
 
   // ── Hisobni o'chirish (30 kunlik muhlat bilan) ──────────────

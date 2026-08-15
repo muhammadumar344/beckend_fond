@@ -33,6 +33,18 @@ router.post("/redeem", redeemLimiter, ctrl.redeemCode);
 router.get("/student/:studentId/grades", ctrl.getGrades);
 router.get("/student/:studentId/attendance", ctrl.getAttendance);
 router.get("/student/:studentId/payments", ctrl.getPayments);
+
+// ⚠️ Cheklov SHART: bu tugma xodimga ish yaratadi. Cheklovsiz
+//    bitta odam yuzlab "to'ladim" yuborib, tasdiqlash ro'yxatini
+//    ko'mib tashlashi mumkin edi.
+const payLimiter = rateLimit({
+  name: "tma-pay",
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  keyBy: (req) => req.tma?.user?.id || req.ip,
+  message: "Juda ko'p urinish. Bir soatdan keyin urinib ko'ring.",
+});
+router.post("/student/:studentId/pay", payLimiter, ctrl.claimPayment);
 router.get("/student/:studentId/homework", ctrl.getHomework);
 
 // ── Qo'shimcha mashg'ulot ───────────────────────────────────

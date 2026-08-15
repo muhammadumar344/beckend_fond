@@ -258,6 +258,54 @@ async function notifyNoShow({ directorId, bookingId, blockDays }) {
   }
 }
 
+// ── To'lov so'rovi ──────────────────────────────────────────
+/**
+ * Xodim "to'ladim" so'rovini ko'rib chiqdi.
+ *
+ * ⚠️ Rad etilganda SABAB yuboriladi. Sababsiz "rad etildi"
+ *    xabari ota-onani markazga qo'ng'iroq qilishga majburlaydi —
+ *    ya'ni butun xususiyat hal qilmoqchi bo'lgan narsa qaytib
+ *    keladi.
+ *
+ * @param {object} p  { directorId, claimId, decision }
+ */
+async function notifyPaymentClaim({ directorId, claimId, decision }) {
+  if (!(await telegramAllowed(directorId))) return;
+
+  const PaymentClaim = require("../models/PaymentClaim");
+  const claim = await PaymentClaim.findById(claimId).lean();
+  if (!claim) return;
+
+  const targets = await verifiedTargets([claim.student], "payments");
+  if (!targets.length) return;
+
+  const info = await labels([claim.student]);
+  const M = ["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"];
+  const period = `${M[claim.month - 1] || claim.month} ${claim.year}`;
+  const sum = new Intl.NumberFormat("uz-UZ").format(claim.amount || 0);
+
+  for (const t of targets) {
+    const s = info.get(t.studentId);
+    if (!s) continue;
+
+    const text =
+      decision === "confirmed"
+        ? `✅ *To'lov tasdiqlandi*\n\n` +
+          `👤 *${s.name}*\n` +
+          `📅 ${period}\n` +
+          `💳 ${sum} so'm\n\n` +
+          `Rahmat! Qarz yopildi.`
+        : `❌ *To'lov tasdiqlanmadi*\n\n` +
+          `👤 *${s.name}*\n` +
+          `📅 ${period}\n\n` +
+          (claim.reviewNote
+            ? `💬 ${claim.reviewNote}`
+            : `Markazga murojaat qiling.`);
+
+    await sendMessage(t.chatId, text);
+  }
+}
+
 /**
  * Fon rejimida chaqirish uchun o'ram.
  *
@@ -275,6 +323,7 @@ module.exports = {
   notifyGrades,
   notifyBooking,
   notifyNoShow,
+  notifyPaymentClaim,
   inBackground,
   notableChanges,
   // test uchun

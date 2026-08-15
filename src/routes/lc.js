@@ -181,4 +181,17 @@ router.get("/staff-attendance/day", allowTeacherOrStaff, staffAttCtrl.getDay);
 router.post("/staff-attendance/mark", allowTeacherOrStaff, staffAttCtrl.mark);
 router.get("/staff-attendance/month", allowTeacherOrStaff, staffAttCtrl.getMonth);
 
+// ─── OTA-ONA TO'LOVLARI ─────────────────────────────────────────────────────
+//
+// ⚠️ PUL BIZDAN O'TMAYDI. Ota-ona markazning kartasiga
+//    to'g'ridan-to'g'ri o'tkazadi; bu yerda faqat "to'ladim"
+//    so'rovi tasdiqlanadi. Boshqa odamlarning pulini ushlab
+//    turish alohida litsenziya talab qiladi.
+const claimCtrl = require("../controllers/paymentClaimController");
+
+router.get("/payment-claims", allowTeacherOrStaff, claimCtrl.list);
+router.put("/payment-claims/:claimId", allowTeacherOrStaff, claimCtrl.review);
+router.get("/payment-details", allowTeacherOrStaff, claimCtrl.getDetails);
+router.put("/payment-details", allowTeacherOrStaff, claimCtrl.updateDetails);
+
 module.exports = router;
