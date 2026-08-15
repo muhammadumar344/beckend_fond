@@ -61,9 +61,25 @@ app.use(cors({
     }
   },
   methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
-  // X-Lang — javob xabarlari qaysi tilda qaytishini belgilaydi.
-  // CORS ro'yxatida bo'lmasa brauzer sarlavhani umuman yubormaydi.
-  allowedHeaders: ['Content-Type','Authorization','Accept','X-Lang'],
+  // ⚠️ BU RO'YXAT TO'LIQ BO'LISHI SHART. Brauzer o'zi bilmagan
+  //    sarlavhani yuborishdan OLDIN OPTIONS so'rovi bilan so'raydi;
+  //    javobda sarlavha bo'lmasa — butun so'rovni bekor qiladi va
+  //    `fetch` "Load failed" deb yiqiladi. Server logida hech
+  //    narsa ko'rinmaydi, chunki so'rov serverga umuman yetib
+  //    bormaydi.
+  //
+  //    X-Lang               — javob xabarlari qaysi tilda qaytadi
+  //    X-Telegram-Init-Data — Mini App'ning YAGONA autentifikatsiya
+  //                           yo'li (middleware/tmaAuth.js). Ro'yxatda
+  //                           yo'q edi va shu sababli Telegram
+  //                           ichidagi ilova hech qachon ochilmagan.
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Accept',
+    'X-Lang',
+    'X-Telegram-Init-Data',
+  ],
   credentials: true,
 }));
 
