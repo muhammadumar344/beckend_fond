@@ -738,7 +738,25 @@ exports.getReportSummary = async (req, res) => {
     const totalCollected = groupRows.reduce((s, g) => s + g.collected, 0);
     const totalExpected = groupRows.reduce((s, g) => s + g.expected, 0);
     const totalExpenses = sum(expenses);
-    const initialBalance = groups.reduce((s, g) => s + (g.initialBalance || 0), 0);
+
+    // ⚠️ NOYOB o'quvchilar. Guruhlar bo'yicha sonlarni QO'SHIB
+    //    BO'LMAYDI: ikkita guruhda o'qiydigan bola ikki marta
+    //    sanalardi va "o'quvchilar soni" haqiqatdan katta
+    //    ko'rinardi (utils/enrollment.js dagi izoh).
+    //
+    // ⚠️ `countUniqueStudents` ham shuni qiladi, lekin u bazaga
+    //    yana ikkita so'rov yuboradi. `studentMap` allaqachon
+    //    qo'limizda — birlashtirish tekin.
+    const uniqueStudents = new Set();
+    for (const set of studentMap.values()) {
+      for (const id of set) uniqueStudents.add(id);
+    }
+
+    // ⚠️ `initialBalance` — FOND maydoni. `Group` sxemasida u
+    //    ataylab yo'q (models/Group.js), ya'ni LC uchun har doim
+    //    nol. Maydon javobdan olib tashlanmaydi: interfeys uni
+    //    o'qiydi va yo'qolsa `undefined` chiqarardi.
+    const initialBalance = 0;
 
     res.json({
       success: true,
@@ -751,7 +769,7 @@ exports.getReportSummary = async (req, res) => {
         profit: totalCollected - totalExpenses,
         initialBalance,
         balance: initialBalance + totalCollected - totalExpenses,
-        studentCount: students.length,
+        studentCount: uniqueStudents.size,
         groupCount: groups.length,
         paidCount: groupRows.reduce((s, g) => s + g.paidCount, 0),
         unpaidCount: groupRows.reduce((s, g) => s + g.unpaidCount, 0),
