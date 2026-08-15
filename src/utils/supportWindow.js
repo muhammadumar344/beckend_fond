@@ -95,9 +95,50 @@ function isBookable(date, now = Date.now()) {
   return { ok: true };
 }
 
+/**
+ * Toshkent vaqtidagi sana+soatni epoch ga aylantiradi.
+ * @param {string} dateStr "YYYY-MM-DD"
+ * @param {string} timeStr "HH:MM"
+ */
+function tashkentEpoch(dateStr, timeStr) {
+  const [y, m, d] = String(dateStr).split("-").map(Number);
+  const [hh, mm] = String(timeStr).split(":").map(Number);
+  return Date.UTC(y, m - 1, d, hh, mm) - TASHKENT_OFFSET_MS;
+}
+
+/**
+ * QR qachon ko'rsatiladi.
+ *
+ * ⚠️ MASHG'ULOT BOSHLANMAGUNCHA QR BERILMAYDI. Ilgari ustoz uni
+ *    istalgan paytda ocha olardi — ya'ni o'quvchi ertalab kelib,
+ *    kechqurungi mashg'ulotini "keldim" qilib ketishi mumkin edi.
+ *    Butun QR g'oyasining ma'nosi shundaki, u AYNAN o'sha 30
+ *    daqiqada, aynan o'sha xonada skanerlanadi.
+ *
+ * ⚠️ Tugagandan keyin ham berilmaydi: vaqt o'tgach yozuv
+ *    "kelmadi" bo'ladi (cron/supportCron.js). Ikkalasi bir xil
+ *    chegaraga tayanmasa, cron "kelmadi" deb belgilagan yozuv
+ *    uchun QR hali ochiq turardi.
+ *
+ * @returns {{open, expired, opensAt, closesAt, secondsUntilOpen}}
+ */
+function qrWindow({ date, startTime, endTime }, now = Date.now()) {
+  const opensAt = tashkentEpoch(date, startTime);
+  const closesAt = tashkentEpoch(date, endTime);
+  return {
+    open: now >= opensAt && now < closesAt,
+    expired: now >= closesAt,
+    opensAt,
+    closesAt,
+    secondsUntilOpen: Math.max(0, Math.ceil((opensAt - now) / 1000)),
+  };
+}
+
 module.exports = {
   bookableDates,
   isBookable,
+  qrWindow,
+  tashkentEpoch,
   todayInTashkent,
   addDays,
   daysBetween,

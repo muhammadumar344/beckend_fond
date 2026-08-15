@@ -148,7 +148,14 @@ const requireSupport = require("../middleware/support");
 // ⚠️ Sozlama endpoint'lari `requireSupport` DAN O'TMAYDI — aks
 //    holda o'chirilgan xizmatni qayta yoqib bo'lmasdi.
 router.get("/support/settings", allowTeacherOrStaff, supportCtrl.getSettings);
-router.put("/support/settings", onlyTeacher, supportCtrl.updateSettings);
+// ⚠️ `onlyTeacher` EMAS: filial boshqaruvchisi ham sozlaydi.
+//    Aniq tekshiruv controller ichida (`canManageSupport`) —
+//    u yerda `manageStaff` ruxsati talab qilinadi.
+router.put("/support/settings", allowTeacherOrStaff, supportCtrl.updateSettings);
+
+// Ustozning kuni va tarixi
+router.get("/support/today", allowTeacherOrStaff, requireSupport, supportCtrl.getToday);
+router.get("/support/stats", allowTeacherOrStaff, requireSupport, supportCtrl.getStats);
 
 // ⚠️ `/support/slots` YO'Q. Support ustozining "qabul vaqti"
 //    degan tushuncha olib tashlandi: qabul markazning ish vaqti

@@ -6,21 +6,51 @@
 // yozuvlarni tasdiqlaydi. O'quvchi tomoni — tmaController.js
 // ════════════════════════════════════════════════════════════
 
+const mongoose = require("mongoose");
 const SupportBooking = require("../models/SupportBooking");
 const Teacher = require("../models/Teacher");
 const Student = require("../models/Student");
+const Class = require("../models/Class");
 const { resolveContext, requirePermission } = require("../utils/resolveContext");
 const { freeSlots, toMin, normalizeHours } = require("../utils/supportSlots");
 const { notifyBooking, inBackground } = require("../services/notify");
 const { currentToken, WINDOW_SEC } = require("../services/supportQr");
-const { MIN_DAYS_AHEAD, MAX_DAYS_AHEAD } = require("../utils/supportWindow");
+const {
+  MIN_DAYS_AHEAD,
+  MAX_DAYS_AHEAD,
+  qrWindow,
+  todayInTashkent,
+  addDays,
+} = require("../utils/supportWindow");
 
 const DAY_NAMES = [
   "Dushanba", "Seshanba", "Chorshanba",
   "Payshanba", "Juma", "Shanba", "Yakshanba",
 ];
 
+const MONTH_NAMES = [
+  "Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
+  "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr",
+];
+
 const isTime = (t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(t));
+
+/**
+ * Kim support sozlamasini o'zgartira oladi.
+ *
+ * ⚠️ Direktordan tashqari FILIAL BOSHQARUVCHISI ham. "Support
+ *    ishchisi bormi va u qachon ishlaydi" — kadr masalasi, uni
+ *    kunda hal qiladigan odam filialda o'tiradi. Direktorni har
+ *    safar bezovta qilish oqim sekinlashtiradi va oxir-oqibat
+ *    hech kim sozlamaydi.
+ *
+ * ⚠️ Oddiy ustozda bu ruxsat YO'Q — aks holda support ustozining
+ *    o'zi ish vaqtini qisqartirib, o'zini yozilishdan yashira
+ *    olardi. Aynan shu narsa eski "qabul vaqti" modelining
+ *    kamchiligi edi.
+ */
+const canManageSupport = (ctx) =>
+  Boolean(ctx.isDirector || ctx.permissions?.includes("manageStaff"));
 
 // ══ MARKAZ SOZLAMASI ════════════════════════════════════════
 // ⚠️ Bu ikkalasi `requireSupport` dan O'TMAYDI — o'chirilgan
@@ -49,7 +79,12 @@ exports.getSettings = async (req, res) => {
     res.json({
       success: true,
       enabled: Boolean(director?.supportEnabled),
-      canEdit: ctx.isDirector,
+      // ⚠️ Filial boshqaruvchisi ham tahrirlay oladi. Sabab:
+      //    "support ishchisi bormi va u qachon ishlaydi" — bu
+      //    KADR masalasi, direktor har safar aralashib o'tirmasin.
+      //    Shu sababli `manageStaff` ruxsati tanlandi: filial
+      //    boshqaruvchisida bor, oddiy ustozda yo'q.
+      canEdit: canManageSupport(ctx),
       staff,
       // ⚠️ Eski hujjatlarda `supportHours` umuman bo'lmasligi
       //    mumkin — Mongoose standart qiymatni O'QISHDA qo'shmaydi.
@@ -71,6 +106,16 @@ exports.getSettings = async (req, res) => {
 exports.updateSettings = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
+
+    // ⚠️ Route darajasidagi ruxsat yetarli emas: `allowTeacherOrStaff`
+    //    har qanday xodimni o'tkazadi. Aynan kim o'zgartira olishi
+    //    shu yerda hal qilinadi.
+    if (!canManageSupport(ctx)) {
+      return res.status(403).json({
+        success: false,
+        error: "Bu sozlamani direktor yoki filial boshqaruvchisi o'zgartiradi",
+      });
+    }
 
     const director = await Teacher.findById(ctx.directorId);
     if (!director) {
@@ -281,6 +326,27 @@ exports.getQr = async (req, res) => {
         .json({ success: false, error: "Bu yozuv uchun QR berilmaydi" });
     }
 
+    // ⚠️ MASHG'ULOT BOSHLANMAGUNCHA QR YO'Q. Aks holda o'quvchi
+    //    ertalab kirib, kechqurungi mashg'ulotini "keldim" qilib
+    //    ketardi — QR ning butun ma'nosi aynan o'sha 30 daqiqada,
+    //    aynan o'sha xonada bo'lishida.
+    //
+    //    Xato emas, 200 qaytariladi: interfeys sanoqni ko'rsatsin
+    //    ("13:00 da ochiladi"), qizil xato chiqarmasin.
+    const w = qrWindow(booking);
+    if (!w.open) {
+      return res.json({
+        success: true,
+        notYet: !w.expired,
+        expired: w.expired,
+        opensAt: new Date(w.opensAt).toISOString(),
+        closesAt: new Date(w.closesAt).toISOString(),
+        secondsUntilOpen: w.secondsUntilOpen,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+      });
+    }
+
     const t = currentToken(String(booking._id));
     res.json({
       success: true,
@@ -352,6 +418,215 @@ exports.createBooking = async (req, res) => {
     await result.booking.save();
 
     res.status(201).json({ success: true, booking: result.booking });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+};
+
+// ══ USTOZ KUNI ══════════════════════════════════════════════
+
+// GET /api/lc/support/today
+//
+// Support ustozining bosh ekrani: bugun kim keladi va nima
+// so'raydi.
+//
+// ⚠️ ERTANGI KUN HAM QAYTARILADI va bu ataylab. O'quvchi kamida
+//    bir kun oldin yoziladi va MAVZUNI yozib qoldiradi — butun
+//    g'oyaning ma'nosi ustoz shunga TAYYORLANISHIDA. Tayyorlanish
+//    esa kechqurun bo'ladi, ertalab emas. Faqat bugungi ro'yxatni
+//    ko'rsatsak, ustoz mavzuni o'quvchi eshikdan kirganda o'qirdi.
+exports.getToday = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+
+    const today = todayInTashkent();
+    const tomorrow = addDays(today, 1);
+
+    const query = {
+      director: ctx.directorId,
+      date: { $in: [today, tomorrow] },
+      // Bekor qilinganlar ro'yxatni chalg'itadi
+      status: { $in: ["pending", "confirmed", "done", "no_show"] },
+    };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+
+    // ⚠️ Xodim O'Z ro'yxatini ko'radi. Boshqalarnikini ko'rish
+    //    uchun `manageGroups` kerak — aks holda har bir ustoz
+    //    hammaning kunini ko'rardi.
+    if (!ctx.isDirector && !ctx.permissions?.includes("manageGroups")) {
+      query.teacher = ctx.staffId;
+    }
+
+    const rows = await SupportBooking.find(query)
+      .populate("student", "name class")
+      .populate("teacher", "name")
+      .sort({ date: 1, startTime: 1 })
+      .lean();
+
+    // Guruh nomlari — ustoz "qaysi guruhdan" ekanini bilsin
+    const classIds = [
+      ...new Set(rows.map((r) => r.student?.class).filter(Boolean).map(String)),
+    ];
+    const classes = classIds.length
+      ? await Class.find({ _id: { $in: classIds } }).select("name").lean()
+      : [];
+    const className = new Map(classes.map((c) => [String(c._id), c.name]));
+
+    const shape = (b) => {
+      const w = qrWindow(b);
+      return {
+        id: b._id,
+        date: b.date,
+        startTime: b.startTime,
+        endTime: b.endTime,
+        status: b.status,
+        topic: b.topic || "",
+        note: b.note || "",
+        attendedAt: b.attendedAt || null,
+        studentName: b.student?.name || "—",
+        className: className.get(String(b.student?.class)) || "",
+        teacherName: b.teacher?.name || "",
+        // Interfeys QR tugmasini shu asosda yoqadi/o'chiradi
+        qr: {
+          open: w.open,
+          expired: w.expired,
+          secondsUntilOpen: w.secondsUntilOpen,
+        },
+      };
+    };
+
+    const all = rows.map(shape);
+    const todayRows = all.filter((r) => r.date === today);
+
+    res.json({
+      success: true,
+      today,
+      tomorrow,
+      bookings: todayRows,
+      tomorrowBookings: all.filter((r) => r.date === tomorrow),
+      summary: {
+        total: todayRows.length,
+        waiting: todayRows.filter((r) =>
+          ["pending", "confirmed"].includes(r.status),
+        ).length,
+        done: todayRows.filter((r) => r.status === "done").length,
+        noShow: todayRows.filter((r) => r.status === "no_show").length,
+      },
+    });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+};
+
+// ══ TARIX / STATISTIKA ══════════════════════════════════════
+
+// GET /api/lc/support/stats?teacherId=&months=6
+//
+// "Bu oy nechta o'quvchiga yordam berdim?" — hafta va oy kesimida.
+//
+// ⚠️ ALOHIDA JADVALGA YOZILMAYDI. Raqamlar har safar yozuvlardan
+//    hisoblanadi. Sabab: sanagichni alohida saqlasak, yozuv qo'lda
+//    tuzatilganda (xodim "kelmadi" ni "bo'ldi" ga o'zgartirsa)
+//    sanagich eskirib qolardi va ikkita raqam bir-biriga zid
+//    bo'lardi. Yozuvlarning o'zi — tarix.
+//
+// ⚠️ "Nechta o'quvchi" va "nechta mashg'ulot" BOSHQA-BOSHQA raqam:
+//    bitta o'quvchi oyiga to'rt marta kelishi mumkin. Ikkalasi ham
+//    qaytariladi — direktorga birinchisi, ustozga ikkinchisi
+//    qiziq bo'ladi.
+exports.getStats = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+
+    const months = Math.min(Math.max(Number(req.query.months) || 6, 1), 24);
+    const today = todayInTashkent();
+    const from = addDays(today, -Math.round(months * 30.5));
+
+    const match = { director: ctx.directorId, date: { $gte: from } };
+    if (ctx.branchFilter) match.branch = ctx.branchFilter;
+
+    // Xodim o'z raqamlarini ko'radi; boshqalarniki uchun ruxsat kerak
+    if (!ctx.isDirector && !ctx.permissions?.includes("manageGroups")) {
+      match.teacher = ctx.staffId;
+    } else if (req.query.teacherId) {
+      match.teacher = new mongoose.Types.ObjectId(String(req.query.teacherId));
+    }
+
+    // ⚠️ Bitta so'rov, ikkita kesim. Har bir guruh uchun noyob
+    //    o'quvchilar to'plami ham yig'iladi — keyin JS da
+    //    birlashtiriladi (holat bo'yicha ajratilgani uchun).
+    const group = (id) => [
+      { $match: match },
+      { $addFields: { _d: { $dateFromString: { dateString: "$date" } } } },
+      {
+        $group: {
+          _id: { ...id, status: "$status" },
+          n: { $sum: 1 },
+          students: { $addToSet: "$student" },
+        },
+      },
+    ];
+
+    const [byMonth, byWeek] = await Promise.all([
+      SupportBooking.aggregate(
+        group({ y: { $year: "$_d" }, m: { $month: "$_d" } }),
+      ),
+      SupportBooking.aggregate(
+        group({ y: { $isoWeekYear: "$_d" }, w: { $isoWeek: "$_d" } }),
+      ),
+    ]);
+
+    /** Holat bo'yicha bo'lingan qatorlarni bitta davrga yig'adi */
+    const fold = (rows, keyOf, labelOf) => {
+      const out = new Map();
+      for (const r of rows) {
+        const key = keyOf(r._id);
+        if (!out.has(key)) {
+          out.set(key, {
+            key,
+            label: labelOf(r._id),
+            total: 0,
+            done: 0,
+            noShow: 0,
+            cancelled: 0,
+            _students: new Set(),
+          });
+        }
+        const b = out.get(key);
+        b.total += r.n;
+        if (r._id.status === "done") {
+          b.done += r.n;
+          // "Nechta o'quvchiga yordam berdi" — faqat kelganlar
+          for (const s of r.students) b._students.add(String(s));
+        }
+        if (r._id.status === "no_show") b.noShow += r.n;
+        if (r._id.status === "cancelled") b.cancelled += r.n;
+      }
+      return [...out.values()]
+        .map(({ _students, ...b }) => ({ ...b, students: _students.size }))
+        .sort((a, b) => a.key.localeCompare(b.key));
+    };
+
+    const pad = (n) => String(n).padStart(2, "0");
+    const monthly = fold(
+      byMonth,
+      (id) => `${id.y}-${pad(id.m)}`,
+      (id) => `${MONTH_NAMES[id.m - 1]} ${id.y}`,
+    );
+    const weekly = fold(
+      byWeek,
+      (id) => `${id.y}-W${pad(id.w)}`,
+      (id) => `${id.w}-hafta`,
+    );
+
+    res.json({
+      success: true,
+      monthly,
+      // Oxirgi 8 hafta yetarli — undan naryog'i oylik kesimda ko'rinadi
+      weekly: weekly.slice(-8),
+      thisMonth: monthly[monthly.length - 1] || null,
+      thisWeek: weekly[weekly.length - 1] || null,
+    });
   } catch (e) {
     res.status(e.status || 500).json({ success: false, error: e.message });
   }

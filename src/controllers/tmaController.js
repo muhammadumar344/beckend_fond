@@ -27,7 +27,7 @@ const HomeworkResult = require("../models/HomeworkResult");
 const { canSee, isVerified, visibleSections } = require("../utils/tmaAccess");
 const { getStudentGroupIds } = require("../utils/enrollment");
 const { freeSlots } = require("../utils/supportSlots");
-const { bookableDates, isBookable } = require("../utils/supportWindow");
+const { bookableDates, isBookable, qrWindow } = require("../utils/supportWindow");
 const { listSupportStaff } = require("../services/supportStaff");
 const { bookSlot } = require("../services/supportBooking");
 const { verifyPayload } = require("../services/supportQr");
@@ -512,6 +512,23 @@ exports.scanQr = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, error: "Bu yozuv faol emas" });
+    }
+
+    // ⚠️ VAQT OYNASI SHU YERDA HAM TEKSHIRILADI. Ustoz QR ni
+    //    mashg'ulot vaqtidan tashqarida ocha olmaydi
+    //    (supportController.getQr), ya'ni odatda bu shart hech
+    //    qachon ishlamaydi. Lekin "boshqa joyda tekshirilgan"
+    //    degan ishonch — aynan shu turdagi teshiklar paydo
+    //    bo'ladigan joy. Belgilash SHU YERDA sodir bo'ladi,
+    //    demak tekshiruv ham shu yerda turishi kerak.
+    const w = qrWindow(booking);
+    if (!w.open) {
+      return res.status(400).json({
+        success: false,
+        error: w.expired
+          ? "Mashg'ulot vaqti tugagan"
+          : `Mashg'ulot ${booking.startTime} da boshlanadi`,
+      });
     }
 
     booking.attendedAt = new Date();

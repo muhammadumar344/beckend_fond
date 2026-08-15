@@ -112,3 +112,80 @@ test("yordamchi funksiyalar", () => {
   assert.strictEqual(daysBetween("2026-08-15", "2026-08-22"), 7);
   assert.strictEqual(daysBetween("2026-08-22", "2026-08-15"), -7);
 });
+
+// ── QR vaqt oynasi ──────────────────────────────────────────
+const { qrWindow, tashkentEpoch } = require("../src/utils/supportWindow");
+
+const BOOKING = { date: "2026-08-16", startTime: "13:00", endTime: "13:30" };
+/** Toshkent bo'yicha o'sha kuni soat HH:MM */
+const at = (hh, mm = 0) => tashkentEpoch("2026-08-16", `${hh}:${String(mm).padStart(2, "0")}`);
+
+test("⚠️ mashg'ulot boshlanmaguncha QR yopiq", () => {
+  const w = qrWindow(BOOKING, at(12, 59));
+  assert.strictEqual(w.open, false);
+  assert.strictEqual(w.expired, false);
+  assert.strictEqual(w.secondsUntilOpen, 60);
+});
+
+test("ertalabdan beri yopiq — 'keldim' qilib ketib bo'lmaydi", () => {
+  // Aynan shu teshik uchun tekshiruv qo'shilgan edi: ilgari
+  // ustoz QR ni istalgan paytda ocha olardi
+  assert.strictEqual(qrWindow(BOOKING, at(8)).open, false);
+  assert.ok(qrWindow(BOOKING, at(8)).secondsUntilOpen > 0);
+});
+
+test("boshlanish daqiqasida ochiladi", () => {
+  assert.strictEqual(qrWindow(BOOKING, at(13, 0)).open, true);
+});
+
+test("oxirgi daqiqada hali ochiq", () => {
+  assert.strictEqual(qrWindow(BOOKING, at(13, 29)).open, true);
+});
+
+test("⚠️ tugash daqiqasida yopiladi", () => {
+  // Cron shu chegaradan keyin "kelmadi" deb belgilaydi —
+  // ikkalasi bir xil vaqtga tayanishi shart
+  const w = qrWindow(BOOKING, at(13, 30));
+  assert.strictEqual(w.open, false);
+  assert.strictEqual(w.expired, true);
+});
+
+test("kechqurun ham yopiq", () => {
+  assert.strictEqual(qrWindow(BOOKING, at(20)).open, false);
+  assert.strictEqual(qrWindow(BOOKING, at(20)).expired, true);
+});
+
+test("⚠️ vaqt Toshkent bo'yicha, server mintaqasi bo'yicha emas", () => {
+  // 13:00 Toshkent = 08:00 UTC. Server UTC da ishlaydi, ya'ni
+  // mintaqa hisobga olinmasa QR besh soat kech ochilardi.
+  assert.strictEqual(tashkentEpoch("2026-08-16", "13:00"), Date.UTC(2026, 7, 16, 8, 0));
+});
+
+test("ertangi mashg'ulot bugun ochilmaydi", () => {
+  const tomorrow = { date: "2026-08-17", startTime: "13:00", endTime: "13:30" };
+  assert.strictEqual(qrWindow(tomorrow, at(13, 0)).open, false);
+  assert.strictEqual(qrWindow(tomorrow, at(13, 0)).expired, false);
+});
+
+test("⚠️ QR yopilishi va cron'ning 'kelmadi' chegarasi BIR XIL", () => {
+  // Ikkalasi ajralib ketsa yomon holat chiqardi: cron yozuvni
+  // "kelmadi" deb belgilab bo'lgan, QR esa hali ochiq turardi —
+  // o'quvchi skanerlaydi, lekin allaqachon jazolangan bo'ladi.
+  //
+  // ⚠️ `supportCron` ni import qilish XAVFSIZ: u faqat funksiya
+  //    e'lon qiladi, `startSupportCron()` chaqirilmasa hech
+  //    qanday interval ishga tushmaydi.
+  const { closeMoment } = require("../src/cron/supportCron");
+
+  for (const b of [
+    { date: "2026-08-16", startTime: "13:00", endTime: "13:30" },
+    { date: "2026-01-01", startTime: "09:00", endTime: "09:20" },
+    { date: "2026-12-31", startTime: "23:00", endTime: "23:45" },
+  ]) {
+    assert.strictEqual(
+      qrWindow(b).closesAt,
+      closeMoment(b),
+      `${b.date} ${b.endTime} — chegaralar mos kelmadi`,
+    );
+  }
+});

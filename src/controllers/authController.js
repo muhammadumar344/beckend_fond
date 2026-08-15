@@ -310,7 +310,7 @@ exports.staffLogin = async (req, res) => {
     // undefined bo'lib, bcrypt.compare 500 xato berardi
     const staff = await Staff.findOne({ email: email.toLowerCase() })
       .select('+password')
-      .populate('role',   'name slug permissions color')
+      .populate('role',   'name slug permissions color isSupport')
       .populate('branch', 'name')
 
     if (!staff) return res.status(401).json({ message: "Email yoki parol noto'g'ri" })
@@ -397,7 +397,7 @@ exports.unifiedLogin = async (req, res) => {
     // ✅ TUZATILDI: .select('+password') qo'shildi (aynan shu yer 500 xatoning sababi edi)
     const staff = await Staff.findOne({ email: normalizedEmail })
       .select('+password')
-      .populate('role',   'name slug permissions color')
+      .populate('role',   'name slug permissions color isSupport')
       .populate('branch', 'name')
     if (staff) {
       const isMatch = await staff.comparePassword(password)
