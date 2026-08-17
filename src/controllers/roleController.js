@@ -1,6 +1,23 @@
 const Role  = require('../models/Role');
 const Staff = require('../models/Staff');
 const { resolveContext } = require('../utils/resolveContext');
+const { audit } = require('../services/audit');
+
+// Huquq ro'yxati o'zgarganda jurnalda butun ro'yxatni ko'rsatish
+// foydasiz: direktor 27 ta nomdan qaysi biri qo'shilganini
+// o'zi qidirib topishga majbur bo'lardi. Shuning uchun faqat
+// FARQNI yozamiz.
+function permChanges(before = [], after = []) {
+  const a = new Set(before.map(String));
+  const b = new Set(after.map(String));
+  const added = [...b].filter((p) => !a.has(p));
+  const removed = [...a].filter((p) => !b.has(p));
+
+  const out = [];
+  if (added.length) out.push({ field: "qo'shilgan huquqlar", from: null, to: added.join(', ') });
+  if (removed.length) out.push({ field: 'olib tashlangan huquqlar', from: removed.join(', '), to: null });
+  return out;
+}
 
 // GET /api/lc/roles — Director: o'z rollari; Staff: o'z directorining rollari
 const getRoles = async (req, res) => {
@@ -49,6 +66,15 @@ const createRole = async (req, res) => {
       isDefault: false,
     });
     await role.save();
+
+    audit(req, await resolveContext(req), {
+      action: 'role.created',
+      entity: 'Role',
+      entityId: role._id,
+      entityLabel: role.name,
+      changes: permChanges([], role.permissions),
+    });
+
     res.status(201).json({ success: true, role });
   } catch (err) {
     if (err.code === 11000) {
@@ -69,12 +95,29 @@ const updateRole = async (req, res) => {
     if (role.isDefault) {
       return res.status(400).json({ message: "Default rolni o'zgartirish mumkin emas" });
     }
+    const beforeName = role.name;
+    const beforePerms = [...(role.permissions || [])];
+
     const { name, permissions, color, isSupport } = req.body;
     if (name !== undefined) role.name = name;
     if (permissions !== undefined) role.permissions = permissions;
     if (color !== undefined) role.color = color;
     if (isSupport !== undefined) role.isSupport = Boolean(isSupport);
     await role.save();
+
+    const changes = permChanges(beforePerms, role.permissions);
+    if (beforeName !== role.name) {
+      changes.unshift({ field: 'nomi', from: beforeName, to: role.name });
+    }
+
+    audit(req, await resolveContext(req), {
+      action: 'role.updated',
+      entity: 'Role',
+      entityId: role._id,
+      entityLabel: role.name,
+      changes,
+    });
+
     res.json({ success: true, role });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
@@ -98,7 +141,17 @@ const deleteRole = async (req, res) => {
         message: `Bu rol ${staffCount} ta xodimga biriktirilgan. Avval ularni boshqa rolga o'tkazing.`,
       });
     }
+    const hadPerms = [...(role.permissions || [])];
     await role.deleteOne();
+
+    audit(req, await resolveContext(req), {
+      action: 'role.deleted',
+      entity: 'Role',
+      entityId: role._id,
+      entityLabel: role.name,
+      changes: permChanges(hadPerms, []),
+    });
+
     res.json({ success: true, message: "Rol o'chirildi" });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });

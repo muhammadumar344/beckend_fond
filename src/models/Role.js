@@ -54,6 +54,11 @@ const PERMISSION_TYPES = [
   // Umumiy
   'manageSubjects',    // fanlar ro'yxatini boshqaradi (Rus tili, IT va h.k.)
   'viewAllStats',      // barcha filiallar statistikasi (odatda faqat director)
+  // ⚠️ O'zgarishlar tarixi. Direktorda bu huquq AVTOMATIK bor.
+  //    Xodimga berishdan oldin o'ylab ko'ring: o'z izini ko'ra
+  //    oladigan administrator uchun jurnal ogohlantirishga
+  //    aylanadi va u tekshiruvdan oldin izini yashira boshlaydi.
+  'viewAudit',         // kim nimani o'zgartirganini ko'radi
 ]
 
 const roleSchema = new mongoose.Schema(

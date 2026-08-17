@@ -18,6 +18,15 @@
 // ════════════════════════════════════════════════════════════
 
 const mongoose = require("mongoose");
+
+// ⚠️ Drayverga to'g'ridan-to'g'ri murojaat qilganda (`.collection`)
+//    Mongoose cast qilmaydi: matn ID hech qachon ObjectId bilan
+//    mos kelmaydi va `deleteMany` JIMGINA nol hujjat o'chiradi.
+//    Ya'ni ma'lumot o'chdi deb o'ylaymiz, aslida joyida turadi.
+const toId = (v) =>
+  v && mongoose.Types.ObjectId.isValid(String(v))
+    ? new mongoose.Types.ObjectId(String(v))
+    : v;
 const cloudinary = require("../services/cloudinary");
 
 // [model nomi, egasini ko'rsatuvchi maydon]
@@ -28,6 +37,14 @@ const cloudinary = require("../services/cloudinary");
 //    urinardik. models/Group.js oxiridagi izohga qarang.
 const OWNED = [
   ["Attendance", "teacher"],
+  // ⚠️ `AuditLog` jurnal sifatida O'ZGARMAS: modelda `deleteMany`
+  //    ataylab bloklangan. Lekin markaz butunlay o'chirilganda u
+  //    ham ketishi SHART — aks holda bazada egasiz o'quvchi
+  //    ismlari va telefon raqamlari qolib ketardi.
+  //    Shuning uchun pastdagi halqa bu model uchun drayver
+  //    darajasida o'chiradi (`.collection`), Mongoose qulfini
+  //    chetlab o'tib. Bu YAGONA ruxsat etilgan chetlab o'tish.
+  ["AuditLog", "director"],
   ["Branch", "teacher"],
   ["Class", "teacher"],
   ["Enrollment", "director"],
@@ -105,7 +122,16 @@ async function purgeDirector(directorId) {
   // 4) Egasi bo'yicha to'g'ridan-to'g'ri o'chadiganlar
   for (const [name, field] of OWNED) {
     const Model = mongoose.model(name);
-    const r = await Model.deleteMany({ [field]: directorId });
+
+    // Audit jurnali Mongoose darajasida o'chirishdan qulflangan
+    // (models/AuditLog.js). Hisobni butunlay yo'q qilish esa
+    // qonuniy holat, shuning uchun shu YAGONA joyda drayverga
+    // to'g'ridan-to'g'ri murojaat qilamiz.
+    const r =
+      name === "AuditLog"
+        ? await Model.collection.deleteMany({ [field]: toId(directorId) })
+        : await Model.deleteMany({ [field]: directorId });
+
     counts[name] = r.deletedCount || 0;
   }
 

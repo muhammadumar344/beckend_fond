@@ -218,4 +218,19 @@ const cardCtrl = require("../controllers/studentCardController");
 router.get("/search", allowTeacherOrStaff, cardCtrl.search);
 router.get("/student/:studentId/card", allowTeacherOrStaff, cardCtrl.card);
 
+// ─── O'ZGARISHLAR TARIXI ────────────────────────────────────────────────────
+//
+// To'lovni KIM "to'landi" qilgani hech qayerda yozilmasdi.
+// Administrator summani o'zgartirsa yoki o'quvchini o'chirsa,
+// iz qolmasdi va direktor "men to'ladim" bilan "to'lamagan"
+// orasida hakamlik qila olmasdi.
+//
+// ⚠️ FAQAT O'QISH. Bu yerga hech qachon POST/PUT/DELETE
+//    qo'shmang — o'zgartirib bo'ladigan jurnal hech narsani
+//    isbotlamaydi.
+const auditCtrl = require("../controllers/auditController");
+
+router.get("/audit", allowTeacherOrStaff, auditCtrl.list);
+router.get("/audit/actors", allowTeacherOrStaff, auditCtrl.actors);
+
 module.exports = router;

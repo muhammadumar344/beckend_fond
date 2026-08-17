@@ -57,6 +57,10 @@ async function resolveContext(req) {
       permissions: staff.role?.permissions || [],
       staffId: userId,
       staffRole: staff.role,
+      // Audit jurnali xodim ismini NUSXA qilib saqlaydi. Hujjat
+      // allaqachon o'qilgan, shuning uchun bu qo'shimcha so'rov
+      // emas — shunchaki qaytariladigan maydon.
+      staffName: staff.name || "",
     };
   }
 

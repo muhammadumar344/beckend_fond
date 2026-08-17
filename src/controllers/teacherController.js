@@ -41,6 +41,19 @@ const {
   resolveContext,
   requirePermission,
 } = require("../utils/resolveContext");
+const { audit, diff } = require("../services/audit");
+
+// Jurnalda to'lov "Karim Aliyev — 9/2026" bo'lib ko'rinsin.
+// Bunsiz direktor har bir qatorni ochib ko'rishga majbur
+// bo'lardi va jurnaldan amalda foydalanmasdi.
+//
+// ⚠️ `student` populate qilingan bo'lsa ismini oladi, aks holda
+//    bo'sh qoldiradi — jurnal uchun qo'shimcha so'rov qilmaymiz.
+const paymentLabel = (p) => {
+  const who = p?.student?.name || "";
+  const when = p?.month && p?.year ? `${p.month}/${p.year}` : "";
+  return [who, when].filter(Boolean).join(" — ");
+};
 
 // ============================================================
 //  ONBOARDING — Fonds va Learning Center uchun ajratilgan validatsiya
@@ -919,8 +932,26 @@ const deleteStudent = async (req, res) => {
     if (!cls)
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
 
+    // ⚠️ Bu amal QAYTARILMAYDI va o'quvchining butun to'lov
+    //    tarixini ham o'chiradi. Nechta to'lov yo'q qilingani
+    //    jurnalga yozilsin — keyinchalik "bu odam umuman
+    //    to'lamagan" degan bahs chiqsa, javob shu yerda bo'ladi.
+    const wiped = await MonthlyPayment.countDocuments({ student: studentId });
+
     await MonthlyPayment.deleteMany({ student: studentId });
     await Student.findByIdAndDelete(studentId);
+
+    audit(req, ctx, {
+      action: "student.deleted",
+      entity: "Student",
+      entityId: student._id,
+      entityLabel: `${student.name} — ${cls.name}`,
+      changes: [
+        { field: "name", from: student.name, to: null },
+        { field: "parentPhone", from: student.parentPhone || null, to: null },
+        { field: "o'chirilgan to'lovlar", from: wiped, to: 0 },
+      ],
+    });
 
     return res.json({ success: true, message: "O'quvchi o'chirildi" });
   } catch (err) {
@@ -1180,9 +1211,21 @@ const updatePaymentStatus = async (req, res) => {
       return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
     }
 
+    // ⚠️ Eski holat oldindan olinadi: jurnalda "nimadan nimaga"
+    //    o'zgargani ko'rinmasa, yozuv deyarli foydasiz bo'ladi.
+    const before = { status: payment.status, paidDate: payment.paidDate };
+
     payment.status = status;
     payment.paidDate = status === "paid" ? new Date() : null;
     await payment.save();
+
+    audit(req, ctx, {
+      action: status === "paid" ? "payment.marked_paid" : "payment.marked_unpaid",
+      entity: "MonthlyPayment",
+      entityId: payment._id,
+      entityLabel: paymentLabel(payment),
+      changes: diff(before, payment, ["status", "paidDate"]),
+    });
 
     if (status === "paid") {
       try {
@@ -1242,6 +1285,16 @@ const markPayment = async (req, res) => {
 
     const { isPaid, status, amount, paidDate, note } = req.body;
 
+    // ⚠️ Bu funksiya SUMMANI ham o'zgartira oladi. Aynan shu
+    //    sabab jurnal eng avval shu yerga kerak edi: 300 000 ni
+    //    250 000 ga tushirib qo'yish hech qanday iz qoldirmasdi.
+    const before = {
+      status: payment.status,
+      paidDate: payment.paidDate,
+      amount: payment.amount,
+      note: payment.note,
+    };
+
     if (isPaid !== undefined) {
       payment.status = isPaid ? "paid" : "not_paid";
       payment.paidDate = isPaid
@@ -1258,6 +1311,33 @@ const markPayment = async (req, res) => {
     if (note !== undefined) payment.note = note;
 
     await payment.save();
+
+    // Summa o'zgarishi alohida amal sifatida belgilanadi —
+    // direktor jurnalda avvalo shuni qidiradi.
+    const changes = diff(before, payment, ["status", "paidDate", "amount", "note"]);
+
+    // ⚠️ Bu yerda `payment` populate QILINMAGAN va uni populate
+    //    qilib bo'lmaydi: javobda `student` id bo'lib qaytadi va
+    //    frontend shunga tayangan. Shuning uchun ismni alohida,
+    //    faqat jurnal uchun o'qiymiz — indeksli, yengil so'rov.
+    let label = "";
+    if (changes.length) {
+      const st = await Student.findById(payment.student).select("name").lean();
+      label = paymentLabel({ student: st, month: payment.month, year: payment.year });
+    }
+
+    audit(req, ctx, {
+      action: changes.some((c) => c.field === "amount")
+        ? "payment.amount_changed"
+        : payment.status === "paid"
+          ? "payment.marked_paid"
+          : "payment.marked_unpaid",
+      entity: "MonthlyPayment",
+      entityId: payment._id,
+      entityLabel: label,
+      changes,
+    });
+
     res.json({ success: true, payment });
   } catch (err) {
     res.status(err.status || 500).json({ success: false, error: err.message });

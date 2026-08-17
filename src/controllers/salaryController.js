@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Salary = require('../models/Salary');
 const Staff  = require('../models/Staff');
 const { resolveContext, requirePermission } = require('../utils/resolveContext');
+const { audit, diff } = require('../services/audit');
 
 // aggregate() Mongoose sxemasidan o'tmaydi — string ID'ni o'zi ObjectId'ga
 // o'girmaydi. Shuning uchun $match'ga berishdan oldin qo'lda cast qilamiz.
@@ -35,6 +36,17 @@ const setSalary = async (req, res) => {
     const staff = await Staff.findOne(staffQuery);
     if (!staff) return res.status(404).json({ message: "Xodim topilmadi" });
 
+    // ⚠️ `findOneAndUpdate` eski qiymatni qaytarmaydi (`new: true`),
+    //    shuning uchun avvalgi maoshni alohida o'qiymiz. Bunsiz
+    //    jurnalda "maosh o'zgardi" deb yozilardi-yu, QANCHADAN
+    //    qanchaga o'zgargani ko'rinmasdi — ya'ni eng kerakli
+    //    ma'lumot yo'q bo'lardi.
+    const prev = await Salary.findOne({
+      staff: staffId,
+      month,
+      director: ctx.directorId,
+    }).lean();
+
     // Upsert — agar bu oy uchun yozuv bo'lsa yangilaydi, bo'lmasa yaratadi
     const salary = await Salary.findOneAndUpdate(
       { staff: staffId, month, director: ctx.directorId },
@@ -53,6 +65,14 @@ const setSalary = async (req, res) => {
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     ).populate('staff', 'name email position');
+
+    audit(req, ctx, {
+      action: prev ? 'salary.changed' : 'salary.set',
+      entity: 'Salary',
+      entityId: salary._id,
+      entityLabel: `${staff.name} — ${month}`,
+      changes: diff(prev || {}, salary, ['amount', 'note']),
+    });
 
     res.status(201).json(salary);
   } catch (err) {
@@ -76,6 +96,7 @@ const markSalaryPaid = async (req, res) => {
     if (!salary) return res.status(404).json({ message: "Maosh yozuvi topilmadi" });
 
     const { isPaid, paidDate, note } = req.body;
+    const before = { isPaid: salary.isPaid, paidDate: salary.paidDate, note: salary.note };
 
     // Agar isPaid body'da kelsa shu qiymat, aks holda toggle
     if (typeof isPaid === 'boolean') {
@@ -91,6 +112,15 @@ const markSalaryPaid = async (req, res) => {
     await salary.save();
 
     await salary.populate('staff', 'name email position');
+
+    audit(req, ctx, {
+      action: salary.isPaid ? 'salary.marked_paid' : 'salary.marked_unpaid',
+      entity: 'Salary',
+      entityId: salary._id,
+      entityLabel: `${salary.staff?.name || ''} — ${salary.month}`,
+      changes: diff(before, salary, ['isPaid', 'paidDate', 'note']),
+    });
+
     res.json(salary);
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
@@ -200,7 +230,20 @@ const deleteSalary = async (req, res) => {
       });
     }
 
+    await salary.populate('staff', 'name');
+    const amount = salary.amount;
+    const label = `${salary.staff?.name || ''} — ${salary.month}`;
+
     await salary.deleteOne();
+
+    audit(req, ctx, {
+      action: 'salary.deleted',
+      entity: 'Salary',
+      entityId: salary._id,
+      entityLabel: label,
+      changes: [{ field: 'amount', from: amount, to: null }],
+    });
+
     res.json({ message: "Maosh yozuvi o'chirildi" });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
