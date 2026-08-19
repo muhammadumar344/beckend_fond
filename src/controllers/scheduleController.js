@@ -2,8 +2,52 @@
 const Schedule = require("../models/Schedule");
 const Class = require("../models/Class");
 const Staff = require("../models/Staff");
+const Room = require("../models/Room");
 const { resolveContext } = require("../utils/resolveContext");
 const { findTeacherConflicts } = require("../utils/teacherAvailability"); // ✅ YANGI
+const { findRoomConflicts } = require("../utils/roomAvailability");
+const { countGroupStudents } = require("../utils/enrollment");
+
+// Tanlangan xonani tekshiradi va nom nusxasini qaytaradi.
+// `roomId` berilmasa eski xatti-harakat saqlanadi: matn maydoni.
+async function resolveRoom(ctx, roomId, roomText) {
+  if (!roomId) return { roomRef: null, room: (roomText || "").trim(), doc: null };
+
+  const doc = await Room.findOne({
+    _id: roomId,
+    director: ctx.directorId,
+    isActive: true,
+  });
+  if (!doc) {
+    const err = new Error("Xona topilmadi");
+    err.status = 404;
+    throw err;
+  }
+  // Xodim boshqa filialning xonasiga dars qo'ya olmaydi.
+  // Filialsiz xona (markazning umumiy xonasi) hammaga ochiq.
+  if (ctx.branchFilter && doc.branch && String(doc.branch) !== ctx.branchFilter) {
+    const err = new Error("Bu xona sizning filialingizga tegishli emas");
+    err.status = 403;
+    throw err;
+  }
+  return { roomRef: doc._id, room: doc.name, doc };
+}
+
+// ⚠️ SIG'IM TO'SIQ EMAS. 12 kishilik xonaga 14 bola sig'adi —
+//    stul qo'yiladi. Bloklasak administrator xonani umuman
+//    tanlamay qo'yardi va biz bandlik tekshiruvidan ayrilardik.
+//    Shuning uchun javobda `warning` bo'lib qaytadi.
+async function capacityWarning(roomDoc, classId) {
+  if (!roomDoc || !roomDoc.capacity) return null;
+  const count = await countGroupStudents(classId);
+  if (count <= roomDoc.capacity) return null;
+  return {
+    type: "capacity",
+    roomName: roomDoc.name,
+    capacity: roomDoc.capacity,
+    students: count,
+  };
+}
 
 const DAYS = [
   "Dushanba",
@@ -19,8 +63,23 @@ const DAYS = [
 exports.createSchedule = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
-    const { classId, dayOfWeek, startTime, endTime, subject, room, teacherId, force } =
-      req.body;
+    const {
+      classId,
+      dayOfWeek,
+      startTime,
+      endTime,
+      subject,
+      room,
+      roomId,
+      teacherId,
+      force,
+      // ⚠️ XONA UCHUN ALOHIDA BAYROQ — va bu muhim. Bitta `force`
+      //    qoldirsak, xona ziddiyatini ataylab o'tkazgan odam
+      //    o'zi bilmagan holda USTOZ ziddiyatini ham o'tkazib
+      //    yuborardi: ustoz bir vaqtda ikki guruhda "dars o'tadi"
+      //    bo'lib qolardi va buni hech kim ko'rmasdi.
+      forceRoom,
+    } = req.body;
 
     if (!classId || dayOfWeek === undefined || !startTime || !endTime) {
       return res
@@ -103,6 +162,32 @@ exports.createSchedule = async (req, res) => {
       });
     }
 
+    // ⚠️ XONA BANDLIGI — ustoz bandligi bilan bir xil qoida:
+    //    409 va `force` bilan o'tkazish mumkin. Nega majburiy
+    //    to'siq emas: katta xonada ikki kichik guruh haqiqatan
+    //    birga o'tirishi mumkin (kompyuter sinfi). Lekin buni
+    //    ATAYLAB qilish kerak, tasodifan emas.
+    const { roomRef, room: roomName, doc: roomDoc } = await resolveRoom(
+      ctx,
+      roomId,
+      room,
+    );
+    const roomConflicts = await findRoomConflicts({
+      directorId: ctx.directorId,
+      roomId: roomRef,
+      roomName,
+      daysOfWeek: [dayOfWeek],
+      startTime,
+      endTime,
+    });
+    if (roomConflicts.length && !forceRoom) {
+      return res.status(409).json({
+        success: false,
+        error: `${roomName} xonasi shu vaqtda band`,
+        roomConflicts,
+      });
+    }
+
     const schedule = await Schedule.create({
       class: classId,
       teacher: resolvedTeacherId,
@@ -110,12 +195,16 @@ exports.createSchedule = async (req, res) => {
       startTime,
       endTime,
       subject: (subject || cls.subject?.name || "").trim(),
-      room: (room || "").trim(),
+      roomRef,
+      room: roomName,
     });
 
-    res
-      .status(201)
-      .json({ success: true, message: "Jadval qo'shildi", schedule });
+    res.status(201).json({
+      success: true,
+      message: "Jadval qo'shildi",
+      schedule,
+      warning: await capacityWarning(roomDoc, classId),
+    });
   } catch (e) {
     res.status(e.status || 500).json({ success: false, error: e.message });
   }
@@ -195,7 +284,8 @@ exports.getWeeklyOverview = async (req, res) => {
           startTime: s.startTime,
           endTime: s.endTime,
           subject: s.subject,
-          room: s.room,
+          roomRef: s.roomRef, // haqiqiy xona (bo'lsa)
+          room: s.room, // ko'rsatiladigan nom — eski matn ham shu yerda
         })),
     }));
 
@@ -210,7 +300,10 @@ exports.updateSchedule = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
     const { scheduleId } = req.params;
-    const { startTime, endTime, subject, room, teacherId, force } = req.body;
+    // `forceRoom` — faqat XONA ziddiyatini o'tkazadi. Ustoz
+    // ziddiyati uchun `force` alohida (yuqoridagi izohga qarang).
+    const { startTime, endTime, subject, room, roomId, teacherId, force, forceRoom } =
+      req.body;
 
     const schedule = await Schedule.findById(scheduleId);
     if (!schedule)
@@ -260,13 +353,50 @@ exports.updateSchedule = async (req, res) => {
       schedule.teacher = nextTeacherId;
     }
 
+    // Xona yoki vaqt o'zgarsa bandlikni qaytadan tekshiramiz.
+    // `roomId` berilmasa hozirgi xona saqlanadi — vaqt surilganda
+    // ham tekshirilishi shart: 18:00 dan 19:00 ga ko'chirilgan
+    // dars boshqa guruhning ustiga tushishi mumkin.
+    let roomDoc = null;
+    if (roomId !== undefined || room !== undefined || startTime || endTime) {
+      const resolved =
+        roomId !== undefined || room !== undefined
+          ? await resolveRoom(ctx, roomId, room)
+          : { roomRef: schedule.roomRef, room: schedule.room, doc: null };
+
+      const roomConflicts = await findRoomConflicts({
+        directorId: ctx.directorId,
+        roomId: resolved.roomRef,
+        roomName: resolved.room,
+        daysOfWeek: [schedule.dayOfWeek],
+        startTime: nextStart,
+        endTime: nextEnd,
+        excludeScheduleId: schedule._id,
+      });
+      if (roomConflicts.length && !forceRoom) {
+        return res.status(409).json({
+          success: false,
+          error: `${resolved.room} xonasi shu vaqtda band`,
+          roomConflicts,
+        });
+      }
+
+      schedule.roomRef = resolved.roomRef;
+      schedule.room = resolved.room;
+      roomDoc = resolved.doc;
+    }
+
     if (startTime) schedule.startTime = startTime;
     if (endTime) schedule.endTime = endTime;
     if (subject !== undefined) schedule.subject = subject.trim();
-    if (room !== undefined) schedule.room = room.trim();
     await schedule.save();
 
-    res.json({ success: true, message: "Jadval yangilandi", schedule });
+    res.json({
+      success: true,
+      message: "Jadval yangilandi",
+      schedule,
+      warning: await capacityWarning(roomDoc, schedule.class),
+    });
   } catch (e) {
     res.status(e.status || 500).json({ success: false, error: e.message });
   }

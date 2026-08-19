@@ -167,10 +167,15 @@ const createDefaultRoles = async (directorId) => {
       name: 'Branch Manager',
       slug: 'branch_manager',
       color: '#f6ad55',
+      // ⚠️ `manageRooms` faqat shu rolda. Filial rahbari binoni
+      //    biladi va xonani u qo'shadi. Administrationga bermadik:
+      //    u kun bo'yi jadval tuzadi va xona ro'yxati oyiga bir
+      //    marta o'zgaradi — bir marta bosiladigan tugmaga doimiy
+      //    huquq berish shart emas, direktor kerak bo'lsa qo'shadi.
       permissions: [
         'manageStaff', 'manageGroups', 'manageStudents', 'manageAttendance',
         'manageGrades', 'managePayments', 'viewBranchStats', 'manageSubjects',
-        'manageLeads',
+        'manageLeads', 'manageRooms',
       ],
     },
     {

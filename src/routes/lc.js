@@ -251,4 +251,28 @@ router.get("/cash/shifts", allowTeacherOrStaff, cashCtrl.shifts);
 router.get("/cash/open", allowTeacherOrStaff, cashCtrl.openDays);
 router.get("/cash/day", allowTeacherOrStaff, cashCtrl.day);
 
+// ─── XONALAR (kabinetlar) ───────────────────────────────────────────────────
+//
+// Ilgari xona `Schedule.room` da oddiy matn edi: ustoz bandligi
+// tekshirilardi, xona bandligi esa yo'q. Ikki guruhni bir vaqtda
+// bitta xonaga qo'yish mumkin edi va buni faqat eshik oldida
+// bilishardi.
+//
+// ⚠️ O'QISH RUXSATSIZ (`list`, `free`, `occupancy`). Jadval
+//    sahifasi xona ro'yxatini o'qiydi — yopsak jadval tuzadigan
+//    xodim xona tanlay olmasdi. YOZISH esa `manageRooms`:
+//    xonani o'chirish jadvalga tegadi.
+//
+// ⚠️ `/rooms/free` — `/rooms/:id` dan OLDIN turishi shart, aks
+//    holda Express "free" ni id deb o'qiydi.
+const roomCtrl = require("../controllers/roomController");
+
+router.get("/rooms", allowTeacherOrStaff, roomCtrl.list);
+router.get("/rooms/free", allowTeacherOrStaff, roomCtrl.free);
+router.get("/rooms/occupancy", allowTeacherOrStaff, roomCtrl.occupancy);
+router.post("/rooms", allowTeacherOrStaff, roomCtrl.create);
+router.post("/rooms/import", allowTeacherOrStaff, roomCtrl.importFromSchedules);
+router.put("/rooms/:id", allowTeacherOrStaff, roomCtrl.update);
+router.delete("/rooms/:id", allowTeacherOrStaff, roomCtrl.remove);
+
 module.exports = router;

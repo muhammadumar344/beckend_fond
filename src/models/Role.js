@@ -39,6 +39,14 @@ const PERMISSION_TYPES = [
   // Jadval
   'manageSchedule',    // jadval tuzadi
   'viewSchedule',      // faqat ko'radi
+  // ⚠️ Xonalar. Bu `manageSchedule` dan ALOHIDA huquq: jadval
+  //    tuzadigan odam dars qo'yadi, lekin binoni qayta
+  //    rejalashtirmaydi. Xonani arxivlash butun jadvalga
+  //    tegadi — o'sha xonadagi darslar bandligi tekshirilmaydigan
+  //    matnga aylanadi.
+  //    Xona ro'yxatini KO'RISH uchun huquq kerak emas: jadval
+  //    sahifasi uni har safar o'qiydi.
+  'manageRooms',       // xona qo'shadi/tahrirlaydi/arxivlaydi
   // Xabarlar
   'sendSMS',
   'sendTelegram',

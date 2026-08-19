@@ -5,7 +5,7 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-19** (kassa tugagach)
+> Oxirgi yangilanish: **2026-08-20** (xona boshqaruvi tugagach)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
 > `HANDOFF.md` — **shu paytdagi holat**: nima tugadi, nima to'xtab turibdi,
@@ -29,7 +29,7 @@ Ikkita alohida repo:
 | Backend | `C:\Users\Lenovo\Desktop\school_fond` | `github.com/muhammadumar344/beckend_fond` |
 | Frontend | `C:\Users\Lenovo\Desktop\font_front\font` | `github.com/muhammadumar344/Fond_front` |
 
-Backend: Node + Express + MongoDB (Mongoose 7), 29 ta model.
+Backend: Node + Express + MongoDB (Mongoose 7), 30 ta model.
 Frontend: Vue 3 `<script setup>` + Vite + Pinia + vue-router + vue-i18n (uz/ru/en).
 
 Ishlab turgan manzillar: sayt `schoolfonds.uz`, API `beckend-fond.onrender.com/api`.
@@ -60,79 +60,96 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Kassa" (kunlik smena)
+### Oxirgi tugagan ish — "Xona (kabinet) boshqaruvi"
 
-Rollar bo'yicha o'ylashning **ikkinchi** katta funksiyasi. Administrator kun
-bo'yi naqd pul oladi va kechqurun direktorga topshiradi — 29 ta modelning
-hech birida smena tushunchasi yo'q edi, hisob daftarda yuritilardi.
+Rollar bo'yicha o'ylashning **uchinchi** katta funksiyasi va avvalgi
+HANDOFF'da ⭐ bilan tavsiya qilingani. `Schedule.room` oddiy **matn
+maydoni** edi: ustoz bandligi tekshirilardi, **xona bandligi — yo'q**.
+Ya'ni ikki guruhni bir vaqtda bitta xonaga qo'yish mumkin edi va bu
+faqat dars boshlanganda, eshik oldida ikkita ustoz va yigirmata bola
+turganda bilinardi.
 
-**Backend** (commit `6137bcf`):
-- `src/models/CashShift.js` — o'zgarmas (oltita yozish amali bloklangan),
-  `(director, staff.id, date)` unikal indeks.
-- `src/services/cashShift.js` — `dayRange`, `totals`, `shiftView`, `close`.
-- `src/controllers/cashController.js` + `/lc/cash/{my,close,shifts,open,day}`.
-- `MonthlyPayment` ga `paymentMethod` (`cash|card|transfer`), `receivedBy`
-  (ism nusxasi bilan) va `{ teacher, paidDate }` indeksi qo'shildi.
-- Yangi ruxsat: `viewCash`. 15 ta yangi test.
+Matnning ikkinchi kasali: bir xil xona har xil yozilardi — "205",
+"205-xona", "Lab-1", "lab 1". Tizim ularni boshqa-boshqa xona deb
+bilardi, ya'ni ziddiyatni topa olmasdi ham.
 
-**Frontend** (commit `314ea98`):
-- `src/views/lc/Cash.vue`, route `/lc/cash` va `/staff/cash`, menyu, ~40 ta
-  i18n kalit × 3 til, `viewCash` ruxsat kartochkasi.
-- `views/teacher/Payments.vue` ga qabul usuli tanlagichi.
+**Backend:**
+- `src/models/Room.js` — nom, sig'im, filial, izoh. Noyob indeks
+  `(director, branch, name)`. Xona **o'chirilmaydi, arxivlanadi**.
+- `src/utils/roomAvailability.js` — `roomKeyOf`, `pickRoomConflicts`
+  (sof funksiyalar), `findRoomConflicts`, `roomsAvailability`.
+- `src/controllers/roomController.js` + `/lc/rooms{,/free,/occupancy,/import}`.
+- `Schedule` ga `roomRef` qo'shildi, `room` matni **nom nusxasi** bo'lib
+  qoldi. Migratsiya kerak emas.
+- `scheduleController` — xona ziddiyati (409 + `forceRoom`) va sig'im
+  ogohlantirishi (`warning`).
+- Yangi ruxsat: `manageRooms` (standart rollardan faqat Branch Manager'da).
+- 15 ta yangi test.
 
-**Uchta ataylab qilingan qaror** — o'zgartirishdan oldin o'ylang:
+**Frontend:**
+- `src/views/lc/Rooms.vue` — xonalar ro'yxati, haftalik bandlik setkasi,
+  jadvaldan import.
+- `Schedule.vue` — matn maydoni o'rniga xona tanlagichi; har bir xona
+  yonida **bo'sh/band** yozuvi.
+- Route `/lc/rooms` va `/staff/rooms`, menyu, ~40 ta i18n kalit × 3 til,
+  audit jurnaliga `room.*` amallari.
 
-1. **"Smena ochish" tugmasi yo'q.** Smena = ODAM + KUN. Ertalab tugmani
-   hech kim bosmaydi va kun bo'yi olingan pul hech qaysi smenaga tegishli
-   bo'lmay qolardi. Noto'g'ri hisob — hisob yo'qligidan battar.
-2. **Farq tugmani bosishdan OLDIN ko'rinadi.** Odam summani kiritishi bilan
-   "kamomad 50 000" chiqadi va yana sanab ko'rishi mumkin.
-3. **To'lov belgilashda oyna chiqmaydi.** Qabul usuli sahifa tepasida bir
-   marta tanlanadi. Har bir to'lovga oyna qo'ysak, ketma-ket yigirmatasini
-   belgilaydigan administrator tugmani o'ylamasdan bosib ketardi.
+**To'rtta ataylab qilingan qaror** — o'zgartirishdan oldin o'ylang:
+
+1. **Band xonalar ro'yxatdan olib tashlanmaydi.** Administrator "205
+   yo'q" degan xulosa chiqarmasligi kerak — u "205 band, Ingliz A2
+   o'tirgan" ni ko'rsin. Aks holda sababini bilmay direktorni bezovta
+   qiladi.
+2. **Ziddiyat tugmani bosishdan OLDIN ko'rinadi** (kassadagi farq bilan
+   bir xil qoida). Band xona tanlansa tugma matni "Baribir qo'shish" ga
+   o'zgaradi — odam nima qilayotganini bilib bossin.
+3. **Sig'im to'sib qo'ymaydi**, ogohlantiradi. 12 kishilik xonaga 14
+   bola sig'adi. Bloklasak administrator xona tanlashni umuman tashlab
+   qo'yardi va biz eng muhimidan — bandlik tekshiruvidan — ayrilardik.
+4. **`force` va `forceRoom` — ikki xil bayroq.** Bittaga birlashtirsak,
+   xona ziddiyatini ataylab o'tkazgan odam o'zi bilmagan holda **ustoz**
+   ziddiyatini ham o'tkazib yuborardi.
+
+⚠️ **Eski matn xonalar uchun `POST /lc/rooms/import` bor.** Busiz o'tish
+davri cho'zilardi: yangi darslar xonaga bog'lanadi, eskilari matn bo'lib
+qolaveradi va ular orasidagi ziddiyat hech qachon topilmasdi. Import
+avval **ko'rsatadi**, keyin yozadi (`apply: true`).
+
+### Undan oldingi ish — "Kassa" (kunlik smena)
+
+Administrator kun bo'yi naqd pul oladi va kechqurun direktorga
+topshiradi — 29 ta modelning hech birida smena tushunchasi yo'q edi.
+
+**Backend** (commit `6137bcf`): `CashShift.js` (o'zgarmas),
+`services/cashShift.js`, `cashController.js` + `/lc/cash/*`,
+`MonthlyPayment` ga `paymentMethod` va `receivedBy`, ruxsat `viewCash`.
+**Frontend** (commit `314ea98`): `views/lc/Cash.vue`, route `/lc/cash` va
+`/staff/cash`.
+
+**Uchta ataylab qilingan qaror:** "smena ochish" tugmasi yo'q (smena =
+ODAM + KUN); farq tugmani bosishdan OLDIN ko'rinadi; to'lov belgilashda
+oyna chiqmaydi (usul sahifa tepasida bir marta tanlanadi).
 
 ### Undan oldingi ish — "O'zgarishlar tarixi" (audit log)
 
-Rollar bo'yicha o'ylash natijasida tanlangan **birinchi** katta funksiya.
-Sabab: direktor "to'lovni kim o'zgartirdi?" degan savolga javob berolmasdi,
-administrator esa ayblovdan o'zini oqlay olmasdi. Naqd pul aylanadigan
-o'zbek o'quv markazlarida bu — eng katta ishonch teshigi.
+Direktor "to'lovni kim o'zgartirdi?" degan savolga javob berolmasdi.
 
-**Backend** (commit `10d27a1`):
-- `src/models/AuditLog.js` — **o'zgarmas**. `updateOne`, `updateMany`,
-  `findOneAndUpdate`, `deleteOne`, `deleteMany`, `findOneAndDelete` —
-  oltitasi ham `pre` hook bilan bloklangan. Jurnalni tahrirlay oladigan
-  odam uchun jurnal hech narsani isbotlamaydi. TTL 365 kun, 4 ta indeks.
-  Aktyor ismi **nusxa qilib** saqlanadi (`populate` emas) — xodim
-  o'chirilsa ham kim qilgani ko'rinib turadi.
-- `src/services/audit.js` — `audit()` va `diff()`. **`await` qilinmaydi va
-  hech qachon `throw` qilmaydi.** To'lovning saqlanishi jurnaldan muhimroq.
-- Ulangan joylar: `teacherController` (`updatePaymentStatus`, `markPayment`,
-  `deleteStudent`), `salaryController` (`setSalary`, `markSalaryPaid`,
-  `deleteSalary`), `roleController` (create / update / delete).
-- `Role.js` da yangi ruxsat: `viewAudit`.
-- `src/controllers/auditController.js` + `GET /lc/audit`, `/lc/audit/actors`
-  — **faqat o'qish**. Bu route'ga POST/PUT/DELETE yozmang.
-- `src/utils/accountPurge.js` ga qo'shildi (pastdagi 5-tuzoqqa qarang).
-- 11 ta yangi test.
-
-**Frontend** (commit `42df853`):
-- `src/views/lc/AuditLog.vue` — kim / nima / qachon filtri, sahifalash,
-  `eski → yangi` ko'rinishi. Pul va o'chirish amallari rang bilan ajraladi.
-- `lcApi.getAudit` / `getAuditActors`, route `/lc/audit` va `/staff/audit`,
-  menyu yozuvlari, ~40 ta i18n kalit × 3 til.
+**Backend** (commit `10d27a1`): `AuditLog.js` — **o'zgarmas** (oltita
+yozish amali bloklangan), TTL 365 kun. `services/audit.js` —
+**`await` qilinmaydi va hech qachon `throw` qilmaydi**. Ruxsat
+`viewAudit`. **Frontend** (commit `42df853`): `views/lc/AuditLog.vue`.
 
 **Ataylab qilingan qaror:** `viewAudit` standart rollarda **yo'q**.
 O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
-**ogohlantirishga** aylanadi — tekshiruvdan oldin izini yashira boshlaydi.
-Direktorda esa u avtomatik bor.
+**ogohlantirishga** aylanadi.
 
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test        →  283/283
-frontend:  npm run build   →  ✓
-frontend:  npm run check   →  check:api, check:perms, check:css, check:i18n — 0 xato
+backend :  npm test              →  298/298
+backend :  npm run check:messages →  yangi xabarlar ru/en bilan
+frontend:  npm run build         →  ✓
+frontend:  npm run check         →  check:api, check:perms, check:css, check:i18n — 0 xato
 ```
 
 ---
@@ -141,7 +158,7 @@ frontend:  npm run check   →  check:api, check:perms, check:css, check:i18n �
 
 ### 4.1 Push ishlamayapti (eng muhimi)
 
-**Backend 3 ta, frontend 16 ta commit push qilinmagan.** Kod tayyor,
+**Backend 5 ta, frontend 18 ta commit push qilinmagan.** Kod tayyor,
 faqat GitHub'ga chiqmagan.
 
 Sabab aniqlangan: `ssh -vT git@github.com` → **`Server accepts key`**.
@@ -170,21 +187,33 @@ git push origin main
 - **MongoDB Atlas → `teachers`:** `notgmail@mail.ru` test yozuvini o'chirish.
 - **Domen:** `lumocrm.uz` sotib olingach →
   `node scripts/set-domain.cjs lumocrm.uz --apply` (frontend repoda).
+- **Deploy'dan keyin:** har bir markazda `Xonalar` sahifasini ochib
+  "Jadvaldan xona yaratish" ni bosish kerak — eski matn xonalar shundan
+  keyin bandlik tekshiruviga tushadi. Bu bir martalik ish.
 
 ---
 
 ## 5. Keyin nima qilinadi
 
-Rollar bo'yicha o'ylash davom etadi. Kassa (avvalgi 1-variant) bajarildi.
-Qolgani va yangi topilganlari:
+Rollar bo'yicha o'ylash davom etadi. Xona (avvalgi A-variant) bajarildi.
 
-### A. Xona (kabinet) boshqaruvi  ⭐ tavsiya
+### A. Bo'sh vaqtni topish — "yangi guruhni qachon ochsam bo'ladi?"  ⭐ tavsiya
 
-`Schedule.room` hozir — oddiy **matn maydoni** (`src/models/Schedule.js:15`).
-Ustoz bandligi tekshiriladi, lekin **xona bandligi tekshirilmaydi**. Ya'ni
-ikki guruhni bir vaqtda bitta xonaga qo'yish mumkin. Bu — kundalik
-operatsion falokat va modme'da bor. Kerak: `Room` modeli, jadval saqlashda
-konflikt tekshiruvi.
+Hozir jarayon teskari: administrator vaqtni **taxmin qiladi**, keyin
+tizim "ustoz band" yoki "xona band" deydi. U yana taxmin qiladi. Yangi
+guruh ochish — telefonda o'tirib beshinchi urinishda topiladigan narsa.
+
+Kerak bo'lgani: *"Ingliz tili, Malika opa, 12 bola, haftada 3 kun"* →
+tizim **bo'sh oynalarni o'zi ko'rsatadi**. Uchala cheklov allaqachon
+kodda bor:
+
+- ustoz bandligi — `utils/teacherAvailability.js`
+- xona bandligi va sig'imi — `utils/roomAvailability.js` (yangi)
+- markazning ish vaqti — `utils/supportSlots.js` naqshi
+
+Ya'ni bu yangi ma'lumot emas, **mavjud uchtasini kesishtirish**.
+Modme'da bunday narsa yo'q va aynan shu — direktor sotuvda
+ko'rsatadigan farq.
 
 ### B. Kassa ustiga qurilishi mumkin bo'lganlar
 
@@ -199,7 +228,8 @@ Asos allaqachon bor (`paymentMethod`, `receivedBy`, `CashShift`):
 ### Ataylab keyinga qoldirilgan (mayda ish deb hisoblangan)
 
 `Leads.vue` (9 ta satr), `Reports.vue` (10), `StaffManagement.vue` (20) da
-tarjima qilinmagan matnlar. `npm run check:i18n` ularni ogohlantirish
+tarjima qilinmagan matnlar. `Schedule.vue` dagi `validate()` ichida ham
+uchta qattiq yozilgan matn bor. `npm run check:i18n` ularni ogohlantirish
 sifatida ko'rsatadi, build'ni to'xtatmaydi. Katta funksiya orasida
 o'z-o'zidan tuzatilsa — yaxshi; alohida ish sifatida qilinmasin.
 
@@ -209,43 +239,66 @@ o'z-o'zidan tuzatilsa — yaxshi; alohida ish sifatida qilinmasin.
 
 Bular allaqachon bir marta bug chiqargan. Takrorlamang.
 
-1. **`sed -i` CRLF ni buzadi.** Git Bash'da `.vue` fayllarga `sed -i`
-   ishlatilsa, fayl LF ga o'tadi va 18 qatorlik tuzatish 2400 qatorlik
-   diff bo'lib ko'rinadi — haqiqiy o'zgarish ko'milib ketadi. Teskarisi ham
-   bo'ladi: LF fayl CRLF ga aylanib qolsa, natija bir xil. Commit'dan
-   oldin **doim** `git diff --stat`. Fayllarni tahrirlash uchun `Edit`
-   ishlatilsin.
+1. **Qator oxiri (CRLF/LF) — repo ARALASH.** Frontendda `core.autocrlf`
+   **o'chiq**, va fayllar bir xil emas: `router/index.js` va
+   `navigation.js` — CRLF, `i18n/locales/*.js` va `views/lc/*.vue` — LF.
+   Tahrirlash vositasi faylni ikkinchi shaklga o'tkazib yuborsa, 20
+   qatorlik tuzatish 2000 qatorlik diff bo'lib ko'rinadi va haqiqiy
+   o'zgarish ko'milib ketadi.
 
-2. **`aggregate()` Mongoose sxemasidan o'tmaydi.** Matn ID avtomatik
+   ⚠️ `grep -c $'\r'` bilan tekshirmang — Git Bash'da u **har bir
+   qatorni** sanaydi va "hammasi CRLF" deb yolg'on javob beradi.
+   To'g'risi:
+
+   ```bash
+   python -c "b=open('FAYL','rb').read(); print('CRLF',b.count(b'\r\n'),'LF',b.count(b'\n')-b.count(b'\r\n'))"
+   ```
+
+   Commit'dan oldin **doim** `git diff --stat`. Raqam kutilganidan
+   o'nlab marta katta bo'lsa — sabab shu.
+
+2. **`sed -i` shu tuzoqning eng tez yo'li.** `.vue` fayllarga
+   ishlatmang, `Edit` ishlating. Nom almashtirganda ehtiyot bo'ling:
+   bir marta `lcApi.` → `lcAPI.` almashtiruvi **import yo'lini** ham
+   (`services/lcApi.js` → `lcAPI.js`) o'zgartirib qo'ygan. Windows'da
+   hech narsa sezilmaydi, Netlify'da build yiqiladi (`i18n` tuzog'ining
+   aynan o'zi).
+
+3. **`aggregate()` Mongoose sxemasidan o'tmaydi.** Matn ID avtomatik
    `ObjectId` ga aylanmaydi — `$match` **jimgina bo'sh** qaytaradi, xato
    bermaydi. Qo'lda cast qiling. `Model.collection.*` ham shunday.
 
-3. **Vue `scoped` CSS bolaning faqat ILDIZ elementiga tegadi.** Ichkariga
+4. **Vue `scoped` CSS bolaning faqat ILDIZ elementiga tegadi.** Ichkariga
    yozgan uslubingiz ishlamaydi. Bir marta production'da QR kod oq fonsiz
    chizilib, skaner o'qiy olmagan.
 
-4. **`require('./src/server.js')` — bu tekshiruv emas, deploy.** Fayl
+5. **`require('./src/server.js')` — bu tekshiruv emas, deploy.** Fayl
    oxirida `app.listen()`, `mongoose.connect()`, `initBot()` bor va import
    paytida darhol ishlaydi. Bir marta shunday qilinib, production bot
    ikkinchi nusxa polling'ga kirgan va Telegram `409 Conflict` bergan.
    Tekshiruvga faqat `routes/`, `controllers/`, `models/`, `utils/`,
    `services/` ni qo'shing.
 
-5. **`AuditLog` va `CashShift` `deleteMany` ni bloklaydi.** Shuning uchun
+6. **`AuditLog` va `CashShift` `deleteMany` ni bloklaydi.** Shuning uchun
    `accountPurge.js` da **faqat o'sha bitta joyda** drayver darajasidagi
    `Model.collection.deleteMany()` ishlatiladi (`IMMUTABLE` to'plami).
    Ro'yxatga yangi nom qo'shishdan oldin o'ylang: chetlab o'tish faqat
    o'zgarmas modellar uchun, faqat shu yerda.
 
-6. **Yangi menyu havolasi = 3 ta joy.** `src/config/navigation.js`,
+7. **Yangi menyu havolasi = 3 ta joy.** `src/config/navigation.js`,
    `router/index.js` dagi route, `TITLES` yozuvi. `npm run check:perms`
    buni nazorat qiladi.
 
-7. **Yangi model qo'shsangiz `accountPurge.js` ga ham qo'shing.** Aks holda
+8. **Yangi model qo'shsangiz `accountPurge.js` ga ham qo'shing.** Aks holda
    hisob o'chirilganda bazada egasiz o'quvchi ismlari va telefon raqamlari
    qolib ketadi. `npm test` buni tekshiradi. `AuditLog` va `CashShift`
    o'zgarmas, shuning uchun u yerda drayver darajasida o'chiriladi —
    `IMMUTABLE` to'plamiga qarang.
+
+9. **Yangi xabar yozsangiz `utils/messages.js` ga ham qo'shing.** Aks
+   holda ruscha va inglizcha interfeysda o'sha xabar **jimgina**
+   o'zbekcha chiqaveradi — xato bermaydi. `npm run check:messages`
+   aynan shuni topadi.
 
 ---
 
@@ -255,6 +308,7 @@ Bular allaqachon bir marta bug chiqargan. Takrorlamang.
 # backend
 cd /c/Users/Lenovo/Desktop/school_fond
 npm test
+npm run check:messages
 
 # frontend
 cd /c/Users/Lenovo/Desktop/font_front/font

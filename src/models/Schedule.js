@@ -12,12 +12,26 @@ const scheduleSchema = new mongoose.Schema({
   endTime:   { type: String, required: true },  // "10:30"
 
   subject:  { type: String, default: '' },   // Fan nomi
-  room:     { type: String, default: '' },   // Xona raqami
+
+  // ⚠️ IKKI MAYDON, BITTA XONA — va bu ataylab.
+  //    `roomRef` — haqiqiy xona (models/Room.js), bandlik shu
+  //    bo'yicha tekshiriladi.
+  //    `room` — nomning NUSXASI. Ikki sababga ko'ra saqlanadi:
+  //    1) Bazada allaqachon matn bilan yozilgan darslar bor;
+  //       maydonni olib tashlasak ular xonasiz qolardi.
+  //    2) Xona arxivlansa ham jadvalda nomi ko'rinib turadi
+  //       (AuditLog va CashShift dagi ism nusxasi bilan bir xil
+  //       sabab).
+  roomRef:  { type: mongoose.Schema.Types.ObjectId, ref: 'Room', default: null },
+  room:     { type: String, default: '' },   // Xona nomi (nusxa)
+
   isActive: { type: Boolean, default: true },
 
 }, { timestamps: true })
 
 scheduleSchema.index({ class: 1, dayOfWeek: 1 })
 scheduleSchema.index({ teacher: 1 })
+// Xona bandligi kun bo'yicha qidiriladi
+scheduleSchema.index({ roomRef: 1, dayOfWeek: 1 })
 
 module.exports = mongoose.model('Schedule', scheduleSchema)

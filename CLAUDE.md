@@ -134,6 +134,7 @@ umuman ishlamaydi:
 | `/lc/groups`, `/lc/groups/:id` | ustoz o'z guruhlarini ko'rishi kerak |
 | `/teacher/branding` | sidebar muassasa logotipini ko'rsatadi |
 | `/teacher/classes`, `/classes/list` | xodim sahifalarining asosi |
+| `/lc/rooms`, `/lc/rooms/free`, `/lc/rooms/occupancy` | jadval oynasi xona ro'yxatini va bandligini o'qiydi |
 
 ⚠️ Bularni "xavfsizlik uchun" yopmang — xodim paneli ishdan chiqadi.
 
@@ -200,6 +201,9 @@ haqiqiy `res.json(...)` ni tekshiring:
 | `GET /lc/homework/leaderboard` | `{ success, leaderboard, summary }` |
 | `GET /lc/branches/stats` | `{ success, period, branches, unassigned, totals }` |
 | `GET /lc/dashboard-stats` | `{ success, stats }` — ichida `revenueTrend`, `attendanceTrend`, `debt`, `leads` |
+| `GET /lc/rooms` | `{ success, rooms }` — har birida `lessonsPerWeek` |
+| `GET /lc/rooms/free` | `{ success, rooms, freeCount }` — har birida `busy`, `busyWith` |
+| `GET /lc/rooms/occupancy` | `{ success, days, rooms, unlinked }` |
 
 ### Xato javoblari — `error` va `message` HAR DOIM teng
 
@@ -358,6 +362,43 @@ guruhlar bilan ishlaydi va `Student.class` ga hech qachon tegmaydi.
 
 **Migratsiya kerak emas:** mavjud o'quvchilar avtomatik "asosiy
 guruhda" hisoblanadi.
+
+## Xona (kabinet) — bitta xona, ikkita maydon
+
+`Schedule` da xona **ikki joyda** yozilgan va bu ataylab:
+
+| Maydon | Nima |
+|---|---|
+| `roomRef` | haqiqiy `Room` hujjati — **bandlik shu bo'yicha** tekshiriladi |
+| `room` | nom **nusxasi** — ko'rsatish uchun |
+
+Ikki sabab: bazada allaqachon matn bilan yozilgan darslar bor
+(migratsiya kerak emas), va xona arxivlansa ham jadvalda nomi
+ko'rinib turadi (`AuditLog` aktyor ismi bilan bir xil qoida).
+
+⚠️ **Ziddiyat KALIT bo'yicha topiladi**, maydon bo'yicha emas:
+`roomRef` bo'lsa `id:<oid>`, bo'lmasa nomning soddalashtirilgan
+shakli (`utils/roomAvailability.js` → `roomKeyOf`). Ya'ni
+"Lab-1", "lab 1" va "LAB - 1" — bitta xona. Lekin "205" va
+"205-xona" — ikkita. Shuning uchun `POST /lc/rooms/import` bor:
+eski matnlarni bir marta haqiqiy xonaga aylantirib, noaniqlikni
+butunlay yopadi.
+
+⚠️ **`force` va `forceRoom` — IKKI XIL bayroq.** Birinchisi ustoz
+ziddiyatini, ikkinchisi xona ziddiyatini o'tkazadi. Bittaga
+birlashtirmang: katta xonaga ataylab ikki guruh qo'ygan odam
+o'zi bilmagan holda ustozni ham ikki joyga yozib yuborardi.
+
+⚠️ **Sig'im to'sib qo'ymaydi** — javobda `warning` bo'lib
+qaytadi. 12 kishilik xonaga 14 bola sig'adi (stul qo'yiladi);
+bloklasak administrator xona tanlashni umuman tashlab qo'yardi
+va biz bandlik tekshiruvidan ayrilardik.
+
+⚠️ **Xona o'chirilmaydi, arxivlanadi.** Noyob indeks
+(`director + branch + name`) arxiv holatiga qaramaydi, shuning
+uchun `create` va `import` arxivdagi bir xil nomli xonani topsa
+uni **qayta faollashtiradi** — aks holda "allaqachon mavjud"
+deb rad etilardi va ekranda hech qanday o'sha xona ko'rinmasdi.
 
 ## To'lov tizimlari — o'chiq turibdi
 

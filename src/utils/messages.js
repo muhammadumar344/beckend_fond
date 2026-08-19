@@ -61,8 +61,16 @@ const MESSAGES = {
   // ── Filial cheklovi ─────────────────────────────────────
   "Bu sinf sizning filialingizga tegishli emas": { ru: "Этот класс не относится к вашему филиалу", en: "This class does not belong to your branch" },
   "Bu guruh sizning filialingizga tegishli emas": { ru: "Эта группа не относится к вашему филиалу", en: "This group does not belong to your branch" },
+  "Bu xona sizning filialingizga tegishli emas": { ru: "Этот кабинет не относится к вашему филиалу", en: "This room does not belong to your branch" },
   "Faqat o'z filialingizga xodim qo'sha olasiz": { ru: "Вы можете добавлять сотрудников только в свой филиал", en: "You can only add staff to your own branch" },
   "Filial ko'rsatilmagan": { ru: "Филиал не указан", en: "Branch not specified" },
+
+  // ── Xonalar (kabinetlar) ────────────────────────────────
+  "Xona nomi majburiy": { ru: "Название кабинета обязательно", en: "Room name is required" },
+  "Bu nomli xona allaqachon mavjud": { ru: "Кабинет с таким названием уже существует", en: "A room with this name already exists" },
+  "Xona topilmadi": { ru: "Кабинет не найден", en: "Room not found" },
+  "Xona arxivlandi": { ru: "Кабинет архивирован", en: "Room archived" },
+  "startTime va endTime majburiy": { ru: "startTime и endTime обязательны", en: "startTime and endTime are required" },
 
   // ── Autentifikatsiya ────────────────────────────────────
   "Email yoki parol noto'g'ri": { ru: "Неверный email или пароль", en: "Wrong email or password" },

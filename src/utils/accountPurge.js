@@ -67,6 +67,7 @@ const OWNED = [
   ["PaymentClaim", "director"],
   ["PaymentRequest", "teacher"],
   ["Role", "director"],
+  ["Room", "director"],
   ["Salary", "director"],
   ["Schedule", "teacher"],
   ["Staff", "director"],
