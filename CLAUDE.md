@@ -1,5 +1,11 @@
 # Lumo — Backend (school_fond)
 
+> 👉 **Ish boshlashdan oldin `HANDOFF.md` ni o'qing.** U yerda hozirgi holat
+> bor: nima tugadi, nima to'xtab turibdi, keyin nima qilinadi va
+> Muhammadumar bergan doimiy qoidalar. Bu fayl esa — doimiy qoidalar:
+> arxitektura, tuzoqlar, uslub.
+
+
 Node.js / Express / MongoDB (Mongoose 7). Frontend alohida repoda:
 `Desktop/font_front/font` (Vue 3 + Vite).
 
