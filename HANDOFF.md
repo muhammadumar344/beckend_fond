@@ -5,7 +5,7 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-19**
+> Oxirgi yangilanish: **2026-08-19** (kassa tugagach)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
 > `HANDOFF.md` — **shu paytdagi holat**: nima tugadi, nima to'xtab turibdi,
@@ -60,7 +60,38 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "O'zgarishlar tarixi" (audit log)
+### Oxirgi tugagan ish — "Kassa" (kunlik smena)
+
+Rollar bo'yicha o'ylashning **ikkinchi** katta funksiyasi. Administrator kun
+bo'yi naqd pul oladi va kechqurun direktorga topshiradi — 29 ta modelning
+hech birida smena tushunchasi yo'q edi, hisob daftarda yuritilardi.
+
+**Backend** (commit `6137bcf`):
+- `src/models/CashShift.js` — o'zgarmas (oltita yozish amali bloklangan),
+  `(director, staff.id, date)` unikal indeks.
+- `src/services/cashShift.js` — `dayRange`, `totals`, `shiftView`, `close`.
+- `src/controllers/cashController.js` + `/lc/cash/{my,close,shifts,open,day}`.
+- `MonthlyPayment` ga `paymentMethod` (`cash|card|transfer`), `receivedBy`
+  (ism nusxasi bilan) va `{ teacher, paidDate }` indeksi qo'shildi.
+- Yangi ruxsat: `viewCash`. 15 ta yangi test.
+
+**Frontend** (commit `314ea98`):
+- `src/views/lc/Cash.vue`, route `/lc/cash` va `/staff/cash`, menyu, ~40 ta
+  i18n kalit × 3 til, `viewCash` ruxsat kartochkasi.
+- `views/teacher/Payments.vue` ga qabul usuli tanlagichi.
+
+**Uchta ataylab qilingan qaror** — o'zgartirishdan oldin o'ylang:
+
+1. **"Smena ochish" tugmasi yo'q.** Smena = ODAM + KUN. Ertalab tugmani
+   hech kim bosmaydi va kun bo'yi olingan pul hech qaysi smenaga tegishli
+   bo'lmay qolardi. Noto'g'ri hisob — hisob yo'qligidan battar.
+2. **Farq tugmani bosishdan OLDIN ko'rinadi.** Odam summani kiritishi bilan
+   "kamomad 50 000" chiqadi va yana sanab ko'rishi mumkin.
+3. **To'lov belgilashda oyna chiqmaydi.** Qabul usuli sahifa tepasida bir
+   marta tanlanadi. Har bir to'lovga oyna qo'ysak, ketma-ket yigirmatasini
+   belgilaydigan administrator tugmani o'ylamasdan bosib ketardi.
+
+### Undan oldingi ish — "O'zgarishlar tarixi" (audit log)
 
 Rollar bo'yicha o'ylash natijasida tanlangan **birinchi** katta funksiya.
 Sabab: direktor "to'lovni kim o'zgartirdi?" degan savolga javob berolmasdi,
@@ -99,7 +130,7 @@ Direktorda esa u avtomatik bor.
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test        →  268/268
+backend :  npm test        →  283/283
 frontend:  npm run build   →  ✓
 frontend:  npm run check   →  check:api, check:perms, check:css, check:i18n — 0 xato
 ```
@@ -110,7 +141,7 @@ frontend:  npm run check   →  check:api, check:perms, check:css, check:i18n �
 
 ### 4.1 Push ishlamayapti (eng muhimi)
 
-**Backend 1 ta, frontend 14 ta commit push qilinmagan.** Kod tayyor,
+**Backend 3 ta, frontend 16 ta commit push qilinmagan.** Kod tayyor,
 faqat GitHub'ga chiqmagan.
 
 Sabab aniqlangan: `ssh -vT git@github.com` → **`Server accepts key`**.
@@ -144,27 +175,26 @@ git push origin main
 
 ## 5. Keyin nima qilinadi
 
-Rollar bo'yicha o'ylash davom etadi. Muhammadumarga ikkita variant taklif
-qilingan, **javobi hali kelmagan** — sessiya boshida so'rang.
+Rollar bo'yicha o'ylash davom etadi. Kassa (avvalgi 1-variant) bajarildi.
+Qolgani va yangi topilganlari:
 
-### A. Kassa / smena yopish ⭐ tavsiya
+### A. Xona (kabinet) boshqaruvi  ⭐ tavsiya
 
-Administrator kun bo'yi naqd pul oladi va kechqurun direktorga topshiradi.
-Hozir buni **qo'lda, daftarda** hisoblaydi.
+`Schedule.room` hozir — oddiy **matn maydoni** (`src/models/Schedule.js:15`).
+Ustoz bandligi tekshiriladi, lekin **xona bandligi tekshirilmaydi**. Ya'ni
+ikki guruhni bir vaqtda bitta xonaga qo'yish mumkin. Bu — kundalik
+operatsion falokat va modme'da bor. Kerak: `Room` modeli, jadval saqlashda
+konflikt tekshiruvi.
 
-Tekshirildi: 29 ta modelning va 17 ta LC sahifasining **hech birida** smena
-tushunchasi yo'q. Kerak bo'ladi: kunlik xulosa (nechta to'lov, qancha naqd,
-ro'yxati), "smenani yopish" amali, direktorga topshirish tasdig'i. Audit
-jurnali bunga tayyor asos — u allaqachon to'lovlarni kim qilganini yozib
-turibdi.
+### B. Kassa ustiga qurilishi mumkin bo'lganlar
 
-### B. Xona (kabinet) boshqaruvi
+Asos allaqachon bor (`paymentMethod`, `receivedBy`, `CashShift`):
 
-`Schedule.room` hozir — oddiy **matn maydoni**
-(`src/models/Schedule.js:15`). Ustoz bandligi tekshiriladi, lekin **xona
-bandligi tekshirilmaydi**. Ya'ni ikki guruhni bir vaqtda bitta xonaga
-qo'yish mumkin. Bu — kundalik operatsion falokat va modme'da bor. Kerak:
-`Room` modeli, jadval saqlashda konflikt tekshiruvi.
+- **Pulni direktorga topshirish.** Hozir smena yopiladi, lekin naqd pul
+  jismonan kimga o'tgani yozilmaydi. Ikki tomonlama tasdiq kerak.
+- **Xarajatni kassadan chiqarish.** `Expense` hozir kassaga bog'liq emas —
+  administrator kassadan pul olib xarajat qilsa, kamomad bo'lib chiqadi.
+- **Kassa haqida kunlik Telegram xabari** direktorga: kim yopdi, farq bormi.
 
 ### Ataylab keyinga qoldirilgan (mayda ish deb hisoblangan)
 
@@ -181,7 +211,8 @@ Bular allaqachon bir marta bug chiqargan. Takrorlamang.
 
 1. **`sed -i` CRLF ni buzadi.** Git Bash'da `.vue` fayllarga `sed -i`
    ishlatilsa, fayl LF ga o'tadi va 18 qatorlik tuzatish 2400 qatorlik
-   diff bo'lib ko'rinadi — haqiqiy o'zgarish ko'milib ketadi. Commit'dan
+   diff bo'lib ko'rinadi — haqiqiy o'zgarish ko'milib ketadi. Teskarisi ham
+   bo'ladi: LF fayl CRLF ga aylanib qolsa, natija bir xil. Commit'dan
    oldin **doim** `git diff --stat`. Fayllarni tahrirlash uchun `Edit`
    ishlatilsin.
 
@@ -200,16 +231,21 @@ Bular allaqachon bir marta bug chiqargan. Takrorlamang.
    Tekshiruvga faqat `routes/`, `controllers/`, `models/`, `utils/`,
    `services/` ni qo'shing.
 
-5. **`AuditLog` `deleteMany` ni bloklaydi.** Shuning uchun
+5. **`AuditLog` va `CashShift` `deleteMany` ni bloklaydi.** Shuning uchun
    `accountPurge.js` da **faqat o'sha bitta joyda** drayver darajasidagi
-   `Model.collection.deleteMany()` ishlatiladi, izoh bilan. Buni
-   umumlashtirmang. (Buni mavjud test ushlagan edi: model purge ro'yxatiga
-   qo'shilmasa, hisob o'chirilganda bazada egasiz o'quvchi ismlari va
-   telefon raqamlari qolib ketardi.)
+   `Model.collection.deleteMany()` ishlatiladi (`IMMUTABLE` to'plami).
+   Ro'yxatga yangi nom qo'shishdan oldin o'ylang: chetlab o'tish faqat
+   o'zgarmas modellar uchun, faqat shu yerda.
 
 6. **Yangi menyu havolasi = 3 ta joy.** `src/config/navigation.js`,
    `router/index.js` dagi route, `TITLES` yozuvi. `npm run check:perms`
    buni nazorat qiladi.
+
+7. **Yangi model qo'shsangiz `accountPurge.js` ga ham qo'shing.** Aks holda
+   hisob o'chirilganda bazada egasiz o'quvchi ismlari va telefon raqamlari
+   qolib ketadi. `npm test` buni tekshiradi. `AuditLog` va `CashShift`
+   o'zgarmas, shuning uchun u yerda drayver darajasida o'chiriladi —
+   `IMMUTABLE` to'plamiga qarang.
 
 ---
 
