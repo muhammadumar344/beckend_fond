@@ -35,17 +35,26 @@ const cloudinary = require("../services/cloudinary");
 //    (`classes`) yashaydi, faqat boshqacha nomlangan qarashi.
 //    Ikkalasini yozsak bir xil hujjatlarni ikki marta o'chirishga
 //    urinardik. models/Group.js oxiridagi izohga qarang.
+// Yozishdan qulflangan modellar — pastda drayver darajasida
+// o'chiriladi. Ro'yxat ataylab qisqa.
+const IMMUTABLE = new Set(["AuditLog", "CashShift"]);
+
 const OWNED = [
   ["Attendance", "teacher"],
-  // ⚠️ `AuditLog` jurnal sifatida O'ZGARMAS: modelda `deleteMany`
-  //    ataylab bloklangan. Lekin markaz butunlay o'chirilganda u
-  //    ham ketishi SHART — aks holda bazada egasiz o'quvchi
-  //    ismlari va telefon raqamlari qolib ketardi.
-  //    Shuning uchun pastdagi halqa bu model uchun drayver
-  //    darajasida o'chiradi (`.collection`), Mongoose qulfini
-  //    chetlab o'tib. Bu YAGONA ruxsat etilgan chetlab o'tish.
+  // ⚠️ `AuditLog` va `CashShift` — O'ZGARMAS modellar: ikkalasida
+  //    ham `deleteMany` ataylab bloklangan (yozuvni o'zgartira
+  //    oladigan odam uchun u hech narsani isbotlamaydi). Lekin
+  //    markaz butunlay o'chirilganda ular ham ketishi SHART —
+  //    aks holda bazada egasiz o'quvchi ismlari va telefon
+  //    raqamlari qolib ketardi.
+  //    Shuning uchun pastdagi halqa AYNAN SHU IKKI model uchun
+  //    drayver darajasida o'chiradi (`.collection`), Mongoose
+  //    qulfini chetlab o'tib. Ro'yxatga yangi nom qo'shishdan
+  //    oldin o'ylang: chetlab o'tish faqat o'zgarmas modellar
+  //    uchun, faqat shu yerda.
   ["AuditLog", "director"],
   ["Branch", "teacher"],
+  ["CashShift", "director"],
   ["Class", "teacher"],
   ["Enrollment", "director"],
   ["Expense", "teacher"],
@@ -123,14 +132,14 @@ async function purgeDirector(directorId) {
   for (const [name, field] of OWNED) {
     const Model = mongoose.model(name);
 
-    // Audit jurnali Mongoose darajasida o'chirishdan qulflangan
-    // (models/AuditLog.js). Hisobni butunlay yo'q qilish esa
-    // qonuniy holat, shuning uchun shu YAGONA joyda drayverga
-    // to'g'ridan-to'g'ri murojaat qilamiz.
-    const r =
-      name === "AuditLog"
-        ? await Model.collection.deleteMany({ [field]: toId(directorId) })
-        : await Model.deleteMany({ [field]: directorId });
+    // O'zgarmas modellar Mongoose darajasida o'chirishdan
+    // qulflangan (models/AuditLog.js, models/CashShift.js).
+    // Hisobni butunlay yo'q qilish esa qonuniy holat, shuning
+    // uchun shu YAGONA joyda drayverga to'g'ridan-to'g'ri
+    // murojaat qilamiz.
+    const r = IMMUTABLE.has(name)
+      ? await Model.collection.deleteMany({ [field]: toId(directorId) })
+      : await Model.deleteMany({ [field]: directorId });
 
     counts[name] = r.deletedCount || 0;
   }

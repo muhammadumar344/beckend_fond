@@ -59,6 +59,12 @@ const PERMISSION_TYPES = [
   //    oladigan administrator uchun jurnal ogohlantirishga
   //    aylanadi va u tekshiruvdan oldin izini yashira boshlaydi.
   'viewAudit',         // kim nimani o'zgartirganini ko'radi
+  // ⚠️ Kassa. O'Z smenasini yopish uchun bu huquq KERAK EMAS —
+  //    `managePayments` yetadi: pul olgan odam o'zi sanaydi.
+  //    `viewCash` — BOSHQALARNING kassasini ko'rish, ya'ni
+  //    nazorat. Filial rahbariga berish mantiqiy, kassaning
+  //    o'ziga esa — yo'q.
+  'viewCash',          // hamma xodimning kunlik kassasini ko'radi
 ]
 
 const roleSchema = new mongoose.Schema(

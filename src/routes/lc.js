@@ -233,4 +233,22 @@ const auditCtrl = require("../controllers/auditController");
 router.get("/audit", allowTeacherOrStaff, auditCtrl.list);
 router.get("/audit/actors", allowTeacherOrStaff, auditCtrl.actors);
 
+// ─── KASSA (kunlik smena) ───────────────────────────────────────────────────
+//
+// Administrator kun bo'yi naqd pul oladi va kechqurun direktorga
+// topshiradi — bugungacha buni daftarga yozib hisoblardi.
+//
+// ⚠️ `/cash/my` va `/cash/close` — O'Z smenasi, `managePayments`.
+//    `/cash/shifts`, `/cash/open`, `/cash/day` — BOSHQALARNIKI,
+//    `viewCash`. Ikkalasini bitta huquq ostiga birlashtirmang:
+//    pul oladigan odam o'z hisobini yopishi kerak, boshqalarni
+//    nazorat qilishi esa shart emas.
+const cashCtrl = require("../controllers/cashController");
+
+router.get("/cash/my", allowTeacherOrStaff, cashCtrl.mine);
+router.post("/cash/close", allowTeacherOrStaff, cashCtrl.closeShift);
+router.get("/cash/shifts", allowTeacherOrStaff, cashCtrl.shifts);
+router.get("/cash/open", allowTeacherOrStaff, cashCtrl.openDays);
+router.get("/cash/day", allowTeacherOrStaff, cashCtrl.day);
+
 module.exports = router;

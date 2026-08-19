@@ -55,6 +55,30 @@ const paymentLabel = (p) => {
   return [who, when].filter(Boolean).join(" — ");
 };
 
+const PAY_METHODS = ["cash", "card", "transfer"];
+
+// Pulni kim qabul qilgani va qanday kelgani — kunlik kassa
+// (`services/cashShift.js`) aynan shu ikki maydonga tayanadi.
+//
+// ⚠️ "To'lanmadi" ga qaytarilganda `receivedBy` TOZALANADI.
+//    Maydon "pul hozir kimda" degan ma'noni bildiradi, "kim bir
+//    marta tugmani bosgan" degani emas. Eski qiymat qolsa,
+//    bekor qilingan to'lov odamning smenasiga osilib turardi.
+//    Allaqachon yopilgan smena esa o'z nusxasini saqlaydi —
+//    unga bu ta'sir qilmaydi.
+function applyReceiver(ctx, payment, method) {
+  if (payment.status !== "paid") {
+    payment.receivedBy = undefined;
+    return;
+  }
+  if (PAY_METHODS.includes(method)) payment.paymentMethod = method;
+  payment.receivedBy = {
+    id: ctx.isDirector ? ctx.directorId : ctx.staffId,
+    model: ctx.isDirector ? "Teacher" : "Staff",
+    name: ctx.isDirector ? "Direktor" : ctx.staffName || "",
+  };
+}
+
 // ============================================================
 //  ONBOARDING — Fonds va Learning Center uchun ajratilgan validatsiya
 // ============================================================
@@ -1213,10 +1237,15 @@ const updatePaymentStatus = async (req, res) => {
 
     // ⚠️ Eski holat oldindan olinadi: jurnalda "nimadan nimaga"
     //    o'zgargani ko'rinmasa, yozuv deyarli foydasiz bo'ladi.
-    const before = { status: payment.status, paidDate: payment.paidDate };
+    const before = {
+      status: payment.status,
+      paidDate: payment.paidDate,
+      paymentMethod: payment.paymentMethod,
+    };
 
     payment.status = status;
     payment.paidDate = status === "paid" ? new Date() : null;
+    applyReceiver(ctx, payment, req.body.paymentMethod);
     await payment.save();
 
     audit(req, ctx, {
@@ -1224,7 +1253,7 @@ const updatePaymentStatus = async (req, res) => {
       entity: "MonthlyPayment",
       entityId: payment._id,
       entityLabel: paymentLabel(payment),
-      changes: diff(before, payment, ["status", "paidDate"]),
+      changes: diff(before, payment, ["status", "paidDate", "paymentMethod"]),
     });
 
     if (status === "paid") {
@@ -1283,7 +1312,7 @@ const markPayment = async (req, res) => {
         .status(404)
         .json({ success: false, error: "To'lov topilmadi" });
 
-    const { isPaid, status, amount, paidDate, note } = req.body;
+    const { isPaid, status, amount, paidDate, note, paymentMethod } = req.body;
 
     // ⚠️ Bu funksiya SUMMANI ham o'zgartira oladi. Aynan shu
     //    sabab jurnal eng avval shu yerga kerak edi: 300 000 ni
@@ -1293,6 +1322,7 @@ const markPayment = async (req, res) => {
       paidDate: payment.paidDate,
       amount: payment.amount,
       note: payment.note,
+      paymentMethod: payment.paymentMethod,
     };
 
     if (isPaid !== undefined) {
@@ -1310,11 +1340,19 @@ const markPayment = async (req, res) => {
     if (amount !== undefined) payment.amount = amount;
     if (note !== undefined) payment.note = note;
 
+    applyReceiver(ctx, payment, paymentMethod);
+
     await payment.save();
 
     // Summa o'zgarishi alohida amal sifatida belgilanadi —
     // direktor jurnalda avvalo shuni qidiradi.
-    const changes = diff(before, payment, ["status", "paidDate", "amount", "note"]);
+    const changes = diff(before, payment, [
+      "status",
+      "paidDate",
+      "amount",
+      "note",
+      "paymentMethod",
+    ]);
 
     // ⚠️ Bu yerda `payment` populate QILINMAGAN va uni populate
     //    qilib bo'lmaydi: javobda `student` id bo'lib qaytadi va
