@@ -363,6 +363,50 @@ guruhlar bilan ishlaydi va `Student.class` ga hech qachon tegmaydi.
 **Migratsiya kerak emas:** mavjud o'quvchilar avtomatik "asosiy
 guruhda" hisoblanadi.
 
+## Pulni topshirish — kassaning ikkinchi yarmi
+
+`CashShift` bitta savolga javob beradi: "qutida qancha bo'lishi
+kerak edi va qancha bor?". Lekin smenani yopish — bu faqat
+**"men sanadim"** degani. Undan keyin pul jismonan direktorga
+o'tadi va o'sha o'tish hech qayerda yozilmasdi.
+
+`CashHandover`: `from` → `to`, `amount`, `confirmedAmount`,
+`status` (`pending` | `confirmed` | `disputed` | `cancelled`).
+
+⚠️ **IKKI TOMONLAMA TASDIQ.** Bir tomonlama yozuv hech narsani
+isbotlamaydi. Yozuv `pending` bo'lib turadi va faqat **qabul
+qiluvchi** uni tasdiqlaydi — direktor ham boshqa birovga
+topshirilgan pulni "oldim" deb yoza olmaydi.
+
+⚠️ **Farq bo'lsa ikkala son ham qoladi.** `amount` va
+`confirmedAmount` yonma-yon turadi, holat `disputed`. Hech qaysi
+biri ikkinchisini bosmaydi — hakamlik odamniki (`AuditLog`
+falsafasi bilan bir xil).
+
+⚠️ **`disputed` — xato emas, HOLAT.** Uni `pending` bilan
+aralashtirmang: u yerda pul hali yo'lda, bu yerda yetib borgan
+va kelishmovchilik bor.
+
+⚠️ **`cancelled` qoldiqni QAYTARADI** (`OPEN_STATUSES` da yo'q).
+Aks holda adashib bosilgan tugma pulni tizimdan butunlay
+yo'qotib yuborardi.
+
+⚠️ **Faqat YOPILGAN smenalar topshirishga kiradi**, va
+`countedCash` olinadi — `expected.cash` emas. Odamning qo'lida
+sanalgan pul bor; kamomad chiqqan bo'lsa u yo'q pulni topshira
+olmaydi.
+
+⚠️ **Topshirish `managePayments`, qabul qilish `viewCash`.**
+Birlashtirmang — o'shanda administrator o'ziga o'zi topshirib
+qo'ya olardi.
+
+⚠️ `deleteOne/deleteMany/findOneAndDelete` bloklangan, lekin
+`updateOne`/`findOneAndUpdate` **ataylab ochiq** — tasdiqlash
+shular orqali ketadi. Servis ularni `status: 'pending'` sharti
+bilan chaqiradi, ya'ni tasdiqlangan yozuvga baribir tegib
+bo'lmaydi. Shart yo'qolsa `test/cashHandover.test.js`
+ogohlantiradi.
+
 ## Xarajat kassaga tegadi
 
 `Expense` ilgari kassa bilan hech qanday bog'liq emas edi.

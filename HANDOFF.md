@@ -5,7 +5,7 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-20** (xarajat kassaga ulangach,
+> Oxirgi yangilanish: **2026-08-20** (pulni topshirish tugagach,
 > ikkala repo push qilingan)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
@@ -61,7 +61,53 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Xarajat kassadan chiqsin"
+### Oxirgi tugagan ish — "Pulni direktorga topshirish"
+
+Kassaning **ikkinchi yarmi**. Birinchi yarim (`CashShift`) bitta
+savolga javob berardi: "qutida qancha bo'lishi kerak edi va qancha
+bor?". Lekin smenani yopish — bu faqat **"men sanadim"** degani.
+Undan keyin pul jismonan direktorga o'tadi va o'sha o'tish hech
+qayerda yozilmasdi: ertasiga direktor "menga 400 000 berilgan" desa,
+administratorda dalil yo'q edi.
+
+**Backend:**
+- `src/models/CashHandover.js` — o'chirish bloklangan, holatlar
+  `pending` / `confirmed` / `disputed` / `cancelled`.
+- `src/services/cashHandover.js` — `owedBy`, `create`, `confirm`,
+  `cancel`.
+- `cashController` + `/lc/cash/handover{,/mine,/inbox,/:id/confirm,/:id/cancel}`,
+  `/lc/cash/receivers`.
+- `accountPurge.js` ga qo'shildi (`IMMUTABLE` to'plamiga ham).
+- 17 ta yangi test.
+
+**Frontend:**
+- `Cash.vue` — "Sizga topshirilgan pul" (eng tepada), "Mening
+  ustimdagi pul", topshirish va qabul qilish oynalari.
+- ~28 ta i18n kalit × 3 til, audit jurnaliga `cash.handover_*`.
+
+**To'rtta ataylab qilingan qaror:**
+
+1. **Ikki tomonlama tasdiq.** Bir tomonlama yozuv hech narsani
+   isbotlamaydi: "topshirdim" deb yozib qo'yish oson. Yozuv
+   `pending` bo'lib turadi va faqat **qabul qiluvchi** uni
+   tasdiqlaydi — direktor ham boshqa birovga topshirilgan pulni
+   "oldim" deb yoza olmaydi.
+2. **Farq bo'lsa ikkala son ham qoladi.** Topshiruvchi "500 000"
+   deydi, qabul qiluvchi "480 000" sanaydi → `disputed`, ikkalasi
+   yonma-yon. Hakamlik odamniki.
+3. **Sanalgan summa majburiy, "ha" tugmasi emas.** Tugmani
+   o'ylamasdan bosish oson; summani yozish esa qo'ldagi pulni
+   sanashga majbur qiladi — butun ish shuning uchun qilinyapti.
+   Shu sababli maydon oldindan **to'ldirilmaydi**.
+4. **Bekor qilingan topshiriq qoldiqni qaytaradi.** Aks holda
+   adashib bosilgan tugma pulni tizimdan butunlay yo'qotib
+   yubororardi. O'chirish emas, `cancelled` — iz qoladi.
+
+⚠️ **Faqat yopilgan smenalar topshirishga kiradi** va `countedCash`
+olinadi, `expected.cash` emas: odamning qo'lida sanalgan pul bor.
+Tartib majburiy — avval kunni yop, keyin topshir.
+
+### Undan oldingi ish — "Xarajat kassadan chiqsin"
 
 **Funksiya emas, TUZATISH — va ayblov darajasidagi tuzatish.**
 
@@ -113,7 +159,7 @@ mos (`npm run check:perms` — 18 ta havola, 0 nomuvofiq).
 ya'ni kechagi kamomadni yashirishning eng oson yo'li shu. Shuning
 uchun `expense.deleted` jurnalda **qizil** (`DANGER`) ro'yxatda.
 
-### Undan oldingi ish — "Bo'sh vaqt qidirgichi"
+### Undan ham oldingi ish — "Bo'sh vaqt qidirgichi"
 
 **"Yangi guruhni qachon ochsam bo'ladi?"** Jarayon teskari edi:
 administrator vaqtni **taxmin qiladi**, tizim "ustoz band" yoki "xona
@@ -152,7 +198,7 @@ bor edi, ular hech qachon kesishtirilmagan.
 javobda `unlinkedLessons` bo'lib qaytadi va interfeys `Xonalar`
 sahifasiga yo'naltiradi (import). Buni yashirmang.
 
-### Undan ham oldingi ish — "Xona (kabinet) boshqaruvi"
+### Eskiroq — xona boshqaruvi
 
 Rollar bo'yicha o'ylashning **uchinchi** katta funksiyasi va avvalgi
 HANDOFF'da ⭐ bilan tavsiya qilingani. `Schedule.room` oddiy **matn
@@ -238,7 +284,7 @@ O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test              →  332/332
+backend :  npm test              →  349/349
 backend :  npm run check:messages →  yangi xabarlar ru/en bilan
 frontend:  npm run build         →  ✓
 frontend:  npm run check         →  check:api, check:perms, check:css, check:i18n — 0 xato
@@ -292,14 +338,24 @@ brauzer ochiladi va token qaytadan saqlanadi.
 
 ## 5. Keyin nima qilinadi
 
-Rollar bo'yicha o'ylash davom etadi. Xona, bo'sh vaqt qidirgichi va
-xarajat-kassa bog'lanishi bajarildi.
+Rollar bo'yicha o'ylash davom etadi. Kassa zanjiri to'liq yopildi:
+yig'ildi → sanaldi → xarajat chiqdi → topshirildi → qabul qilindi.
 
-### A. Pulni direktorga topshirish  ⭐ tavsiya
+### A. Kassa haqida kunlik Telegram xabari  ⭐ tavsiya
 
-- **Pulni direktorga topshirish.** Hozir smena yopiladi, lekin naqd pul
-  jismonan kimga o'tgani yozilmaydi. Ikki tomonlama tasdiq kerak.
-- **Kassa haqida kunlik Telegram xabari** direktorga: kim yopdi, farq bormi.
+Kassa endi to'liq: yig'ildi → sanaldi → xarajat chiqdi → topshirildi →
+qabul qilindi. Lekin direktor buni **ko'rish uchun sahifaga kirishi**
+kerak, va u har kuni kirmaydi.
+
+Kerak: kechqurun bitta xabar — kim yopdi, farq bormi, kim topshirdi,
+qabul qilinmagan pul bormi. Asos bor: `services/notify.js`,
+`cron/` naqshi va `CashShift` + `CashHandover` ma'lumotlari.
+
+⚠️ **Har kuni "hammasi joyida" yozmang.** Shovqin bo'lgan xabarni
+direktor bir haftada o'qimay qo'yadi va rostdan muhimini ham
+ko'rmaydi (`notify.js` dagi "keldi" xabari bilan bir xil sabab).
+Faqat **e'tibor talab qiladigan** kun haqida yozilsin: farq bor,
+kun yopilmagan yoki topshiriq tasdiqlanmagan.
 
 ### B. Lid → guruh → jadval oqimi uzuq
 

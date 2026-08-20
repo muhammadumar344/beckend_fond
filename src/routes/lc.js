@@ -251,6 +251,35 @@ router.get("/cash/shifts", allowTeacherOrStaff, cashCtrl.shifts);
 router.get("/cash/open", allowTeacherOrStaff, cashCtrl.openDays);
 router.get("/cash/day", allowTeacherOrStaff, cashCtrl.day);
 
+// ─── PULNI TOPSHIRISH ───────────────────────────────────────
+//
+// Smenani yopish — bu faqat "men sanadim" degani. Undan keyin
+// pul jismonan direktorga o'tadi va o'sha o'tish hech qayerda
+// yozilmasdi: ertasiga direktor "menga 400 000 berilgan" desa,
+// administratorda dalil yo'q edi.
+//
+// ⚠️ TOPSHIRISH `managePayments`, QABUL QILISH `viewCash`.
+//    Birlashtirmang — o'shanda administrator o'ziga o'zi
+//    topshirib qo'ya olardi va yozuvning ma'nosi qolmasdi.
+//
+// ⚠️ `/handover/mine` va `/handover/inbox` — `/handover/:id`
+//    dan OLDIN. Aks holda Express "mine" ni id deb o'qiydi.
+router.get("/cash/handover/mine", allowTeacherOrStaff, cashCtrl.myHandovers);
+router.get("/cash/handover/inbox", allowTeacherOrStaff, cashCtrl.inbox);
+router.get("/cash/receivers", allowTeacherOrStaff, cashCtrl.receivers);
+router.get("/cash/handover", allowTeacherOrStaff, cashCtrl.listHandovers);
+router.post("/cash/handover", allowTeacherOrStaff, cashCtrl.createHandover);
+router.post(
+  "/cash/handover/:id/confirm",
+  allowTeacherOrStaff,
+  cashCtrl.confirmHandover,
+);
+router.post(
+  "/cash/handover/:id/cancel",
+  allowTeacherOrStaff,
+  cashCtrl.cancelHandover,
+);
+
 // ─── XONALAR (kabinetlar) ───────────────────────────────────────────────────
 //
 // Ilgari xona `Schedule.room` da oddiy matn edi: ustoz bandligi

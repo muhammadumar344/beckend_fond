@@ -37,7 +37,7 @@ const cloudinary = require("../services/cloudinary");
 //    urinardik. models/Group.js oxiridagi izohga qarang.
 // Yozishdan qulflangan modellar — pastda drayver darajasida
 // o'chiriladi. Ro'yxat ataylab qisqa.
-const IMMUTABLE = new Set(["AuditLog", "CashShift"]);
+const IMMUTABLE = new Set(["AuditLog", "CashShift", "CashHandover"]);
 
 const OWNED = [
   ["Attendance", "teacher"],
@@ -54,6 +54,9 @@ const OWNED = [
   //    uchun, faqat shu yerda.
   ["AuditLog", "director"],
   ["Branch", "teacher"],
+  // `CashHandover` da `deleteMany` bloklangan (topshiriq yozuvi
+  // o'chirilmaydi) — shuning uchun u ham IMMUTABLE ro'yxatida.
+  ["CashHandover", "director"],
   ["CashShift", "director"],
   ["Class", "teacher"],
   ["Enrollment", "director"],

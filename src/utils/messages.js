@@ -73,6 +73,17 @@ const MESSAGES = {
   "startTime va endTime majburiy": { ru: "startTime и endTime обязательны", en: "startTime and endTime are required" },
   "Qidiruv oynasi noto'g'ri: boshlanish tugashdan keyin": { ru: "Неверный интервал поиска: начало позже конца", en: "Invalid search window: the start is after the end" },
 
+  // ── Pulni topshirish ────────────────────────────────────
+  "Topshiriladigan summa noto'g'ri": { ru: "Неверная сумма для передачи", en: "Invalid amount to hand over" },
+  "O'zingizga o'zingiz topshira olmaysiz": { ru: "Нельзя передать деньги самому себе", en: "You cannot hand money over to yourself" },
+  "Qabul qiluvchi topilmadi": { ru: "Получатель не найден", en: "Recipient not found" },
+  "Bu xodim pul qabul qila olmaydi": { ru: "Этот сотрудник не может принимать деньги", en: "This staff member cannot accept money" },
+  "Topshiriq topilmadi": { ru: "Передача не найдена", en: "Handover not found" },
+  "Bu topshiriq sizga emas": { ru: "Эта передача адресована не вам", en: "This handover is not addressed to you" },
+  "Bu topshiriq allaqachon yakunlangan": { ru: "Эта передача уже завершена", en: "This handover is already completed" },
+  "Sanalgan summa noto'g'ri": { ru: "Неверная пересчитанная сумма", en: "Invalid counted amount" },
+  "Topshiriq topilmadi yoki uni bekor qilib bo'lmaydi": { ru: "Передача не найдена или её нельзя отменить", en: "Handover not found or cannot be cancelled" },
+
   // ── Autentifikatsiya ────────────────────────────────────
   "Email yoki parol noto'g'ri": { ru: "Неверный email или пароль", en: "Wrong email or password" },
   "Email majburiy": { ru: "Email обязателен", en: "Email is required" },
