@@ -275,4 +275,19 @@ router.post("/rooms/import", allowTeacherOrStaff, roomCtrl.importFromSchedules);
 router.put("/rooms/:id", allowTeacherOrStaff, roomCtrl.update);
 router.delete("/rooms/:id", allowTeacherOrStaff, roomCtrl.remove);
 
+// ─── BO'SH VAQT QIDIRGICHI ──────────────────────────────────────────────────
+//
+// "Yangi guruhni qachon ochsam bo'ladi?" Ilgari jarayon teskari
+// edi: administrator vaqtni taxmin qiladi, tizim "band" deydi,
+// u yana taxmin qiladi — ota-ona esa telefonda kutib turadi.
+//
+// ⚠️ `manageSchedule` TALAB QILINADI. Bu o'qish so'rovi, lekin
+//    javobda butun markazning ustozlari, xonalari va ular
+//    qachon bandligi bor. Ochiq qoldirsak davomat uchun
+//    qo'shilgan ustoz markazning butun ish tartibini yig'ib
+//    olardi.
+const slotCtrl = require("../controllers/slotController");
+
+router.get("/schedule/free-slots", allowTeacherOrStaff, slotCtrl.freeSlots);
+
 module.exports = router;

@@ -71,6 +71,7 @@ const MESSAGES = {
   "Xona topilmadi": { ru: "Кабинет не найден", en: "Room not found" },
   "Xona arxivlandi": { ru: "Кабинет архивирован", en: "Room archived" },
   "startTime va endTime majburiy": { ru: "startTime и endTime обязательны", en: "startTime and endTime are required" },
+  "Qidiruv oynasi noto'g'ri: boshlanish tugashdan keyin": { ru: "Неверный интервал поиска: начало позже конца", en: "Invalid search window: the start is after the end" },
 
   // ── Autentifikatsiya ────────────────────────────────────
   "Email yoki parol noto'g'ri": { ru: "Неверный email или пароль", en: "Wrong email or password" },
