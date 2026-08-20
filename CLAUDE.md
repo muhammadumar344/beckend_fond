@@ -286,8 +286,8 @@ LC guruhlari hali `Class` da saqlanadi. Ajratish uchun **tayyorlangan,
 lekin ishga tushirilmagan**:
 
 - `models/Group.js` — yangi model (hech qayerda import qilinmagan)
-- `scripts/analyzeGroupSplit.js` — **faqat o'qiydi**, hisobot beradi
-- `scripts/migrateGroups.js` — sukut bo'yicha quruq yurish;
+- `src/scripts/analyzeGroupSplit.js` — **faqat o'qiydi**, hisobot beradi
+- `src/scripts/migrateGroups.js` — sukut bo'yicha quruq yurish;
   yozish uchun `--apply`, orqaga qaytarish uchun `--rollback --apply`
 - `docs/GROUP_MIGRATION.md` — uch xil yondashuv, tavsiya va tartib
 
