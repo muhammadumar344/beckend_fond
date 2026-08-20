@@ -5,7 +5,7 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-20** (ruxsatlar auditi tugagach,
+> Oxirgi yangilanish: **2026-08-20** (Landing tarjimasi tugagach,
 > ikkala repo push qilingan)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
@@ -61,7 +61,44 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Ruxsatlar auditi"
+### Oxirgi tugagan ish — "Landing tarjimasi"
+
+Ichkaridagi hamma narsa allaqachon uz/ru/en edi, **sotuv sahifasi esa
+faqat o'zbekcha**. Ruscha gapiradigan direktor landing'ni tushunmasa,
+tizimga UMUMAN kirmaydi — ichkarisi qanchalik tarjima qilinganining
+ahamiyati qolmaydi.
+
+`Landing.vue` dagi **42 ta** qattiq matn → **0**. ~120 ta kalit × 3 til.
+
+⚠️ **Ma'lumot massivlari `computed` qilindi**, oddiy `const` emas.
+Til almashtirilganda ular qayta hisoblanishi kerak; `const` bo'lsa
+sahifa eski tilda qotib qolardi.
+
+⚠️ **`plan.price !== 'Bepul'` solishtiruvi olib tashlandi.**
+Narx tarjima qilingandan keyin ruscha sahifada "/oy" bepul tarifda
+ham chiqib ketardi. O'rniga `isFree` bayrog'i.
+
+#### Uchta bug — faqat SAHIFANI OCHIB topildi
+
+Build ham, `npm run check` ham uchalasini o'tkazib yubordi:
+
+1. **vue-i18n `@` ni "linked message" deb o'qiydi.** Xabar ichidagi
+   `@SchoolfondsBot` butun sahifani yiqitgan
+   (`Invalid linked format`). `{'@'}` escape'i ham yordam bermadi —
+   yechim **parametr**: `$t('lp_tgDesc', { bot: '@SchoolfondsBot' })`.
+   Parametr kompilyatsiyadan keyin qo'yiladi.
+2. **`$t('login')` — kalit umuman yo'q edi.** Ekranda "login" deb
+   kichik harfda chiqib turgan. `npm run verify` buni ushlaydi,
+   lekin u **`npm run check` ichida emas edi** — endi qo'shildi.
+3. **Nav havolalari ruschada ikki qatorga tushardi.** Ruscha va
+   inglizcha so'zlar o'zbekchadan uzun. Sotuv sahifasida sinib
+   turgan menyu mahsulotni tayyor emasdek ko'rsatadi.
+
+⚠️ Saboq: **build va statik tekshiruvlar yetarli emas.** Uchala
+bug ham `npm run dev` da sahifani ochib, uch tilni almashtirib
+ko'rilgandagina chiqdi.
+
+### Undan oldingi ish — "Ruxsatlar auditi"
 
 Direktor xodimga huquq beradi — va hech narsa o'zgarmaydi. Interfeys
 ro'yxati, backend tekshiruvi va menyu bir-biriga mos emas edi.
@@ -114,7 +151,7 @@ ustozlar ro'yxatini `getStaff` orqali olardi — u `manageStaff`
 talab qiladi va jadval tuzadigan administratorda u yo'q. Ro'yxat
 jimgina bo'sh qolardi. `getAvailableTeachers` ga o'tkazildi.
 
-### Undan oldingi ish — "Lid → guruh oqimi va xona teshigi"
+### Undan ham oldingi ish — "Lid → guruh oqimi va xona teshigi"
 
 Ikki qismli ish: biri — avvalgi sessiyada **qoldirilgan teshik**,
 ikkinchisi — rejadagi oqim.
@@ -158,7 +195,7 @@ ma'lumot sahifalar orasida yo'qolardi.
 Yo'lda `Leads.vue` dagi qattiq yozilgan matnlar 9 tadan **7 taga**
 tushdi (konvertatsiya oynasi tarjima qilindi).
 
-### Undan ham oldingi ish — "Kunlik kassa xabari"
+### Eskiroq — kunlik kassa xabari
 
 Kassa zanjiri to'liq edi, lekin direktor uni **ko'rish uchun saytga
 kirishi** kerak edi — va u har kuni kirmaydi. Uch kundan keyin kirsa,
@@ -483,12 +520,30 @@ brauzer ochiladi va token qaytadan saqlanadi.
 Rollar bo'yicha o'ylash davom etadi. Kassa zanjiri va lid→guruh
 oqimi tugadi.
 
-### A. Landing sahifasi tarjimasi  ⭐ tavsiya
+### A. Qolgan tarjimalar
 
-`Landing.vue` da **42 ta** qattiq yozilgan matn bor. Bu — qolgan
-tarjimalardan farqli o'laroq **sotuv sahifasi**: ruscha gapiradigan
-direktor uni tushunmasa, ichkariga umuman kirmaydi. Qolgan
-tarjimalar mayda ish, bu bittasi esa — sotuvga tegadigan ish.
+Landing tugadi. Qolgani — ichki sahifalar, ahamiyati kamroq:
+
+```
+tma/App.vue          32     Profile.vue          17
+Onboarding.vue       20     ResetPassword.vue    13
+StaffManagement.vue  20     VerifyEmail.vue      10
+```
+
+⚠️ **`tma/App.vue` (32 ta) qolganlaridan muhimroq** — uni
+ota-onalar ko'radi, xodim emas. Ruscha gapiradigan ota-ona
+farzandining bahosini tushunmasa, markazga qo'ng'iroq qiladi.
+
+Backend'da ham **26 ta** tarjimasiz xabar (`npm run check:messages`).
+
+### B. Guruh/sinf ajratish (reja 1.2)
+
+LC guruhlari hali `Class` da yashaydi. Skript va hujjat **tayyor**,
+ishga tushirilmagan: `src/scripts/migrateGroups.js`,
+`docs/GROUP_MIGRATION.md`. Asosiy qiyinchilik — 13 joydagi
+`populate("class")`.
+
+⚠️ Bazadan nusxa olmasdan tegmang.
 
 ### Ataylab keyinga qoldirilgan (mayda ish deb hisoblangan)
 
