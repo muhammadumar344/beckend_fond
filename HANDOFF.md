@@ -5,7 +5,7 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-20** (Landing tarjimasi tugagach,
+> Oxirgi yangilanish: **2026-08-20** (Mini App tarjimasi tugagach,
 > ikkala repo push qilingan)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
@@ -61,7 +61,50 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Landing tarjimasi"
+### Oxirgi tugagan ish — "Mini App uch tilda"
+
+`tma/App.vue` dagi **32 ta** qattiq matn → **0**. ~70 kalit × 3 til.
+
+Landing bilan bir xil mantiq, lekin auditoriya boshqa: Mini App'ni
+**ota-onalar ko'radi**, xodim emas. Ruscha gapiradigan ota-ona
+farzandining bahosini tushunmasa, markazga qo'ng'iroq qiladi — ya'ni
+ilova o'zi hal qilishi kerak bo'lgan ishni administratorga qaytaradi.
+
+⚠️ **`vue-i18n` QO'SHILMADI — o'z lug'ati yozildi**
+(`src/tma/i18n.js`). Mini App alohida kirish nuqtasi va uning butun
+ma'nosi hajmda. O'lchandi:
+
+| | xom | gzip |
+|---|---|---|
+| oldin | 23.9 KB | 8.1 KB |
+| uch til bilan | 32.2 KB | 11.8 KB |
+
+Kutubxona ~20 KB qo'shardi. Lug'at esa sof ma'lumot, kod emas.
+
+⚠️ **Til Telegram'dan olinadi, tanlagich YO'Q.** Ota-ona
+sozlamalar bilan ovora bo'lmasligi kerak — u bolasining bahosini
+ko'rish uchun kirdi. Telegram allaqachon uning tilini biladi va bot
+ham o'sha ma'lumotdan foydalanadi. Noma'lum til o'zbekchaga tushadi.
+
+**Guardrail ikki joyda kuchaytirildi** (`npm run verify`):
+
+1. TMA kalitlari endi **o'z lug'atidan** tekshiriladi, CRM `uz.js`
+   dan emas — aks holda ular doim "yo'q" bo'lib chiqardi va
+   tekshiruvdan foydalanish to'xtardi.
+2. **Uch lug'at bir xil kalitga ega bo'lishi** qulflandi. Bittasida
+   kalit tushib qolsa, ruscha ota-ona o'sha joyda o'zbekcha matn
+   ko'rib qolardi — va buni faqat u sezardi.
+
+Ikkalasi ham ataylab xato kiritib sinaldi — ushlaydi.
+
+⚠️ `detect()` `window` ga to'g'ridan-to'g'ri tegmaydi:
+`verify` modulni Node'da import qiladi va himoyasiz kod tekshiruvni
+yiqitardi.
+
+⚠️ Izohda `t(…)` ko'rinishida misol yozmang — skaner uni
+haqiqiy kalit deb o'qiydi (bir marta shunday bo'ldi).
+
+### Undan oldingi ish — "Landing tarjimasi"
 
 Ichkaridagi hamma narsa allaqachon uz/ru/en edi, **sotuv sahifasi esa
 faqat o'zbekcha**. Ruscha gapiradigan direktor landing'ni tushunmasa,
@@ -98,7 +141,7 @@ Build ham, `npm run check` ham uchalasini o'tkazib yubordi:
 bug ham `npm run dev` da sahifani ochib, uch tilni almashtirib
 ko'rilgandagina chiqdi.
 
-### Undan oldingi ish — "Ruxsatlar auditi"
+### Undan ham oldingi ish — "Ruxsatlar auditi"
 
 Direktor xodimga huquq beradi — va hech narsa o'zgarmaydi. Interfeys
 ro'yxati, backend tekshiruvi va menyu bir-biriga mos emas edi.
@@ -151,7 +194,7 @@ ustozlar ro'yxatini `getStaff` orqali olardi — u `manageStaff`
 talab qiladi va jadval tuzadigan administratorda u yo'q. Ro'yxat
 jimgina bo'sh qolardi. `getAvailableTeachers` ga o'tkazildi.
 
-### Undan ham oldingi ish — "Lid → guruh oqimi va xona teshigi"
+### Eskiroq — lid→guruh oqimi va xona teshigi
 
 Ikki qismli ish: biri — avvalgi sessiyada **qoldirilgan teshik**,
 ikkinchisi — rejadagi oqim.
@@ -522,19 +565,19 @@ oqimi tugadi.
 
 ### A. Qolgan tarjimalar
 
-Landing tugadi. Qolgani — ichki sahifalar, ahamiyati kamroq:
+Landing va Mini App tugadi — tashqi auditoriya ko'radigan ikkalasi
+ham. Qolgani ichki sahifalar, ahamiyati kamroq:
 
 ```
-tma/App.vue          32     Profile.vue          17
 Onboarding.vue       20     ResetPassword.vue    13
 StaffManagement.vue  20     VerifyEmail.vue      10
+Profile.vue          17     Reports.vue          10
 ```
 
-⚠️ **`tma/App.vue` (32 ta) qolganlaridan muhimroq** — uni
-ota-onalar ko'radi, xodim emas. Ruscha gapiradigan ota-ona
-farzandining bahosini tushunmasa, markazga qo'ng'iroq qiladi.
-
 Backend'da ham **26 ta** tarjimasiz xabar (`npm run check:messages`).
+
+⚠️ Bulardan `Onboarding.vue` biroz muhimroq — uni yangi
+direktor **birinchi marta** ko'radi.
 
 ### B. Guruh/sinf ajratish (reja 1.2)
 
