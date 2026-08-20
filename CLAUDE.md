@@ -531,6 +531,14 @@ ziddiyatini, ikkinchisi xona ziddiyatini o'tkazadi. Bittaga
 birlashtirmang: katta xonaga ataylab ikki guruh qo'ygan odam
 o'zi bilmagan holda ustozni ham ikki joyga yozib yuborardi.
 
+⚠️ **XONA IKKI JOYDA TEKSHIRILADI** — `scheduleController` va
+`groupController.createGroup`. Guruh yaratish jadval yozuvlarini
+**o'zi yasaydi**, ya'ni jadval controllerini chetlab o'tadi.
+Tekshiruv faqat bitta joyda qolsa, guruh orqali yaratilgan dars
+butun xona tizimidan tashqarida qolardi: ikki guruh bir xonaga
+tushib, buni hech kim ko'rmasdi. **Yangi joyda `Schedule`
+yaratsangiz xona tekshiruvini ham qo'shing.**
+
 ⚠️ **Sig'im to'sib qo'ymaydi** — javobda `warning` bo'lib
 qaytadi. 12 kishilik xonaga 14 bola sig'adi (stul qo'yiladi);
 bloklasak administrator xona tanlashni umuman tashlab qo'yardi

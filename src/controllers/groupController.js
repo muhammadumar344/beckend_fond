@@ -36,6 +36,8 @@ const MonthlyPayment = require("../models/MonthlyPayment");
 const Expense = require("../models/Expense");
 const Teacher = require("../models/Teacher"); // ✅ YANGI
 const Lead = require("../models/Lead"); // ✅ YANGI — dashboard voronkasi uchun
+const Room = require("../models/Room");
+const { findRoomConflicts } = require("../utils/roomAvailability");
 const XLSX = require("xlsx"); // ✅ YANGI
 const { resolveContext, requirePermission } = require("../utils/resolveContext");
 const { findTeacherConflicts } = require("../utils/teacherAvailability");
@@ -118,7 +120,13 @@ exports.createGroup = async (req, res) => {
       daysOfWeek, // number[] 0-6, ixtiyoriy
       startTime, // "18:00", ixtiyoriy
       endTime, // "19:30", ixtiyoriy
-      force, // true bo'lsa, ustoz band bo'lsa ham davom etadi
+      roomId, // ixtiyoriy — xona (models/Room.js)
+      force, // true bo'lsa, USTOZ band bo'lsa ham davom etadi
+      // ⚠️ Xona uchun ALOHIDA bayroq. Bitta `force` qoldirsak,
+      //    xona ziddiyatini ataylab o'tkazgan odam o'zi bilmagan
+      //    holda ustoz ziddiyatini ham o'tkazib yuborardi
+      //    (scheduleController dagi bilan bir xil sabab).
+      forceRoom,
     } = req.body;
 
     if (!name || !name.trim()) {
@@ -185,6 +193,50 @@ exports.createGroup = async (req, res) => {
       });
     }
 
+    // ⚠️ XONA BANDLIGI — bu yerda ham tekshiriladi va bu MUHIM.
+    //    Guruh yaratish jadval yozuvlarini o'zi yasaydi, ya'ni
+    //    `scheduleController` ni chetlab o'tadi. Tekshiruv faqat
+    //    o'sha yerda qolsa, guruh orqali yaratilgan dars butun
+    //    xona tizimidan tashqarida qolardi: ikki guruh bir
+    //    xonaga tushib, buni hech kim ko'rmasdi.
+    let roomDoc = null;
+    if (hasSchedule && roomId) {
+      roomDoc = await Room.findOne({
+        _id: roomId,
+        director: ctx.directorId,
+        isActive: true,
+      });
+      if (!roomDoc) {
+        return res.status(404).json({ success: false, error: "Xona topilmadi" });
+      }
+      if (
+        ctx.branchFilter &&
+        roomDoc.branch &&
+        String(roomDoc.branch) !== ctx.branchFilter
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "Bu xona sizning filialingizga tegishli emas",
+        });
+      }
+
+      const roomConflicts = await findRoomConflicts({
+        directorId: ctx.directorId,
+        roomId: roomDoc._id,
+        roomName: roomDoc.name,
+        daysOfWeek,
+        startTime,
+        endTime,
+      });
+      if (roomConflicts.length && !forceRoom) {
+        return res.status(409).json({
+          success: false,
+          error: `${roomDoc.name} xonasi shu vaqtda band`,
+          roomConflicts,
+        });
+      }
+    }
+
     const resolvedBranch = ctx.branchFilter || branchId || null;
 
     // ✅ TUZATILDI: `plan` ilgari umuman yozilmasdi va sxema "free"
@@ -219,10 +271,29 @@ exports.createGroup = async (req, res) => {
             startTime,
             endTime,
             subject: subjectDoc?.name || "",
+            // Nom NUSXA bo'lib ham yoziladi — xona arxivlansa
+            // jadvalda nomi ko'rinib tursin (models/Schedule.js)
+            roomRef: roomDoc?._id || null,
+            room: roomDoc?.name || "",
           }).save(),
         ),
       );
     }
+
+    // ⚠️ Sig'im TO'SIQ EMAS, ogohlantirish. Guruh hali bo'sh,
+    //    shuning uchun `capacity` bilan solishtiramiz: 12 joylik
+    //    xonaga 20 kishilik guruh rejalashtirilgan bo'lsa
+    //    direktor buni HOZIR bilsin, birinchi darsda emas.
+    const planned = capacity ? Number(capacity) : 0;
+    const warning =
+      roomDoc && roomDoc.capacity && planned > roomDoc.capacity
+        ? {
+            type: "capacity",
+            roomName: roomDoc.name,
+            capacity: roomDoc.capacity,
+            students: planned,
+          }
+        : null;
 
     res.status(201).json({
       success: true,
@@ -235,6 +306,7 @@ exports.createGroup = async (req, res) => {
       },
       schedule: createdSchedule,
       conflictsIgnored: force ? conflicts : [],
+      warning,
     });
   } catch (err) {
     console.error("createGroup error:", err);

@@ -5,7 +5,7 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-20** (kunlik kassa xabari tugagach,
+> Oxirgi yangilanish: **2026-08-20** (lid→guruh oqimi tugagach,
 > ikkala repo push qilingan)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
@@ -61,7 +61,51 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Kunlik kassa xabari"
+### Oxirgi tugagan ish — "Lid → guruh oqimi va xona teshigi"
+
+Ikki qismli ish: biri — avvalgi sessiyada **qoldirilgan teshik**,
+ikkinchisi — rejadagi oqim.
+
+#### 1. Xona tekshiruvi guruh yaratishda ham bor
+
+⚠️ **Bu men qoldirgan teshik edi.** `groupController.createGroup`
+jadval yozuvlarini **o'zi yasaydi**, ya'ni `scheduleController` ni
+chetlab o'tadi. Xona tekshiruvi faqat o'sha ikkinchi joyda bo'lgani
+uchun, guruh orqali yaratilgan dars butun xona tizimidan tashqarida
+qolardi: ikki guruh bir xonaga tushib, buni hech kim ko'rmasdi.
+
+Endi `createGroup` ham `roomId` qabul qiladi, ziddiyatni tekshiradi
+(409 + `forceRoom`) va sig'im ogohlantirishini qaytaradi.
+
+⚠️ **Yangi joyda `Schedule` yaratsangiz xona tekshiruvini ham
+qo'shing** — backend `CLAUDE.md` ga yozib qo'yildi.
+
+#### 2. Lid → guruh → jadval bitta oynada
+
+Ilgari: mos guruh bo'lmasa administrator `Guruhlar` sahifasiga o'tib,
+guruh yaratib, jadval qo'shib, keyin `Lidlar` ga **qaytib** kelishi
+kerak edi. To'rtta sahifa — va yo'lda lid ma'lumoti yo'qolardi.
+
+Endi konvertatsiya oynasida ikkita tanlov: **mavjud guruh** yoki
+**yangi guruh**. Yangisida guruh nomi, fan, narx, ustoz, kunlar,
+vaqt va xona bir joyda. **Fan lidan o'zi ko'chadi** — aynan shu
+ma'lumot sahifalar orasida yo'qolardi.
+
+**Ikkita ataylab qilingan qaror:**
+
+1. **Backendda birlashtirmadik.** Frontend avval `createGroup`,
+   keyin `convertLead` chaqiradi. Guruh yaratish mantig'i (tarif
+   limiti, ustoz bandligi, xona ziddiyati) `createGroup` da va uni
+   ikkinchi joyda takrorlash o'sha qoidalarni ikkiga bo'lib
+   yubororardi.
+2. **Yarim yo'lda uzilsa guruh QOLADI** va ro'yxatda ko'rinadi —
+   administrator qaytadan urinib uni tanlaydi. Yo'qolgan guruhdan
+   ko'ra ko'rinib turgan ortiqcha guruh yaxshiroq.
+
+Yo'lda `Leads.vue` dagi qattiq yozilgan matnlar 9 tadan **7 taga**
+tushdi (konvertatsiya oynasi tarjima qilindi).
+
+### Undan oldingi ish — "Kunlik kassa xabari"
 
 Kassa zanjiri to'liq edi, lekin direktor uni **ko'rish uchun saytga
 kirishi** kerak edi — va u har kuni kirmaydi. Uch kundan keyin kirsa,
@@ -106,7 +150,7 @@ tasdiqlanmagan to'lov) ham shu yerdan ketadi.
 ⚠️ Telegram **403** = direktor botni bloklagan. Bu xato emas, holat:
 ulanish tozalanadi, aks holda har kuni log'ga bir xil xato yozilardi.
 
-### Undan oldingi ish — "Pulni direktorga topshirish"
+### Undan ham oldingi ish — "Pulni direktorga topshirish"
 
 Kassaning **ikkinchi yarmi**. Birinchi yarim (`CashShift`) bitta
 savolga javob berardi: "qutida qancha bo'lishi kerak edi va qancha
@@ -152,7 +196,7 @@ administratorda dalil yo'q edi.
 olinadi, `expected.cash` emas: odamning qo'lida sanalgan pul bor.
 Tartib majburiy — avval kunni yop, keyin topshir.
 
-### Undan ham oldingi ish — "Xarajat kassadan chiqsin"
+### Eskiroq — xarajat kassaga ulandi
 
 **Funksiya emas, TUZATISH — va ayblov darajasidagi tuzatish.**
 
@@ -383,18 +427,10 @@ brauzer ochiladi va token qaytadan saqlanadi.
 
 ## 5. Keyin nima qilinadi
 
-Rollar bo'yicha o'ylash davom etadi. **Kassa butunlay tugadi:**
-yig'ildi → sanaldi → xarajat chiqdi → topshirildi → qabul qilindi →
-direktorga xabar ketdi.
+Rollar bo'yicha o'ylash davom etadi. Kassa zanjiri va lid→guruh
+oqimi tugadi.
 
-### A. Lid → guruh → jadval oqimi uzuq  ⭐ tavsiya
-
-Bo'sh vaqt qidirgichi bo'sh oynani topadi, lekin guruh baribir alohida
-sahifada yaratiladi, jadval esa uchinchi joyda qo'shiladi. Lidni
-o'quvchiga aylantirish ham to'rtinchi joyda. Administrator bitta ish
-uchun to'rtta sahifani aylanib chiqadi va yo'lda ma'lumot yo'qotadi.
-
-### B. Landing sahifasi tarjimasi
+### A. Landing sahifasi tarjimasi  ⭐ tavsiya
 
 `Landing.vue` da **42 ta** qattiq yozilgan matn bor. Bu — qolgan
 tarjimalardan farqli o'laroq **sotuv sahifasi**: ruscha gapiradigan
@@ -403,7 +439,7 @@ tarjimalar mayda ish, bu bittasi esa — sotuvga tegadigan ish.
 
 ### Ataylab keyinga qoldirilgan (mayda ish deb hisoblangan)
 
-`Leads.vue` (9 ta satr), `Reports.vue` (10), `StaffManagement.vue` (20) da
+`Reports.vue` (10), `Leads.vue` (7), `StaffManagement.vue` (20) da
 tarjima qilinmagan matnlar. `Schedule.vue` dagi `validate()` ichida ham
 uchta qattiq yozilgan matn bor. `npm run check:i18n` ularni ogohlantirish
 sifatida ko'rsatadi, build'ni to'xtatmaydi. Katta funksiya orasida
