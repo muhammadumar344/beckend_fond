@@ -6,6 +6,7 @@
 const mongoose = require('mongoose');
 const MonthlyPayment = require('../models/MonthlyPayment');
 const CashShift = require('../models/CashShift');
+const Expense = require('../models/Expense');
 const { tashkentEpoch, todayInTashkent } = require('../utils/supportWindow');
 
 // ⚠️ `aggregate()` Mongoose sxemasidan O'TMAYDI. Matn ID hech
@@ -35,11 +36,58 @@ function dayRange(date) {
 }
 
 /**
- * Shu kun, shu odam qabul qilgan to'lovlar yig'indisi.
+ * ⚠️ SOF FUNKSIYA — bazaga tegmaydi, `test/cash.test.js` shuni
+ *    tekshiradi. Formulani shu yerda qulflab qo'yamiz: kassaning
+ *    butun ma'nosi bitta ayirishga bog'liq va u jimgina
+ *    o'zgarib ketmasligi kerak.
+ *
+ * @param {Array} paymentRows  aggregate natijasi [{ _id: usul, sum, count }]
+ * @param {{sum:number,count:number}} [cashOut]  naqd xarajatlar
+ * @returns {{cashIn,expenses,expenseCount,cash,card,transfer,total,count}}
+ */
+function foldTotals(paymentRows = [], cashOut = { sum: 0, count: 0 }) {
+  const by = { cash: 0, card: 0, transfer: 0 };
+  let total = 0;
+  let count = 0;
+
+  for (const r of paymentRows) {
+    if (by[r._id] === undefined) continue; // kutilmagan usul — e'tiborsiz
+    by[r._id] = r.sum;
+    total += r.sum;
+    count += r.count;
+  }
+
+  const expenses = Number(cashOut?.sum) || 0;
+
+  return {
+    // Naqd TUSHUM — xarajatsiz. Ikkalasi alohida ko'rinishi
+    // shart: "50 000 kam" bilan "50 000 chiqim qilingan"
+    // butunlay boshqa gap, direktor ularni ajrata olishi kerak.
+    cashIn: by.cash,
+    expenses,
+    expenseCount: Number(cashOut?.count) || 0,
+
+    // ⚠️ `cash` — QUTIDA QOLISHI KERAK BO'LGAN pul, ya'ni
+    //    sanaladigan son. `difference` shundan hisoblanadi.
+    //    Manfiy bo'lishi mumkin: administrator kechagi puldan
+    //    xarajat qilgan bo'lsa, bugungi tushumdan ko'proq
+    //    chiqim bo'lishi normal.
+    cash: by.cash - expenses,
+
+    card: by.card,
+    transfer: by.transfer,
+    // To'lovlar yig'indisi — xarajat bunga TEGMAYDI. Bu
+    // "bugun qancha tushdi" degan savolning javobi.
+    total,
+    count,
+  };
+}
+
+/**
+ * Shu kun, shu odam qabul qilgan to'lovlar va naqd xarajatlari.
  *
  * @param {object} ctx      resolveContext() natijasi
  * @param {object} opts     { date, staffId }  staffId yo'q bo'lsa — hamma
- * @returns {{ cash, card, transfer, total, count }}
  */
 async function totals(ctx, { date, staffId } = {}) {
   const { from, to } = dayRange(date || todayInTashkent());
@@ -51,28 +99,36 @@ async function totals(ctx, { date, staffId } = {}) {
   };
   if (staffId) match['receivedBy.id'] = toObjectId(staffId);
 
-  const rows = await MonthlyPayment.aggregate([
-    { $match: match },
-    {
-      $group: {
-        // Eski to'lovlarda `paymentMethod` umuman yo'q — ular
-        // naqd deb hisoblanadi (maydon qo'shilgunicha hammasi
-        // shunday edi).
-        _id: { $ifNull: ['$paymentMethod', 'cash'] },
-        sum: { $sum: '$amount' },
-        count: { $sum: 1 },
+  // ⚠️ Faqat `paidFrom: 'cash'`. Bo'sh maydon (eski yozuv)
+  //    kassaga TEGMAYDI — models/Expense.js dagi izohga qarang.
+  const expMatch = {
+    teacher: toObjectId(ctx.directorId),
+    paidFrom: 'cash',
+    spentDate: { $gte: from, $lt: to },
+  };
+  if (staffId) expMatch['paidBy.id'] = toObjectId(staffId);
+
+  const [rows, expRows] = await Promise.all([
+    MonthlyPayment.aggregate([
+      { $match: match },
+      {
+        $group: {
+          // Eski to'lovlarda `paymentMethod` umuman yo'q — ular
+          // naqd deb hisoblanadi (maydon qo'shilgunicha hammasi
+          // shunday edi).
+          _id: { $ifNull: ['$paymentMethod', 'cash'] },
+          sum: { $sum: '$amount' },
+          count: { $sum: 1 },
+        },
       },
-    },
+    ]),
+    Expense.aggregate([
+      { $match: expMatch },
+      { $group: { _id: null, sum: { $sum: '$amount' }, count: { $sum: 1 } } },
+    ]),
   ]);
 
-  const out = { cash: 0, card: 0, transfer: 0, total: 0, count: 0 };
-  for (const r of rows) {
-    if (out[r._id] === undefined) continue; // kutilmagan usul — e'tiborsiz
-    out[r._id] = r.sum;
-    out.total += r.sum;
-    out.count += r.count;
-  }
-  return out;
+  return foldTotals(rows, expRows[0] || { sum: 0, count: 0 });
 }
 
 /**
@@ -90,12 +146,30 @@ async function shiftView(ctx, { date, staffId }) {
   };
   if (staffId) listMatch['receivedBy.id'] = staffId;
 
-  const [expected, payments, closed] = await Promise.all([
+  // ⚠️ XARAJATLAR RO'YXATI HAM QAYTADI. Faqat "chiqim 200 000"
+  //    deb yozsak, smenani yopayotgan odam nimani nazarda
+  //    tutilganini bilmaydi va sanagan puli bilan solishtira
+  //    olmaydi. "Marker va qog'oz — 200 000" esa tekshirsa
+  //    bo'ladigan gap.
+  const expListMatch = {
+    teacher: ctx.directorId,
+    paidFrom: 'cash',
+    spentDate: { $gte: from, $lt: to },
+  };
+  if (staffId) expListMatch['paidBy.id'] = staffId;
+
+  const [expected, payments, expenses, closed] = await Promise.all([
     totals(ctx, { date: day, staffId }),
     MonthlyPayment.find(listMatch)
       .select('amount month year paymentMethod paidDate receivedBy student')
       .populate('student', 'name')
       .sort({ paidDate: -1 })
+      .limit(200)
+      .lean(),
+    Expense.find(expListMatch)
+      .select('amount reason description spentDate paidBy class')
+      .populate('class', 'name')
+      .sort({ spentDate: -1 })
       .limit(200)
       .lean(),
     staffId
@@ -107,7 +181,7 @@ async function shiftView(ctx, { date, staffId }) {
       : null,
   ]);
 
-  return { date: day, expected, payments, closed: closed || null };
+  return { date: day, expected, payments, expenses, closed: closed || null };
 }
 
 /**
@@ -167,4 +241,4 @@ async function close(ctx, { date, countedCash, note }) {
   }
 }
 
-module.exports = { dayRange, totals, shiftView, close, toObjectId };
+module.exports = { dayRange, totals, foldTotals, shiftView, close, toObjectId };

@@ -53,12 +53,27 @@ const cashShiftSchema = new mongoose.Schema(
     // kun uchun har doim bir xil kalit beradi.
     date: { type: String, required: true },
 
-    // Tizim hisoblagani — to'lovlardan
+    // Tizim hisoblagani — to'lovlardan va naqd xarajatlardan
+    //
+    // ⚠️ `cash` — QUTIDA QOLISHI KERAK BO'LGAN pul
+    //    (`cashIn − expenses`), ya'ni sanaladigan son. Nomi
+    //    o'zgarmadi, chunki `difference` avvaldan shundan
+    //    hisoblanadi.
+    //
+    // ⚠️ ESKI YOZUVLARDA `cashIn` va `expenses` YO'Q. O'sha
+    //    paytda xarajat kassaga umuman tegmasdi, ya'ni ularda
+    //    `cash` sof tushum edi. Yozuvlar o'zgarmas — orqaga
+    //    qaytib to'ldirmaymiz. Interfeys yo'q maydonni 0 deb
+    //    ko'rsatadi va bu to'g'ri: o'sha kunlarda kassadan
+    //    xarajat qilinmagan deb HISOBLANGAN.
     expected: {
-      cash: { type: Number, default: 0 },
+      cashIn: { type: Number, default: 0 }, // naqd tushum
+      expenses: { type: Number, default: 0 }, // naqd chiqim
+      expenseCount: { type: Number, default: 0 },
+      cash: { type: Number, default: 0 }, // kutilgan qoldiq
       card: { type: Number, default: 0 },
       transfer: { type: Number, default: 0 },
-      total: { type: Number, default: 0 },
+      total: { type: Number, default: 0 }, // to'lovlar yig'indisi
       count: { type: Number, default: 0 },
     },
 

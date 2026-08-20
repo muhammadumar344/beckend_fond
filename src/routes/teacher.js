@@ -161,10 +161,24 @@ router.get("/reminder", onlyTeacher, ctrl.getMonthlyReminder);
 router.post("/sms-reminder/send", onlyTeacher, ctrl.sendSmsReminders);
 router.get("/export/:classId", onlyTeacher, ctrl.exportPayments);
 
-// ══ EXPENSES — faqat Director ════════════════════════════════
-router.post("/expenses", onlyTeacher, ctrl.addExpense);
-router.get("/expenses", onlyTeacher, ctrl.getExpenses);
-router.delete("/expenses/:expenseId", onlyTeacher, ctrl.deleteExpense);
+// ══ EXPENSES — Director va `manageExpenses` huquqli xodim ════
+//
+// ⚠️ Ilgari uchalasi ham `onlyTeacher` edi. Ikkita sabab bilan
+//    ochildi:
+//    1) Interfeys direktorga `manageExpenses` huquqini berish
+//       imkonini berardi, lekin u huquq hech qayerda
+//       tekshirilmasdi — buxgalter huquqni oladi va hech qanday
+//       sahifa ko'rmasdi.
+//    2) Muhimrog'i: kassadan pulni ADMINISTRATOR oladi. U
+//       xarajatni yoza olmasa, kechqurun smenada kamomad
+//       chiqadi va halol odam o'g'ri bo'lib ko'rinadi.
+//
+//    Ruxsat controller ichida `requirePermission(ctx,
+//    "manageExpenses")` bilan tekshiriladi — `allowTeacherOrStaff`
+//    o'zi hech narsani cheklamaydi.
+router.post("/expenses", allowTeacherOrStaff, ctrl.addExpense);
+router.get("/expenses", allowTeacherOrStaff, ctrl.getExpenses);
+router.delete("/expenses/:expenseId", allowTeacherOrStaff, ctrl.deleteExpense);
 
 // ══ TELEGRAM — faqat Director ════════════════════════════════
 router.get("/telegram/bot-link", onlyTeacher, tgCtrl.getBotLink);

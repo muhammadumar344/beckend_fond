@@ -1385,10 +1385,30 @@ const markPayment = async (req, res) => {
 // ============================================================
 //  EXPENSES — School Fund
 // ============================================================
+// ⚠️ XARAJATNI XODIM HAM KIRITADI — VA BU TUZATISH.
+//    Ilgari uchala endpoint `onlyTeacher` edi, ya'ni faqat
+//    direktor. Ayni paytda interfeys direktorga "Xarajat
+//    kiritish" (`manageExpenses`) huquqini berish imkonini
+//    berardi va u huquq hech qayerda tekshirilmasdi: direktor
+//    buxgalteriga huquq beradi, buxgalter esa hech qanday
+//    sahifa ko'rmaydi.
+//
+//    Muhimi boshqa yerda: kassadan pulni ADMINISTRATOR oladi.
+//    U xarajatni yoza olmasa, kechqurun smenada kamomad
+//    chiqadi va halol odam o'g'ri bo'lib ko'rinadi. Kassa va
+//    xarajat bir-birisiz ishlamaydi.
+//
+// ⚠️ `req.user.id` EMAS, `ctx.directorId`. Xodim uchun
+//    `req.user.id` — bu Staff._id; uni `teacher` maydoniga
+//    yozsak xarajat egasiz qolardi va hech qaysi hisobotda
+//    ko'rinmasdi.
 const addExpense = async (req, res) => {
   try {
-    const { classId, reason, amount, month, year, description } = req.body;
-    const teacherId = req.user.id;
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageExpenses");
+
+    const { classId, reason, amount, month, year, description, paidFrom, spentDate } =
+      req.body;
 
     if (!classId || !reason || amount === undefined || !month || !year) {
       return res.status(400).json({
@@ -1402,71 +1422,143 @@ const addExpense = async (req, res) => {
         .json({ success: false, error: "Summa 0 dan katta bo'lishi kerak" });
     }
 
-    const cls = await Class.findOne({ _id: classId, teacher: teacherId });
+    const cls = await Class.findOne({ _id: classId, teacher: ctx.directorId });
     if (!cls)
       return res.status(404).json({ success: false, error: "Sinf topilmadi" });
+    if (ctx.branchFilter && cls.branch && String(cls.branch) !== ctx.branchFilter) {
+      return res.status(403).json({
+        success: false,
+        error: "Bu sinf sizning filialingizga tegishli emas",
+      });
+    }
+
+    // Noma'lum qiymat kelsa `null` — kassaga tegmaydi.
+    // "Xato yozilgani uchun pul jimgina kamayib qolishi"dan
+    // ko'ra ko'rsatilmagan bo'lgani yaxshi.
+    const source = ["cash", "card", "bank"].includes(paidFrom) ? paidFrom : null;
 
     const expense = new Expense({
       class: classId,
-      teacher: teacherId,
+      teacher: ctx.directorId,
       reason: reason.trim(),
       amount: Number(amount),
       month: Number(month),
       year: Number(year),
       description: (description || "").trim(),
+      paidFrom: source,
+      spentDate: spentDate ? new Date(spentDate) : new Date(),
+      paidBy: {
+        id: ctx.isDirector ? ctx.directorId : ctx.staffId,
+        model: ctx.isDirector ? "Teacher" : "Staff",
+        name: ctx.isDirector ? "Direktor" : ctx.staffName || "",
+      },
     });
     await expense.save();
+
+    // ⚠️ Xarajat — pul harakati. Naqd bo'lsa u kassadan chiqadi,
+    //    ya'ni kechqurun sanaladigan summani o'zgartiradi.
+    //    Jurnalsiz direktor "bu 200 000 qayerga ketdi?" degan
+    //    savolga javob topa olmasdi.
+    audit(req, ctx, {
+      action: "expense.created",
+      entity: "Expense",
+      entityId: expense._id,
+      entityLabel: `${expense.reason} — ${cls.name}`,
+      changes: [
+        { field: "summa", from: null, to: expense.amount },
+        { field: "manba", from: null, to: source || "ko'rsatilmagan" },
+      ],
+    });
 
     return res
       .status(201)
       .json({ success: true, message: "Xarajat qo'shildi", expense });
   } catch (err) {
-    console.error("addExpense error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
   }
 };
 
 const getExpenses = async (req, res) => {
   try {
-    const teacherId = req.user.id;
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageExpenses");
+
     const { month, year } = req.query;
 
-    const query = { teacher: teacherId };
+    const query = { teacher: ctx.directorId };
     if (month) query.month = Number(month);
     if (year) query.year = Number(year);
 
+    // Filialga biriktirilgan xodim faqat o'z filialining
+    // sinflariga tegishli xarajatlarni ko'radi.
+    if (ctx.branchFilter) {
+      const classIds = await Class.find({
+        teacher: ctx.directorId,
+        branch: ctx.branchFilter,
+      }).distinct("_id");
+      query.class = { $in: classIds };
+    }
+
     const expenses = await Expense.find(query)
       .populate("class", "name")
-      .sort({ createdAt: -1 });
+      .sort({ spentDate: -1, createdAt: -1 });
     const total = expenses.reduce((sum, e) => sum + e.amount, 0);
 
     return res.json({ success: true, expenses, total });
   } catch (err) {
-    console.error("getExpenses error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
   }
 };
 
 const deleteExpense = async (req, res) => {
   try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageExpenses");
+
     const { expenseId } = req.params;
-    const teacherId = req.user.id;
 
     const expense = await Expense.findOne({
       _id: expenseId,
-      teacher: teacherId,
-    });
+      teacher: ctx.directorId,
+    }).populate("class", "name branch");
     if (!expense) {
       return res
         .status(404)
         .json({ success: false, error: "Xarajat topilmadi yoki ruxsat yo'q" });
     }
+    if (
+      ctx.branchFilter &&
+      expense.class?.branch &&
+      String(expense.class.branch) !== ctx.branchFilter
+    ) {
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+    }
+
+    // ⚠️ O'CHIRISHDAN OLDIN jurnalga yozamiz. Naqd xarajatni
+    //    o'chirish kassadagi kutilgan summani KO'TARADI — ya'ni
+    //    kechagi kamomadni yashirishning eng oson yo'li aynan
+    //    shu. Iz qolishi shart.
+    audit(req, ctx, {
+      action: "expense.deleted",
+      entity: "Expense",
+      entityId: expense._id,
+      entityLabel: `${expense.reason} — ${expense.class?.name || ""}`,
+      changes: [
+        { field: "summa", from: expense.amount, to: null },
+        { field: "manba", from: expense.paidFrom || "ko'rsatilmagan", to: null },
+      ],
+    });
 
     await Expense.findByIdAndDelete(expenseId);
     return res.json({ success: true, message: "Xarajat o'chirildi" });
   } catch (err) {
-    console.error("deleteExpense error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
   }
 };
 

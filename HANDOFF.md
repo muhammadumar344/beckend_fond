@@ -5,7 +5,7 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-20** (bo'sh vaqt qidirgichi tugagach,
+> Oxirgi yangilanish: **2026-08-20** (xarajat kassaga ulangach,
 > ikkala repo push qilingan)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
@@ -61,7 +61,59 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Bo'sh vaqt qidirgichi"
+### Oxirgi tugagan ish — "Xarajat kassadan chiqsin"
+
+**Funksiya emas, TUZATISH — va ayblov darajasidagi tuzatish.**
+
+`Expense` kassa bilan hech qanday bog'liq emas edi. Administrator kun
+bo'yi naqd yig'adi, tushdan keyin qutidan 200 000 so'm olib marker
+sotib oladi, xarajatni kiritadi. Kechqurun smenani yopadi — tizim
+**"kamomad 200 000"** deb yozadi. Halol ishlagan odam har safar
+o'g'ri bo'lib chiqardi, direktor esa jurnalda haqiqiy kamomadni
+soxtasidan ajrata olmasdi.
+
+**Backend:**
+- `Expense` ga `paidFrom`, `spentDate`, `paidBy` qo'shildi.
+- `services/cashShift.js` da **sof** `foldTotals()` — formula test
+  bilan qulflangan.
+- `CashShift.expected` ga `cashIn`, `expenses`, `expenseCount`.
+- `shiftView` xarajatlar **ro'yxatini** ham qaytaradi.
+- `expense.created` / `expense.deleted` audit jurnaliga tushadi.
+- 12 ta yangi test.
+
+**Frontend:**
+- `Expenses.vue` — manba tanlagichi, xarajat sanasi, jadvalda manba
+  va kim olgani.
+- `Cash.vue` — chiqim alohida kartochka, hisob ochiq (`500 000 −
+  200 000`), xarajatlar ro'yxati.
+- Route `/staff/expenses` + menyu (`manageExpenses`).
+
+**Yo'lda yopilgan qarz:** `manageExpenses` huquqi interfeysda
+**taklif qilinardi**, lekin backend'da hech qayerda tekshirilmasdi va
+xodimga sahifa ham yo'q edi. Direktor buxgalteriga "Xarajat kiritish"
+huquqini beradi — buxgalter hech narsa ko'rmaydi. Endi uchala qatlam
+mos (`npm run check:perms` — 18 ta havola, 0 nomuvofiq).
+
+**Uchta ataylab qilingan qaror:**
+
+1. **`paidFrom` standart holda BO'SH.** Eski xarajatlarda maydon yo'q;
+   ularni "naqd" deb hisoblasak o'tmishni qayta yozgan bo'lardik va
+   kutilmagan kamomad/ortiqcha yasardik. Bo'sh = kassaga tegmaydi.
+   Interfeysdagi standart tanlov `cash` — u **aniq qiymat** yozadi,
+   bu boshqa narsa.
+2. **`spentDate` — `createdAt` emas.** Xarajat ertasiga kiritilishi
+   mumkin. `createdAt` ga tayansak, o'sha pul bugungi kassadan chiqib,
+   kechagi kunda tushunarsiz kamomad qolardi.
+3. **Tushum va chiqim alohida ko'rinadi.** "50 000 kam" bilan
+   "50 000 chiqim qilingan" butunlay boshqa gap. Faqat yakuniy sonni
+   ko'rsatsak, smenani yopayotgan odam qutidagi pul nega kamligini
+   tushunmasdi.
+
+⚠️ **Naqd xarajatni o'chirish kassadagi kutilgan summani KO'TARADI** —
+ya'ni kechagi kamomadni yashirishning eng oson yo'li shu. Shuning
+uchun `expense.deleted` jurnalda **qizil** (`DANGER`) ro'yxatda.
+
+### Undan oldingi ish — "Bo'sh vaqt qidirgichi"
 
 **"Yangi guruhni qachon ochsam bo'ladi?"** Jarayon teskari edi:
 administrator vaqtni **taxmin qiladi**, tizim "ustoz band" yoki "xona
@@ -100,7 +152,7 @@ bor edi, ular hech qachon kesishtirilmagan.
 javobda `unlinkedLessons` bo'lib qaytadi va interfeys `Xonalar`
 sahifasiga yo'naltiradi (import). Buni yashirmang.
 
-### Undan oldingi ish — "Xona (kabinet) boshqaruvi"
+### Undan ham oldingi ish — "Xona (kabinet) boshqaruvi"
 
 Rollar bo'yicha o'ylashning **uchinchi** katta funksiyasi va avvalgi
 HANDOFF'da ⭐ bilan tavsiya qilingani. `Schedule.room` oddiy **matn
@@ -155,7 +207,7 @@ davri cho'zilardi: yangi darslar xonaga bog'lanadi, eskilari matn bo'lib
 qolaveradi va ular orasidagi ziddiyat hech qachon topilmasdi. Import
 avval **ko'rsatadi**, keyin yozadi (`apply: true`).
 
-### Undan ham oldingi ish — "Kassa" (kunlik smena)
+### Eskiroq ishlar — kassa va o'zgarishlar tarixi
 
 Administrator kun bo'yi naqd pul oladi va kechqurun direktorga
 topshiradi — 29 ta modelning hech birida smena tushunchasi yo'q edi.
@@ -186,7 +238,7 @@ O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test              →  320/320
+backend :  npm test              →  332/332
 backend :  npm run check:messages →  yangi xabarlar ru/en bilan
 frontend:  npm run build         →  ✓
 frontend:  npm run check         →  check:api, check:perms, check:css, check:i18n — 0 xato
@@ -240,34 +292,16 @@ brauzer ochiladi va token qaytadan saqlanadi.
 
 ## 5. Keyin nima qilinadi
 
-Rollar bo'yicha o'ylash davom etadi. Xona **va** bo'sh vaqt qidirgichi
-(avvalgi A-variantlar) bajarildi.
+Rollar bo'yicha o'ylash davom etadi. Xona, bo'sh vaqt qidirgichi va
+xarajat-kassa bog'lanishi bajarildi.
 
-### A. Xarajat kassadan chiqsin  ⭐ tavsiya
-
-**Bu funksiya emas, TUZATISH — va ayblov darajasidagi tuzatish.**
-
-Hozir `Expense` kassaga umuman bog'liq emas. Administrator kun bo'yi
-naqd pul yig'adi, tushdan keyin o'sha qutidan 200 000 so'm olib
-marker va qog'oz sotib oladi, xarajatni tizimga kiritadi. Kechqurun
-smenani yopadi — va tizim **"kamomad 200 000"** deb yozadi.
-
-Ya'ni halol ishlagan odam har safar o'g'ri bo'lib chiqadi. Direktor
-esa jurnalda haqiqiy kamomadni soxtasidan ajrata olmaydi, chunki
-ikkalasi bir xil ko'rinadi. Kassaning butun ma'nosi shu yerda
-yo'qoladi.
-
-Kerak: `Expense` ga `paidFrom` (`cash` | `card` | `bank`) va naqd
-bo'lsa `CashShift.expected.cash` dan chiqarish. Asos bor —
-`services/cashShift.js` dagi `totals`.
-
-### B. Kassa ustiga qurilishi mumkin bo'lgan qolganlari
+### A. Pulni direktorga topshirish  ⭐ tavsiya
 
 - **Pulni direktorga topshirish.** Hozir smena yopiladi, lekin naqd pul
   jismonan kimga o'tgani yozilmaydi. Ikki tomonlama tasdiq kerak.
 - **Kassa haqida kunlik Telegram xabari** direktorga: kim yopdi, farq bormi.
 
-### C. Lid → guruh → jadval oqimi uzuq
+### B. Lid → guruh → jadval oqimi uzuq
 
 Bo'sh vaqt qidirgichi bo'sh oynani topadi, lekin guruh baribir alohida
 sahifada yaratiladi, jadval esa uchinchi joyda qo'shiladi. Lidni

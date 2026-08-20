@@ -171,3 +171,109 @@ test('o\'z smenasini yopish uchun viewCash SHART EMAS', () => {
     'yopish viewCash so\'rayapti — kassaning o\'zi smenasini yopa olmay qoladi'
   );
 });
+
+// ── Xarajat kassadan chiqadi ────────────────────────────────
+//
+// ⚠️ Bu bo'lim TUZATISHNI qulflaydi. Ilgari `Expense` kassa
+//    bilan bog'liq emas edi: administrator qutidan 200 000 olib
+//    marker sotib olsa, kechqurun tizim "kamomad 200 000"
+//    derdi. Halol odam har safar o'g'ri bo'lib chiqardi.
+
+const { foldTotals } = require('../src/services/cashShift');
+
+const rows = (o) =>
+  Object.entries(o).map(([k, v]) => ({ _id: k, sum: v, count: 1 }));
+
+test('xarajatsiz — avvalgi xatti-harakat saqlanadi', () => {
+  const t = foldTotals(rows({ cash: 500000, card: 200000 }));
+  assert.equal(t.cashIn, 500000);
+  assert.equal(t.expenses, 0);
+  assert.equal(t.cash, 500000); // qutida qolishi kerak
+  assert.equal(t.total, 700000);
+});
+
+test('naqd xarajat qutidagi puldan ayiriladi', () => {
+  const t = foldTotals(rows({ cash: 500000 }), { sum: 200000, count: 1 });
+  assert.equal(t.cashIn, 500000); // tushum o'zgarmaydi
+  assert.equal(t.expenses, 200000);
+  assert.equal(t.cash, 300000); // sanaladigan son
+});
+
+test('tushum va chiqim ALOHIDA ko\'rinadi', () => {
+  // "50 000 kam" bilan "50 000 chiqim qilingan" — butunlay
+  // boshqa gap. Direktor ularni ajrata olishi shart, aks holda
+  // jurnalda haqiqiy kamomad soxtasidan farq qilmaydi.
+  const t = foldTotals(rows({ cash: 100000 }), { sum: 50000, count: 2 });
+  assert.equal(t.cashIn, 100000);
+  assert.equal(t.expenses, 50000);
+  assert.equal(t.expenseCount, 2);
+});
+
+test('xarajat TO\'LOVLAR yig\'indisiga tegmaydi', () => {
+  // `total` — "bugun qancha tushdi" degan savolning javobi.
+  // Undan xarajatni ayirsak, ikkita boshqa savol bitta songa
+  // qo'shilib ketardi.
+  const t = foldTotals(rows({ cash: 300000, transfer: 100000 }), { sum: 300000, count: 1 });
+  assert.equal(t.total, 400000);
+  assert.equal(t.cash, 0);
+});
+
+test('chiqim tushumdan ko\'p bo\'lsa manfiy chiqadi — va bu to\'g\'ri', () => {
+  // Administrator kechagi puldan xarajat qilgan bo'lishi mumkin.
+  // Nolga qirqib tashlasak, kechqurun sanalgan pul bilan farq
+  // tushunarsiz bo'lib qolardi.
+  const t = foldTotals(rows({ cash: 100000 }), { sum: 250000, count: 1 });
+  assert.equal(t.cash, -150000);
+});
+
+test('karta va o\'tkazma naqd xarajatdan ta\'sirlanmaydi', () => {
+  const t = foldTotals(rows({ cash: 0, card: 400000, transfer: 100000 }), {
+    sum: 90000,
+    count: 1,
+  });
+  assert.equal(t.card, 400000);
+  assert.equal(t.transfer, 100000);
+  assert.equal(t.cash, -90000);
+});
+
+test('kutilmagan to\'lov usuli e\'tiborsiz qoladi', () => {
+  const t = foldTotals([{ _id: 'crypto', sum: 999, count: 1 }]);
+  assert.equal(t.total, 0);
+  assert.equal(t.count, 0);
+});
+
+test('bo\'sh kirish yiqitmaydi', () => {
+  const t = foldTotals();
+  assert.equal(t.cash, 0);
+  assert.equal(t.expenses, 0);
+  assert.equal(t.total, 0);
+});
+
+test('xarajat maydoni bo\'sh kelsa nol deb olinadi', () => {
+  const t = foldTotals(rows({ cash: 100000 }), null);
+  assert.equal(t.expenses, 0);
+  assert.equal(t.cash, 100000);
+});
+
+test("`paidFrom` bo'sh xarajat kassaga TEGMASLIGI kerak", () => {
+  // Sxema darajasida qulflaymiz: eski yozuvlarda maydon yo'q va
+  // ularni "naqd" deb hisoblash o'tmishni qayta yozish bo'lardi.
+  const Expense = require('../src/models/Expense');
+  const path = Expense.schema.path('paidFrom');
+  assert.equal(path.options.default, null);
+  assert.ok(path.options.enum.includes('cash'));
+});
+
+test('xarajatda `spentDate` bor — kech kiritilgani tuzatilsin', () => {
+  // `createdAt` ga tayansak, ertasiga kiritilgan xarajat
+  // bugungi kassadan chiqib, kechagi kunda tushunarsiz kamomad
+  // qoldirardi.
+  const Expense = require('../src/models/Expense');
+  assert.ok(Expense.schema.path('spentDate'));
+});
+
+test('yopilgan smena xarajatni ham eslab qoladi', () => {
+  const CashShift = require('../src/models/CashShift');
+  assert.ok(CashShift.schema.path('expected.expenses'));
+  assert.ok(CashShift.schema.path('expected.cashIn'));
+});

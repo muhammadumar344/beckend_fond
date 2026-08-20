@@ -363,6 +363,50 @@ guruhlar bilan ishlaydi va `Student.class` ga hech qachon tegmaydi.
 **Migratsiya kerak emas:** mavjud o'quvchilar avtomatik "asosiy
 guruhda" hisoblanadi.
 
+## Xarajat kassaga tegadi
+
+`Expense` ilgari kassa bilan hech qanday bog'liq emas edi.
+Administrator qutidan 200 000 so'm olib marker sotib olsa,
+kechqurun tizim **"kamomad 200 000"** deb yozardi — halol
+ishlagan odam har safar o'g'ri bo'lib chiqardi.
+
+| Maydon | Nima |
+|---|---|
+| `paidFrom` | `cash` \| `card` \| `bank` \| `null` |
+| `spentDate` | qachon xarajat qilingan (`createdAt` emas) |
+| `paidBy` | kim olgan — ism **nusxasi** bilan |
+
+⚠️ **`paidFrom` standart holda `null` va bu ataylab.** Eski
+yozuvlarda maydon yo'q; ularni "naqd" deb hisoblasak o'tmishni
+qayta yozgan bo'lardik. **Bo'sh = kassaga tegmaydi.** Faqat
+ataylab `cash` deb belgilangani ayiriladi. (Interfeysdagi
+standart tanlov `cash` — u aniq qiymat yozadi, bu boshqa narsa.)
+
+⚠️ **`spentDate` — `createdAt` EMAS.** Xarajat ertasiga
+kiritilishi mumkin. `createdAt` ga tayansak, o'sha pul bugungi
+kassadan chiqib, kechagi kunda tushunarsiz kamomad qolardi
+(`MonthlyPayment.paidDate` bilan bir xil sabab).
+
+⚠️ Formula `services/cashShift.js` dagi **sof** `foldTotals()`
+da va `test/cash.test.js` uni qulflaydi:
+
+```
+cashIn   = naqd to'lovlar
+expenses = naqd xarajatlar
+cash     = cashIn − expenses     ← SANALADIGAN son, difference shundan
+total    = barcha to'lovlar      ← xarajat bunga TEGMAYDI
+```
+
+`cash` manfiy bo'lishi mumkin (kechagi puldan xarajat qilingan) —
+nolga qirqmang, aks holda farq tushunarsiz bo'lib qoladi.
+
+⚠️ **`/teacher/expenses` endi `allowTeacherOrStaff`.** Kassadan
+pulni administrator oladi; u xarajatni yoza olmasa butun kassa
+ma'nosini yo'qotadi. Ruxsat controller ichida —
+`requirePermission(ctx, "manageExpenses")`. Bu ayni paytda eski
+qarzni ham yopdi: `manageExpenses` interfeysda taklif qilinardi,
+lekin hech qayerda tekshirilmasdi.
+
 ## Xona (kabinet) — bitta xona, ikkita maydon
 
 `Schedule` da xona **ikki joyda** yozilgan va bu ataylab:
@@ -742,4 +786,6 @@ qo'shsangiz `server.js` dagi shu blokka qo'shishni unutmang.
 - Frontend `lc/StaffManagement.vue` rol yaratishda `viewGroups`, `manageHomework`,
   `sendSMS`, `viewOwnSalary` kabi ruxsatlarni taklif qiladi, lekin backend
   **faqat `manage*` guruhini** tekshiradi. Ro'yxatni moslashtirish kerak.
+  (`manageExpenses` 2026-08-20 da yopildi — u ham shu ro'yxatda edi va
+  direktor bergan huquq hech qanday sahifa ochmasdi.)
 - README.md eskirgan (loyihaning eng birinchi versiyasini tasvirlaydi).
