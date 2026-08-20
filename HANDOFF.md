@@ -161,23 +161,43 @@ frontend:  npm run check         →  check:api, check:perms, check:css, check:i
 **Backend 5 ta, frontend 18 ta commit push qilinmagan.** Kod tayyor,
 faqat GitHub'ga chiqmagan.
 
-Sabab aniqlangan: `ssh -vT git@github.com` → **`Server accepts key`**.
-Ya'ni GitHub kalitni qabul qildi, u yerda muammo yo'q. Muammo lokalda:
-**yopiq kalit parol (passphrase) bilan himoyalangan**, men uni kirita
-olmayman.
+⚠️ **AVVALGI DIAGNOZ NOTO'G'RI EDI** (2026-08-20 da tuzatildi). Bu
+yerda "SSH kalit paroli" deb yozilgan va yechim sifatida
+`ssh-add` ko'rsatilgan edi. **`ssh-add` hech narsa bermaydi** —
+ikkala remote ham **HTTPS**, SSH kaliti ularga umuman tegmaydi:
 
-Noutbuk yoningizda bo'lganda **bitta buyruq**:
-
-```powershell
-ssh-add C:\Users\Lenovo\.ssh\id_ed25519
+```
+origin  https://github.com/muhammadumar344/beckend_fond.git
+origin  https://github.com/muhammadumar344/Fond_front.git
 ```
 
-Parolni bir marta kiritasiz. `ssh-agent` xizmati **Running** va
-**Automatic** — kompyuter o'chib yonsa ham eslab qoladi, qayta so'ramaydi.
-Shundan keyin ikkala repoda:
+Haqiqiy sabab: Git Credential Manager o'rnatilgan
+(`credential.helper = manager`), lekin **GitHub hisobi
+saqlanmagan** — `cmdkey /list` da github yozuvi yo'q. Shuning
+uchun push har safar login so'raydi, agent esa login qila
+olmaydi (parol/token kiritish — taqiqlangan amal).
+
+Noutbuk yoningizda bo'lganda, **oddiy terminalda bir marta**:
 
 ```bash
-git push origin main
+cd /c/Users/Lenovo/Desktop/school_fond && git push origin main
+```
+
+Brauzer ochiladi → GitHub'ga kirasiz → ruxsat berasiz. Token
+Windows Credential Manager'ga saqlanadi. Keyin frontend
+so'ramaydi ham:
+
+```bash
+cd /c/Users/Lenovo/Desktop/font_front/font && git push origin main
+```
+
+Shundan keyin **agent ham push qila oladi** — bu bir martalik ish.
+
+⚠️ Tekshirish (agent buni o'zi qila oladi, hisobga kirmasdan):
+
+```powershell
+cmdkey /list | Select-String github    # yozuv bormi
+git config --show-origin --get-all credential.helper
 ```
 
 ### 4.2 Qolganlari
