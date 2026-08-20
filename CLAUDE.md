@@ -57,6 +57,8 @@ bazaga ulanmaydi**. Faqat sof mantiq sinovdan o'tadi:
 - `test/group.test.js` — `Group` alias'lari va `Class` bilan moslik
 - `test/enrollment.test.js` — guruh ro'yxatini birlashtirish (takror sanash)
 - `test/payments.test.js` — Payme/Click imzo va kalitsiz holat
+- `test/scheduleException.test.js` — bekor qilingan/ko'chirilgan dars,
+  bayram oralig'i, ota-onaga ketadigan xabar matni
 
 Yangi sof funksiya yozsangiz shu yerga test qo'shing. Bazaga tegadigan
 oqimlar (controller'lar) hozircha qo'lda sinaladi — staging muhit
@@ -184,6 +186,7 @@ umuman ishlamaydi:
 | `/teacher/branding` | sidebar muassasa logotipini ko'rsatadi |
 | `/teacher/classes`, `/classes/list` | xodim sahifalarining asosi |
 | `/lc/rooms`, `/lc/rooms/free`, `/lc/rooms/occupancy` | jadval oynasi xona ro'yxatini va bandligini o'qiydi |
+| `/teacher/schedule/day`, `/teacher/schedule/exceptions` | ustoz bugun darsi bor-yo'qligini bilishi kerak (haftalik jadval bilan bir xil qoida) |
 
 ⚠️ Bularni "xavfsizlik uchun" yopmang — xodim paneli ishdan chiqadi.
 
@@ -253,6 +256,9 @@ haqiqiy `res.json(...)` ni tekshiring:
 | `GET /lc/rooms` | `{ success, rooms }` — har birida `lessonsPerWeek` |
 | `GET /lc/rooms/free` | `{ success, rooms, freeCount }` — har birida `busy`, `busyWith` |
 | `GET /lc/rooms/occupancy` | `{ success, days, rooms, unlinked }` |
+| `GET /teacher/schedule/day` | `{ success, date, lessons, cancelled }` — `lessons` shakli **`/schedule/weekly`** bilan bir xil |
+| `GET /teacher/schedule/exceptions` | `{ success, from, to, exceptions }` |
+| `POST /teacher/schedule/holiday` | `{ success, dates, days, total, created }` — `apply: false` da `created: 0` |
 
 ### Xato javoblari — `error` va `message` HAR DOIM teng
 
@@ -580,8 +586,9 @@ ziddiyatini, ikkinchisi xona ziddiyatini o'tkazadi. Bittaga
 birlashtirmang: katta xonaga ataylab ikki guruh qo'ygan odam
 o'zi bilmagan holda ustozni ham ikki joyga yozib yuborardi.
 
-⚠️ **XONA IKKI JOYDA TEKSHIRILADI** — `scheduleController` va
-`groupController.createGroup`. Guruh yaratish jadval yozuvlarini
+⚠️ **XONA UCH JOYDA TEKSHIRILADI** — `scheduleController`,
+`groupController.createGroup` va `scheduleExceptionController`
+(dars ko'chirilganda, **yangi kun** bo'yicha). Guruh yaratish jadval yozuvlarini
 **o'zi yasaydi**, ya'ni jadval controllerini chetlab o'tadi.
 Tekshiruv faqat bitta joyda qolsa, guruh orqali yaratilgan dars
 butun xona tizimidan tashqarida qolardi: ikki guruh bir xonaga
@@ -598,6 +605,81 @@ va biz bandlik tekshiruvidan ayrilardik.
 uchun `create` va `import` arxivdagi bir xil nomli xonani topsa
 uni **qayta faollashtiradi** — aks holda "allaqachon mavjud"
 deb rad etilardi va ekranda hech qanday o'sha xona ko'rinmasdi.
+
+## Dars bo'lmaydi — jadval istisnolari
+
+`Schedule` — **haftalik takrorlanuvchi** yozuv. U "seshanba kuni
+18:00 da dars bor" deydi va boshqa hech narsa deya olmaydi.
+Bayram, kasal ustoz, ko'chirilgan dars — hammasi
+`ScheduleException` da.
+
+| Fayl | Vazifasi |
+|---|---|
+| `models/ScheduleException.js` | `cancelled` \| `moved`, noyob `(schedule, date)` |
+| `utils/scheduleDay.js` | **sof**: `applyExceptions`, `overlapping`, `dateList` |
+| `services/scheduleExceptions.js` | so'rovlar: `resolveDay`, `isClassCancelled` |
+| `controllers/scheduleExceptionController.js` | `/teacher/schedule/{day,exceptions,holiday}` |
+
+⚠️ **JADVALNING O'ZI O'ZGARMAYDI.** Bayram uchun darsni o'chirib,
+ertasiga qayta yaratish — eng oson yo'l va eng yomoni: guruhning
+butun tarixi `Schedule._id` ga bog'langan va u uzilib ketardi.
+
+⚠️ **`date` — dars BO'LISHI KERAK BO'LGAN kun**, `newDate` — yangi
+kuni. Ikkalasi ham saqlanadi: "qaysi dars ko'chdi" degan savolga
+faqat shu ikkilik javob beradi.
+
+⚠️ **Sana darsning hafta kuniga to'g'ri kelishi tekshiriladi.**
+Seshanbagi darsga juma sanasi yozilsa, yozuv hech qachon
+ishlamasdi va nega ishlamayotganini hech kim topa olmasdi.
+Interfeysda ham sana **ro'yxatdan** tanlanadi, erkin kiritilmaydi.
+
+⚠️ **`dayOfWeek` bo'yicha qidiruv YETARLI EMAS.** Ko'chirilgan
+darsning sxemadagi kuni eski kun bo'lib qoladi. Shuning uchun
+`resolveDay` avval istisnolarni o'qiydi, keyin jadval so'roviga
+o'sha darslarning **id'larini qo'shadi**. Busiz ko'chirilgan dars
+yangi kunida umuman ko'rinmasdi.
+
+⚠️ **Uchta joy istisnolarni biladi va uchtasi ham shart:**
+
+| Joy | Nega |
+|---|---|
+| `attendanceController` | bekor qilingan kunga davomat yozilmaydi (409) |
+| `services/staffAttendance.js` | bayram kuni ustoz "kechikdi" bo'lib qolmasin |
+| `utils/supportSlots.js` | bekor qilingan dars vaqti qo'shimcha mashg'ulotga bo'sh |
+
+⚠️ **Bayram AVVAL KO'RSATADI, keyin yozadi** (`apply: true`) —
+xonalar importi bilan bir xil qoida. Oraliq **31 kun** bilan
+chegaralangan: adashib yozilgan "2026 → 2030" minglab yozuv
+yasab qo'yardi. Yozgi ta'til bu yerda emas — u guruhni
+to'xtatish.
+
+⚠️ **Bayram kuniga BOSHQA kundan ko'chirilgan dars** ham bekor
+qilinadi, lekin yangi yozuv orqali emas: mavjud `moved` yozuvi
+`cancelled` ga aylantiriladi (noyob indeks ikkinchisini
+qo'ymaydi). Aks holda markaz yopiq kuni qoplash darsi turaverardi.
+
+⚠️ **Ota-onaga BITTA GURUHGA BITTA XABAR.** Bayram uch kun
+bo'lsa, kunlar bitta xabarda ro'yxat bo'lib ketadi — uchta
+alohida xabar `notify.js` dagi "keldi" xatosining aynan o'zi
+bo'lardi. Takrorni `notifiedAt` to'xtatadi.
+
+⚠️ **O'tgan kun uchun xabar yuborilmaydi.** Ko'chirishda esa
+keyingi sana qaraladi: asl kuni o'tib ketgan bo'lsa ham,
+ota-ona yangi kunni bilishi kerak.
+
+### `manageSchedule` — endi rostdan tekshiriladi
+
+⚠️ **Bu teshik edi.** `POST/PUT/DELETE /teacher/schedule` da
+ruxsat **umuman tekshirilmasdi**: davomat uchun qo'shilgan ustoz
+butun markazning jadvalini ko'chirishi, xonasini almashtirishi
+va o'chirib yuborishi mumkin edi. `check:perms` yashil edi,
+chunki u faqat **menyu havolalarini** solishtiradi — sahifa
+ichidagi amallarni emas.
+
+Endi: **ko'rish ochiq** (ustoz o'z darsini bilishi kerak),
+**yozish `manageSchedule` talab qiladi** — jadval istisnolari
+ham. Frontendda `Schedule.vue` dagi `canManage` tugmalarni
+yashiradi.
 
 ## To'lov tizimlari — o'chiq turibdi
 

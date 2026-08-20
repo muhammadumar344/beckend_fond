@@ -7,6 +7,7 @@ const gradeCtrl = require("../controllers/gradeController");
 const branchCtrl = require("../controllers/branchController");
 const refCtrl = require("../controllers/referralController");
 const schedCtrl = require("../controllers/scheduleController");
+const exCtrl = require("../controllers/scheduleExceptionController");
 const attCtrl = require("../controllers/attendanceController");
 const prCtrl = require("../controllers/paymentRequestController");
 const auth = require("../middleware/auth");
@@ -246,6 +247,46 @@ router.get(
   allowTeacherOrStaff,
   requireLCMode,
   schedCtrl.getClassSchedule,
+);
+
+// ══ JADVAL ISTISNOLARI — "bu kuni dars bo'lmaydi" ═══════════
+//
+// ⚠️ TARTIB MUHIM: bu yo'llar `/schedule/:scheduleId` dan
+//    OLDIN turishi shart. Aks holda Express `exceptions` ni
+//    `:scheduleId` deb o'qib, DELETE so'rovini jadvalni
+//    o'chirishga yuborardi.
+//
+// Yozish `manageSchedule` talab qiladi (controller ichida),
+// kunlik ko'rinish esa ochiq — ustoz o'z kunini bilishi kerak.
+router.get(
+  "/schedule/day",
+  allowTeacherOrStaff,
+  requireLCMode,
+  exCtrl.getDay,
+);
+router.get(
+  "/schedule/exceptions",
+  allowTeacherOrStaff,
+  requireLCMode,
+  exCtrl.list,
+);
+router.post(
+  "/schedule/exceptions",
+  allowTeacherOrStaff,
+  requireLCMode,
+  exCtrl.create,
+);
+router.delete(
+  "/schedule/exceptions/:id",
+  allowTeacherOrStaff,
+  requireLCMode,
+  exCtrl.remove,
+);
+router.post(
+  "/schedule/holiday",
+  allowTeacherOrStaff,
+  requireLCMode,
+  exCtrl.holiday,
 );
 router.put(
   "/schedule/:scheduleId",

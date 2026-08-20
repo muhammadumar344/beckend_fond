@@ -23,6 +23,7 @@
 
 const Schedule = require("../models/Schedule");
 const Class = require("../models/Class");
+const Room = require("../models/Room");
 
 const DAY_NAMES = [
   "Dushanba",
@@ -172,11 +173,47 @@ async function roomsAvailability({
   });
 }
 
+/**
+ * Tanlangan xonani tekshiradi va nom nusxasini qaytaradi.
+ *
+ * ⚠️ BU TEKSHIRUV BITTA JOYDA TURISHI SHART. Ichida filial
+ *    cheklovi bor: xodim boshqa filialning xonasiga dars qo'ya
+ *    olmaydi. Ikkinchi nusxa yozilsa, nusxalar sekin-asta
+ *    ajralib ketadi va tekshiruvning yo'qolgani faqat begona
+ *    filialda dars paydo bo'lganda bilinardi.
+ *
+ * `roomId` berilmasa eski xatti-harakat saqlanadi: erkin matn.
+ *
+ * @returns {Promise<{roomRef, room, doc}>}
+ */
+async function resolveRoomChoice(ctx, roomId, roomText) {
+  if (!roomId) return { roomRef: null, room: (roomText || "").trim(), doc: null };
+
+  const doc = await Room.findOne({
+    _id: roomId,
+    director: ctx.directorId,
+    isActive: true,
+  });
+  if (!doc) {
+    const err = new Error("Xona topilmadi");
+    err.status = 404;
+    throw err;
+  }
+  // Filialsiz xona (markazning umumiy xonasi) hammaga ochiq.
+  if (ctx.branchFilter && doc.branch && String(doc.branch) !== ctx.branchFilter) {
+    const err = new Error("Bu xona sizning filialingizga tegishli emas");
+    err.status = 403;
+    throw err;
+  }
+  return { roomRef: doc._id, room: doc.name, doc };
+}
+
 module.exports = {
   findRoomConflicts,
   roomsAvailability,
   loadDaySchedules,
   pickRoomConflicts,
+  resolveRoomChoice,
   roomKeyOf,
   normaliseRoomName,
   timesOverlap,

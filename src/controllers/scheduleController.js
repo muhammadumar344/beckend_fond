@@ -2,36 +2,19 @@
 const Schedule = require("../models/Schedule");
 const Class = require("../models/Class");
 const Staff = require("../models/Staff");
-const Room = require("../models/Room");
-const { resolveContext } = require("../utils/resolveContext");
+const { resolveContext, requirePermission } = require("../utils/resolveContext");
 const { findTeacherConflicts } = require("../utils/teacherAvailability"); // ✅ YANGI
-const { findRoomConflicts } = require("../utils/roomAvailability");
+const {
+  findRoomConflicts,
+  resolveRoomChoice,
+} = require("../utils/roomAvailability");
 const { countGroupStudents } = require("../utils/enrollment");
 
-// Tanlangan xonani tekshiradi va nom nusxasini qaytaradi.
-// `roomId` berilmasa eski xatti-harakat saqlanadi: matn maydoni.
-async function resolveRoom(ctx, roomId, roomText) {
-  if (!roomId) return { roomRef: null, room: (roomText || "").trim(), doc: null };
-
-  const doc = await Room.findOne({
-    _id: roomId,
-    director: ctx.directorId,
-    isActive: true,
-  });
-  if (!doc) {
-    const err = new Error("Xona topilmadi");
-    err.status = 404;
-    throw err;
-  }
-  // Xodim boshqa filialning xonasiga dars qo'ya olmaydi.
-  // Filialsiz xona (markazning umumiy xonasi) hammaga ochiq.
-  if (ctx.branchFilter && doc.branch && String(doc.branch) !== ctx.branchFilter) {
-    const err = new Error("Bu xona sizning filialingizga tegishli emas");
-    err.status = 403;
-    throw err;
-  }
-  return { roomRef: doc._id, room: doc.name, doc };
-}
+// ⚠️ Xona tanlash `utils/roomAvailability.js` da — ichidagi
+//    filial cheklovi jadval istisnolarida ham kerak va ikki
+//    nusxa sekin-asta ajralib ketardi.
+const resolveRoom = (ctx, roomId, roomText) =>
+  resolveRoomChoice(ctx, roomId, roomText);
 
 // ⚠️ SIG'IM TO'SIQ EMAS. 12 kishilik xonaga 14 bola sig'adi —
 //    stul qo'yiladi. Bloklasak administrator xonani umuman
@@ -63,6 +46,16 @@ const DAYS = [
 exports.createSchedule = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
+    // ⚠️ RUXSAT UMUMAN TEKSHIRILMASDI — 2026-08-20 da topilgan
+    //    teshik. `manageSchedule` huquqi enum'da bor, interfeysda
+    //    "Jadval tuzish" deb taklif qilinadi va `check:perms`
+    //    yashil edi, chunki u faqat MENYU havolalarini qaraydi.
+    //    Natijada davomat uchun qo'shilgan ustoz ham butun
+    //    markazning jadvalini o'zgartira olardi: darsni ko'chirish,
+    //    xonasini almashtirish, o'chirib yuborish.
+    //    Ko'rish ochiq qoladi (ustoz o'z darsini bilishi kerak),
+    //    YOZISH esa endi huquq talab qiladi.
+    requirePermission(ctx, "manageSchedule");
     const {
       classId,
       dayOfWeek,
@@ -299,6 +292,7 @@ exports.getWeeklyOverview = async (req, res) => {
 exports.updateSchedule = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageSchedule"); // yuqoridagi izohga qarang
     const { scheduleId } = req.params;
     // `forceRoom` — faqat XONA ziddiyatini o'tkazadi. Ustoz
     // ziddiyati uchun `force` alohida (yuqoridagi izohga qarang).
@@ -406,6 +400,7 @@ exports.updateSchedule = async (req, res) => {
 exports.deleteSchedule = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageSchedule"); // yuqoridagi izohga qarang
     const { scheduleId } = req.params;
 
     const schedule = await Schedule.findById(scheduleId);

@@ -32,9 +32,11 @@
 // ════════════════════════════════════════════════════════════
 
 const Schedule = require("../models/Schedule");
+const ScheduleException = require("../models/ScheduleException");
 const SupportBooking = require("../models/SupportBooking");
 const Teacher = require("../models/Teacher");
 const { timesOverlap } = require("./teacherAvailability");
+const { applyExceptions } = require("./scheduleDay");
 
 /** "HH:MM" → kun boshidan beri daqiqalar */
 const toMin = (t) => {
@@ -127,17 +129,36 @@ async function freeSlots({ directorId, teacherId, date, hours }) {
   // ⚠️ Dam olish kuni — markaz yopiq, hech qanday vaqt yo'q
   if (!h.days.includes(dow)) return [];
 
-  const [lessons, booked] = await Promise.all([
+  // ⚠️ ISTISNOLAR SHU YERDA HAM HISOBGA OLINADI. Ustozning
+  //    o'sha kungi darsi bekor qilingan bo'lsa, u vaqt BO'SH —
+  //    qo'shimcha mashg'ulotga aynan o'sha payt yozilishi
+  //    mumkin. Aksincha, boshqa kundan ko'chirilgan dars uni
+  //    band qiladi. Faqat haftalik jadvalga qarasak, ikkala
+  //    holatda ham yolg'on javob berardik.
+  const exceptions = await ScheduleException.find({
+    director: directorId,
+    $or: [{ date }, { newDate: date }],
+  })
+    .select("schedule date type newDate newStartTime newEndTime")
+    .lean();
+  const movedInIds = exceptions
+    .filter((e) => e.type === "moved" && e.newDate === date)
+    .map((e) => e.schedule);
+
+  const [raw, booked] = await Promise.all([
     // Ustozning o'sha kundagi darslari.
     // ⚠️ Support ustozi odatda dars o'tmaydi, lekin kichik
     //    markazda bitta odam ikkala ishni ham qilishi mumkin —
     //    o'sha paytga yozib qo'ymaylik.
     Schedule.find({
       teacher: teacherId,
-      dayOfWeek: dow,
       isActive: { $ne: false },
+      $or: [
+        { dayOfWeek: dow },
+        ...(movedInIds.length ? [{ _id: { $in: movedInIds } }] : []),
+      ],
     })
-      .select("startTime endTime")
+      .select("startTime endTime dayOfWeek")
       .lean(),
     SupportBooking.find({
       teacher: teacherId,
@@ -147,6 +168,13 @@ async function freeSlots({ directorId, teacherId, date, hours }) {
       .select("startTime endTime")
       .lean(),
   ]);
+
+  const { lessons } = applyExceptions({
+    lessons: raw,
+    exceptions,
+    date,
+    dayOfWeek: dow,
+  });
 
   const today = isToday(date);
   const earliest = today ? nowMinutes() + MIN_LEAD_MINUTES : -1;

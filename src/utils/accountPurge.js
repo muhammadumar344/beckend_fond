@@ -72,7 +72,14 @@ const OWNED = [
   ["Role", "director"],
   ["Room", "director"],
   ["Salary", "director"],
+  // ⚠️ `Schedule.teacher` — LC'da bu STAFF id'si, direktorniki
+  //    emas (tarixiy nomuvofiqlik, `services/staffAttendance.js`
+  //    dagi izohga qarang). Ya'ni bu qator o'quv markazining
+  //    darslarini o'chirmasdi — ular egasiz qolib ketardi.
+  //    Shuning uchun pastda sinf id'lari bo'yicha ham
+  //    o'chiriladi.
   ["Schedule", "teacher"],
+  ["ScheduleException", "director"],
   ["Staff", "director"],
   ["StaffAttendance", "director"],
   ["StudentLink", "director"],
@@ -146,6 +153,16 @@ async function purgeDirector(directorId) {
       : await Model.deleteMany({ [field]: directorId });
 
     counts[name] = r.deletedCount || 0;
+  }
+
+  // 4.1) Guruhga bog'langan, lekin direktor maydoni bo'lmagan
+  //      yozuvlar. `Schedule.teacher` LC'da Staff id'si bo'lgani
+  //      uchun yuqoridagi halqa o'quv markazining darslarini
+  //      o'chirmagan bo'lishi mumkin.
+  if (classIds.length) {
+    const Schedule = mongoose.model("Schedule");
+    const r = await Schedule.deleteMany({ class: { $in: classIds } });
+    counts.Schedule = (counts.Schedule || 0) + (r.deletedCount || 0);
   }
 
   // 5) Referal bog'lanishi — bu direktor kimnidir taklif qilgan

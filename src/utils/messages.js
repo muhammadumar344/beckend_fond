@@ -199,6 +199,24 @@ const MESSAGES = {
   "Ustoz shu vaqtda boshqa guruhda band": { ru: "Преподаватель в это время занят в другой группе", en: "The teacher is busy with another group at that time" },
   "Ustoz guruhning jadvalidagi vaqt(lar)da band": { ru: "Преподаватель занят в часы расписания этой группы", en: "The teacher is busy during this group's scheduled time" },
 
+  // ── Dars bo'lmaydi (jadval istisnolari) ─────────────────
+  "date: YYYY-MM-DD formatida bo'lsin": { ru: "date должен быть в формате YYYY-MM-DD", en: "date must be in YYYY-MM-DD format" },
+  "from/to: YYYY-MM-DD formatida bo'lsin": { ru: "from/to должны быть в формате YYYY-MM-DD", en: "from/to must be in YYYY-MM-DD format" },
+  "scheduleId va date (YYYY-MM-DD) majburiy": { ru: "scheduleId и date (YYYY-MM-DD) обязательны", en: "scheduleId and date (YYYY-MM-DD) are required" },
+  "type: cancelled yoki moved": { ru: "type: cancelled или moved", en: "type: cancelled or moved" },
+  "Bu sana darsning hafta kuniga to'g'ri kelmaydi": { ru: "Эта дата не совпадает с днём недели урока", en: "This date does not match the lesson's weekday" },
+  "Ko'chirilgan dars uchun yangi sana va vaqt majburiy": { ru: "Для перенесённого урока нужны новая дата и время", en: "A moved lesson needs a new date and time" },
+  "Ko'chirilgan dars uchun yangi sana majburiy": { ru: "Для перенесённого урока нужна новая дата", en: "A moved lesson needs a new date" },
+  "Ko'chirilgan dars uchun yangi vaqt majburiy": { ru: "Для перенесённого урока нужно новое время", en: "A moved lesson needs a new time" },
+  "Tugash vaqti boshlanish vaqtidan keyin bo'lsin": { ru: "Время окончания должно быть позже начала", en: "The end time must be after the start time" },
+  "Bu dars uchun shu kunda o'zgarish allaqachon belgilangan": { ru: "На этот день для урока уже есть изменение", en: "This lesson already has a change on that day" },
+  "O'zgarish topilmadi": { ru: "Изменение не найдено", en: "Change not found" },
+  "Dars bekor qilindi": { ru: "Урок отменён", en: "Lesson cancelled" },
+  "Dars ko'chirildi": { ru: "Урок перенесён", en: "Lesson moved" },
+  "Dars jadvalga qaytarildi": { ru: "Урок возвращён в расписание", en: "Lesson restored to the schedule" },
+  "Tugash sanasi boshlanishidan oldin": { ru: "Дата окончания раньше даты начала", en: "The end date is before the start date" },
+  "Bu kuni dars bekor qilingan": { ru: "В этот день урок отменён", en: "The lesson is cancelled on this day" },
+
   // ── Filiallar ───────────────────────────────────────────
   "Filial nomi majburiy": { ru: "Название филиала обязательно", en: "Branch name is required" },
   "Filial yaratildi": { ru: "Филиал создан", en: "Branch created" },

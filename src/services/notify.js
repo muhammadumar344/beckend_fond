@@ -306,6 +306,119 @@ async function notifyPaymentClaim({ directorId, claimId, decision }) {
   }
 }
 
+// ── Dars bo'lmaydi / ko'chirildi ─────────────────────────────
+//
+// ⚠️ BU XABAR ENG KUTILGANI. Bayram yoki kasal ustoz sababli
+//    dars bo'lmasa, ota-ona buni ERTALAB bilishi kerak — aks
+//    holda u bolasini olib keladi va eshik yopiq bo'ladi.
+//    Ilgari administrator yigirmata odamga qo'lda qo'ng'iroq
+//    qilardi va yarmiga yetib bormasdi.
+//
+// ⚠️ BITTA GURUHGA BITTA XABAR. Bayram uch kun bo'lsa, uchta
+//    alohida xabar yuborish — shovqin ("keldi" xabari bilan
+//    bir xil xato). Kunlar bitta xabarda ro'yxat bo'lib ketadi.
+
+const REASON_TEXT = {
+  holiday: "bayram",
+  teacher: "ustoz sababli",
+  room: "xona sababli",
+};
+
+/**
+ * Xabar matni — SOF funksiya, `test/scheduleException.test.js`
+ * uni qulflaydi.
+ *
+ * @param {object} p
+ * @param {string} p.className
+ * @param {string[]} p.cancelled  ["2026-03-21", ...]
+ * @param {Array}  p.moved        [{ date, newDate, newStartTime }]
+ * @param {string} [p.reason]
+ * @param {string} [p.note]
+ */
+function buildLessonMessage({ className, cancelled = [], moved = [], reason, note }) {
+  const lines = [`📅 *Dars o'zgarishi*`, ``];
+  if (className) lines.push(`🏫 Guruh: *${className}*`, ``);
+
+  for (const d of cancelled) {
+    lines.push(`❌ ${fmtDate(d)} — dars bo'lmaydi`);
+  }
+  for (const m of moved) {
+    lines.push(
+      `🔄 ${fmtDate(m.date)} kungi dars ${fmtDate(m.newDate)}` +
+        (m.newStartTime ? `, ${m.newStartTime}` : "") +
+        ` ga ko'chirildi`,
+    );
+  }
+
+  const why = REASON_TEXT[reason];
+  if (why) lines.push(``, `Sabab: ${why}`);
+  if (note) lines.push(``, `💬 ${note}`);
+
+  return lines.join("\n");
+}
+
+/**
+ * @param {object} p
+ * @param {string} p.directorId
+ * @param {Array}  p.exceptionIds
+ */
+async function notifyLessonChange({ directorId, exceptionIds }) {
+  if (!exceptionIds?.length) return;
+  if (!(await telegramAllowed(directorId))) return;
+
+  const ScheduleException = require("../models/ScheduleException");
+  const { getGroupStudents } = require("../utils/enrollment");
+
+  // ⚠️ `notifiedAt: null` — takror xabar yubormaslikning yagona
+  //    kafolati. Bayram ikki marta belgilansa (birinchisi qisman
+  //    o'tgan bo'lishi mumkin), ota-ona bir xil xabarni ikki
+  //    marta olmasin.
+  const rows = await ScheduleException.find({
+    _id: { $in: exceptionIds },
+    director: directorId,
+    notifiedAt: null,
+  }).lean();
+  if (!rows.length) return;
+
+  const byClass = new Map();
+  for (const e of rows) {
+    const k = String(e.class);
+    if (!byClass.has(k)) byClass.set(k, []);
+    byClass.get(k).push(e);
+  }
+
+  const classDocs = await Class.find({ _id: { $in: [...byClass.keys()] } })
+    .select("name")
+    .lean();
+  const classNames = new Map(classDocs.map((c) => [String(c._id), c.name]));
+
+  for (const [classId, items] of byClass) {
+    const students = await getGroupStudents(classId);
+    const ids = students.map((s) => s._id);
+    if (!ids.length) continue;
+
+    const targets = await verifiedTargets(ids, "schedule");
+    if (!targets.length) continue;
+
+    const text = buildLessonMessage({
+      className: classNames.get(classId) || "",
+      cancelled: items.filter((e) => e.type !== "moved").map((e) => e.date),
+      moved: items.filter((e) => e.type === "moved"),
+      reason: items[0].reason,
+      note: items[0].note,
+    });
+
+    for (const t of targets) {
+      await sendMessage(t.chatId, text);
+    }
+
+    await ScheduleException.updateMany(
+      { _id: { $in: items.map((i) => i._id) } },
+      { $set: { notifiedAt: new Date() }, $inc: { notifiedCount: targets.length } },
+    );
+  }
+}
+
 /**
  * Fon rejimida chaqirish uchun o'ram.
  *
@@ -324,6 +437,8 @@ module.exports = {
   notifyBooking,
   notifyNoShow,
   notifyPaymentClaim,
+  notifyLessonChange,
+  buildLessonMessage,
   inBackground,
   notableChanges,
   // test uchun

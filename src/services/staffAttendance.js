@@ -25,8 +25,10 @@ const Staff = require("../models/Staff");
 //    tushib turibdi — bunday tasodifga tayanmaymiz.
 require("../models/Role");
 const StaffAttendance = require("../models/StaffAttendance");
+const ScheduleException = require("../models/ScheduleException");
 const Teacher = require("../models/Teacher");
 const { projectDayOfWeek, toMin, toTime } = require("../utils/supportSlots");
+const { applyExceptions } = require("../utils/scheduleDay");
 const { todayInTashkent } = require("../utils/supportWindow");
 
 const FALLBACK = {
@@ -69,16 +71,43 @@ function nowTime() {
 async function expectedTimes({ directorId, date, staffIds, workStart }) {
   const dow = projectDayOfWeek(date);
 
+  // ⚠️ BEKOR QILINGAN DARS KUTILGAN VAQTNI BELGILAMAYDI.
+  //    Bayram kuni yoki ustoz kasal bo'lgan kunda ham "soat
+  //    9:00 da kelishi kerak edi" deb yozilsa, tizim uni
+  //    kechikkan yoki kelmagan deb belgilardi va bu maoshdan
+  //    jarima bo'lib ushlanardi. Aksincha, boshqa kundan
+  //    ko'chirilgan dars o'sha kuni kutilgan vaqtni oldinga
+  //    surishi mumkin.
+  const exceptions = await ScheduleException.find({
+    director: directorId,
+    $or: [{ date }, { newDate: date }],
+  })
+    .select("schedule date type newDate newStartTime newEndTime")
+    .lean();
+  const movedInIds = exceptions
+    .filter((e) => e.type === "moved" && e.newDate === date)
+    .map((e) => e.schedule);
+
   // ⚠️ `Schedule.teacher` sxemada `Teacher` ga ref qilingan, lekin
   //    LC'da u aslida `Staff._id` saqlaydi (tarixiy nomuvofiqlik).
   //    Shuning uchun populate QILINMAYDI — faqat id solishtiriladi.
-  const lessons = await Schedule.find({
+  const raw = await Schedule.find({
     teacher: { $in: staffIds },
-    dayOfWeek: dow,
     isActive: { $ne: false },
+    $or: [
+      { dayOfWeek: dow },
+      ...(movedInIds.length ? [{ _id: { $in: movedInIds } }] : []),
+    ],
   })
-    .select("teacher startTime endTime class subject")
+    .select("teacher startTime endTime class subject dayOfWeek")
     .lean();
+
+  const { lessons } = applyExceptions({
+    lessons: raw,
+    exceptions,
+    date,
+    dayOfWeek: dow,
+  });
 
   const byStaff = new Map();
   for (const l of lessons) {

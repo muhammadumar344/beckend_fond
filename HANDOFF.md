@@ -5,7 +5,7 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-20** (Landing tarjimasi tugagach,
+> Oxirgi yangilanish: **2026-08-20** ("Dars bo'lmaydi" tugagach,
 > ikkala repo push qilingan)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
@@ -61,7 +61,78 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Landing tarjimasi"
+### Oxirgi tugagan ish — "Dars bo'lmaydi"
+
+Jadval **haftalik takrorlanuvchi** yozuv edi va undan boshqa hech
+narsani bilmasdi. Ya'ni bayram kuni ham "dars bor" derdi:
+
+- ota-ona bolasini olib keladi, eshik yopiq
+- administrator yigirmata odamga qo'lda qo'ng'iroq qiladi va
+  yarmiga yetib bormaydi
+- kechqurun tizim ustozni "kelmadi" deb belgilaydi va bu maoshdan
+  ushlanadi
+- ko'chirilgan darsni yozib qo'yadigan joy umuman yo'q edi
+
+Endi `ScheduleException` bor: **bekor qilish** va **ko'chirish**.
+Bayram uchun bitta oyna — sanani beradi, tizim necha dars
+tegishini ko'rsatadi, keyin bosadi.
+
+**Backend:** `models/ScheduleException.js`, sof
+`utils/scheduleDay.js`, `services/scheduleExceptions.js`,
+`controllers/scheduleExceptionController.js`,
+`/teacher/schedule/{day,exceptions,holiday}`, 24 ta yangi test.
+
+**Frontend:** `Schedule.vue` — dars kartochkasida belgi, "Bayram"
+tugmasi, yaqin kunlardagi o'zgarishlar ro'yxati va qaytarish;
+`Attendance.vue` — bekor qilingan kun ustozga **saqlashdan oldin**
+aytiladi; ikkala "Bugungi darslar" endi haqiqatni ko'rsatadi;
+~40 ta kalit × 3 til.
+
+#### Yo'lda topilgan uchta narsa
+
+1. **`manageSchedule` hech qayerda tekshirilmasdi.** Huquq enum'da
+   bor, interfeysda "Jadval tuzish" deb taklif qilinadi — lekin
+   `POST/PUT/DELETE /teacher/schedule` uni **so'ramasdi**. Davomat
+   uchun qo'shilgan ustoz butun markazning jadvalini o'chirib
+   yuborishi mumkin edi. `check:perms` buni ko'rmaydi: u faqat
+   **menyu havolalarini** solishtiradi, sahifa ichidagi amallarni
+   emas.
+2. **`accountPurge` LC darslarini o'chirmasdi.** Ro'yxatda
+   `["Schedule", "teacher"]` turibdi, lekin LC'da `Schedule.teacher`
+   — bu **Staff** id'si. Ya'ni markaz o'chirilgach darslar egasiz
+   qolardi. Endi sinf id'lari bo'yicha ham o'chiriladi.
+3. **`check:api` va `check:perms` boshqa kompyuterda umuman
+   ishlamasdi** — backend yo'li qattiq yozilgan edi
+   (`../../school_fond`). Endi bir necha joy sinaladi,
+   `LUMO_BACKEND=` bilan ham beriladi.
+
+#### To'rtta ataylab qilingan qaror
+
+1. **Jadvalning O'ZI o'zgarmaydi.** Bayram uchun darsni o'chirib
+   qayta yaratish eng oson yo'l va eng yomoni: guruhning butun
+   tarixi `Schedule._id` ga bog'langan, u uzilib ketardi.
+2. **Sana ro'yxatdan tanlanadi, erkin kiritilmaydi.** Seshanbagi
+   darsga juma sanasi yozilsa, yozuv hech qachon ishlamasdi va
+   nega ishlamayotganini hech kim topa olmasdi. Backend ham
+   tekshiradi.
+3. **Bayram avval ko'rsatadi, keyin yozadi** (xonalar importi
+   bilan bir xil qoida). Butun markazga tegadigan tugmani
+   ko'rmasdan bosish qo'rqinchli — odam umuman bosmay qo'yardi.
+4. **Bitta guruhga bitta xabar.** Bayram uch kun bo'lsa, kunlar
+   bitta xabarda ro'yxat bo'lib ketadi. Uchta alohida xabar —
+   `notify.js` dagi "farzandingiz darsga keldi" xatosining aynan
+   o'zi.
+
+⚠️ **Bekor qilingan kunga davomat yozilmaydi** (409). Aks holda
+bayram kuni butun guruh "kelmadi" bo'lib qolardi: ota-onaga xabar
+ketadi, hisobot buziladi, o'quvchining ketish xavfi oshib
+ko'rinadi.
+
+⚠️ **Ko'chirilgan dars ikki joyda yashaydi**: eski kunidan
+chiqadi, yangi kunida paydo bo'ladi. Faqat bittasi ishlasa, dars
+yo ikki marta ko'rinadi, yo butunlay yo'qoladi.
+
+### Undan oldingi ish — "Landing tarjimasi"
 
 Ichkaridagi hamma narsa allaqachon uz/ru/en edi, **sotuv sahifasi esa
 faqat o'zbekcha**. Ruscha gapiradigan direktor landing'ni tushunmasa,
@@ -98,7 +169,7 @@ Build ham, `npm run check` ham uchalasini o'tkazib yubordi:
 bug ham `npm run dev` da sahifani ochib, uch tilni almashtirib
 ko'rilgandagina chiqdi.
 
-### Undan oldingi ish — "Ruxsatlar auditi"
+### Undan ham oldingi ish — "Ruxsatlar auditi"
 
 Direktor xodimga huquq beradi — va hech narsa o'zgarmaydi. Interfeys
 ro'yxati, backend tekshiruvi va menyu bir-biriga mos emas edi.
@@ -151,7 +222,7 @@ ustozlar ro'yxatini `getStaff` orqali olardi — u `manageStaff`
 talab qiladi va jadval tuzadigan administratorda u yo'q. Ro'yxat
 jimgina bo'sh qolardi. `getAvailableTeachers` ga o'tkazildi.
 
-### Undan ham oldingi ish — "Lid → guruh oqimi va xona teshigi"
+### Eskiroq — lid → guruh oqimi va xona teshigi
 
 Ikki qismli ish: biri — avvalgi sessiyada **qoldirilgan teshik**,
 ikkinchisi — rejadagi oqim.
@@ -463,11 +534,15 @@ O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test              →  380/380
+backend :  npm test              →  400/400
 backend :  npm run check:messages →  yangi xabarlar ru/en bilan
 frontend:  npm run build         →  ✓
-frontend:  npm run check         →  check:api, check:perms, check:css, check:i18n — 0 xato
+frontend:  npm run check         →  verify, check:api, check:perms, check:css, check:i18n — 0 xato
 ```
+
+⚠️ Bu tekshiruvlar **sahifani ochib ko'rishning o'rnini bosmaydi**
+("Landing tarjimasi" bo'limidagi uchta bugni eslang). Yangi
+funksiyani `npm run dev` da bir marta bosib ko'ring.
 
 ---
 
@@ -517,10 +592,27 @@ brauzer ochiladi va token qaytadan saqlanadi.
 
 ## 5. Keyin nima qilinadi
 
-Rollar bo'yicha o'ylash davom etadi. Kassa zanjiri va lid→guruh
-oqimi tugadi.
+Rollar bo'yicha o'ylash davom etadi. Kassa zanjiri, lid→guruh
+oqimi va jadval istisnolari tugadi.
 
-### A. Qolgan tarjimalar
+### A. Jadvalning davomi — ustoz o'rniga kim kiradi
+
+"Dars bo'lmaydi" ikkita holatni yopdi: **bekor qilish** va
+**ko'chirish**. Uchinchisi ataylab qoldirildi — **o'rinbosar
+ustoz**. Markazda ustoz kasal bo'lsa, ko'pincha dars bekor
+qilinmaydi: boshqa ustoz kirib turadi.
+
+Nega birdaniga qilinmadi: o'rinbosar `Schedule.teacher` ni bir
+kunga almashtiradi, ya'ni **maosh** (foiz o'sha ustozga
+bog'langan), **xodim davomati** va **ustoz bandligi** uchalasi
+ham o'zgaradi. Buni istisno bilan bir qatorda qilish — ikkita
+katta o'zgarishni bitta ishda aralashtirish bo'lardi.
+
+Zamin tayyor: `ScheduleException` ga `newTeacher` maydoni
+qo'shilsa, `applyExceptions` uni ham almashtirib beradi
+(`utils/scheduleDay.js` dagi `movedIn` naqshi).
+
+### B. Qolgan tarjimalar
 
 Landing tugadi. Qolgani — ichki sahifalar, ahamiyati kamroq:
 
@@ -536,7 +628,7 @@ farzandining bahosini tushunmasa, markazga qo'ng'iroq qiladi.
 
 Backend'da ham **26 ta** tarjimasiz xabar (`npm run check:messages`).
 
-### B. Guruh/sinf ajratish (reja 1.2)
+### C. Guruh/sinf ajratish (reja 1.2)
 
 LC guruhlari hali `Class` da yashaydi. Skript va hujjat **tayyor**,
 ishga tushirilmagan: `src/scripts/migrateGroups.js`,
@@ -608,6 +700,12 @@ Bular allaqachon bir marta bug chiqargan. Takrorlamang.
 7. **Yangi menyu havolasi = 3 ta joy.** `src/config/navigation.js`,
    `router/index.js` dagi route, `TITLES` yozuvi. `npm run check:perms`
    buni nazorat qiladi.
+
+   ⚠️ Lekin u **sahifa ICHIDAGI** amallarni ko'rmaydi. Jadval
+   sahifasi shu sababli yillab ochiq turdi: havola hammaga
+   ko'rinadi (to'g'ri), tugmalari esa hech qanday huquq
+   so'ramasdi. Yangi yozish amali qo'shsangiz — `canManage` va
+   backend'dagi `requirePermission` ikkalasini ham yozing.
 
 8. **Yangi model qo'shsangiz `accountPurge.js` ga ham qo'shing.** Aks holda
    hisob o'chirilganda bazada egasiz o'quvchi ismlari va telefon raqamlari

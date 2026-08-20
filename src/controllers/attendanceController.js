@@ -8,6 +8,7 @@ const {
   requirePermission,
 } = require("../utils/resolveContext");
 const { notifyAttendance, inBackground } = require("../services/notify");
+const { isClassCancelled } = require("../services/scheduleExceptions");
 
 // ── Davomat saqlash ───────────────────────────────────────────
 exports.saveAttendance = async (req, res) => {
@@ -40,6 +41,32 @@ exports.saveAttendance = async (req, res) => {
           success: false,
           error: "Bu sinf sizning filialingizga tegishli emas",
         });
+    }
+
+    // ⚠️ BEKOR QILINGAN KUNGA DAVOMAT YOZILMAYDI. Aks holda
+    //    bayram kuni butun guruh "kelmadi" bo'lib qolardi:
+    //    o'sha belgi ota-onaga xabar bo'lib ketadi, hisobotni
+    //    buzadi va o'quvchining ketish xavfini oshirib
+    //    ko'rsatadi. Ko'chirilgan dars ham shu yerga tushadi —
+    //    u boshqa kuni o'tilgan, davomat o'sha kunga yoziladi.
+    const skipped = await isClassCancelled({
+      directorId: ctx.directorId,
+      classId,
+      date,
+    });
+    if (skipped) {
+      return res.status(409).json({
+        success: false,
+        error:
+          skipped.type === "moved"
+            ? `Bu kungi dars ${skipped.newDate} kuniga ko'chirilgan`
+            : "Bu kuni dars bekor qilingan",
+        exception: {
+          type: skipped.type,
+          reason: skipped.reason,
+          newDate: skipped.newDate || "",
+        },
+      });
     }
 
     const [year, month] = date.split("-").map(Number);
@@ -140,12 +167,30 @@ exports.getDayAttendance = async (req, res) => {
       unmarked: result.filter((r) => !r.status).length,
     };
 
+    // ⚠️ Sahifa "saqlash" tugmasini bosishdan OLDIN bilishi
+    //    kerak (kassadagi farq bilan bir xil qoida): dars bekor
+    //    qilingan bo'lsa, ustoz ro'yxatni to'ldirib chiqib,
+    //    oxirida 409 olmasin.
+    const skipped = await isClassCancelled({
+      directorId: ctx.directorId,
+      classId,
+      date,
+    });
+
     res.json({
       success: true,
       date,
       class: { id: cls._id, name: cls.name },
       students: result,
       summary,
+      exception: skipped
+        ? {
+            type: skipped.type,
+            reason: skipped.reason,
+            note: skipped.note || "",
+            newDate: skipped.newDate || "",
+          }
+        : null,
     });
   } catch (e) {
     res.status(e.status || 500).json({ success: false, error: e.message });
