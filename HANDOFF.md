@@ -5,7 +5,8 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-20** (xona boshqaruvi tugagach)
+> Oxirgi yangilanish: **2026-08-20** (bo'sh vaqt qidirgichi tugagach,
+> ikkala repo push qilingan)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
 > `HANDOFF.md` — **shu paytdagi holat**: nima tugadi, nima to'xtab turibdi,
@@ -60,7 +61,46 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Xona (kabinet) boshqaruvi"
+### Oxirgi tugagan ish — "Bo'sh vaqt qidirgichi"
+
+**"Yangi guruhni qachon ochsam bo'ladi?"** Jarayon teskari edi:
+administrator vaqtni **taxmin qiladi**, tizim "ustoz band" yoki "xona
+band" deydi, u yana taxmin qiladi. Ota-ona telefonda kutib turadi va
+beshinchi urinishda "keyin qo'ng'iroq qilaman" deb qo'yiladi — lid
+aynan shu daqiqada sovib ketadi.
+
+Bu yerda **yangi ma'lumot yo'q**. Uchala cheklov allaqachon kodda
+bor edi, ular hech qachon kesishtirilmagan.
+
+**Backend** (commit `a0a9776`):
+- `src/utils/slotFinder.js` — **sof modul**, bazaga tegmaydi.
+- `src/controllers/slotController.js` + `GET /lc/schedule/free-slots`.
+- 22 ta yangi test.
+
+**Frontend** (commit `a9ec8bf`):
+- `src/components/FreeSlotFinder.vue` — jadval sahifasidan ochiladi.
+- ~25 ta i18n kalit × 3 til.
+
+**Uchta ataylab qilingan qaror:**
+
+1. **"Topilmadi" javob emas.** Hech nima chiqmasa `blocked` qaytadi:
+   qaysi oynada nima to'sqinlik qilgani ("payshanba 18:00 da ustoz
+   bor, xona yo'q"). Quruq "topilmadi" dan keyin administrator nima
+   qilishini bilmaydi.
+2. **Topilgan vaqt BOSILADI** — dars qo'shish oynasi o'sha kun, vaqt
+   va xona bilan to'ldirilib ochiladi. Faqat ko'rsatsak, administrator
+   raqamlarni qo'lda ko'chirib yozardi va aynan shu yerda xato
+   qilardi.
+3. **Ish vaqti `Teacher.supportHours` dan OLINMAYDI.** U — qo'shimcha
+   mashg'ulot qabul vaqti, boshqa narsa. Direktor qabulni 14:00–16:00
+   qilib qo'ysa, guruh jadvali ham o'shanga qisilib qolardi. Qidiruv
+   oynasini administrator o'zi beradi.
+
+⚠️ **Xonaga bog'lanmagan darslar natijani to'liq emas qiladi** —
+javobda `unlinkedLessons` bo'lib qaytadi va interfeys `Xonalar`
+sahifasiga yo'naltiradi (import). Buni yashirmang.
+
+### Undan oldingi ish — "Xona (kabinet) boshqaruvi"
 
 Rollar bo'yicha o'ylashning **uchinchi** katta funksiyasi va avvalgi
 HANDOFF'da ⭐ bilan tavsiya qilingani. `Schedule.room` oddiy **matn
@@ -115,7 +155,7 @@ davri cho'zilardi: yangi darslar xonaga bog'lanadi, eskilari matn bo'lib
 qolaveradi va ular orasidagi ziddiyat hech qachon topilmasdi. Import
 avval **ko'rsatadi**, keyin yozadi (`apply: true`).
 
-### Undan oldingi ish — "Kassa" (kunlik smena)
+### Undan ham oldingi ish — "Kassa" (kunlik smena)
 
 Administrator kun bo'yi naqd pul oladi va kechqurun direktorga
 topshiradi — 29 ta modelning hech birida smena tushunchasi yo'q edi.
@@ -146,7 +186,7 @@ O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test              →  298/298
+backend :  npm test              →  320/320
 backend :  npm run check:messages →  yangi xabarlar ru/en bilan
 frontend:  npm run build         →  ✓
 frontend:  npm run check         →  check:api, check:perms, check:css, check:i18n — 0 xato
@@ -156,49 +196,34 @@ frontend:  npm run check         →  check:api, check:perms, check:css, check:i
 
 ## 4. 🔴 TO'XTAB TURGAN ISHLAR — Muhammadumar qilishi kerak
 
-### 4.1 Push ishlamayapti (eng muhimi)
+### 4.1 Push — ✅ YECHILDI (2026-08-20)
 
-**Backend 5 ta, frontend 18 ta commit push qilinmagan.** Kod tayyor,
-faqat GitHub'ga chiqmagan.
+**Ikkala repo ham to'liq push qilingan, qarz yo'q.**
 
-⚠️ **AVVALGI DIAGNOZ NOTO'G'RI EDI** (2026-08-20 da tuzatildi). Bu
-yerda "SSH kalit paroli" deb yozilgan va yechim sifatida
-`ssh-add` ko'rsatilgan edi. **`ssh-add` hech narsa bermaydi** —
-ikkala remote ham **HTTPS**, SSH kaliti ularga umuman tegmaydi:
+Bu bo'lim oylab "SSH kalit paroli" deb turdi va yechim sifatida
+`ssh-add` ko'rsatardi. **Diagnoz noto'g'ri edi.** Ikkala remote
+ham **HTTPS**, SSH kaliti ularga umuman tegmaydi:
 
 ```
 origin  https://github.com/muhammadumar344/beckend_fond.git
 origin  https://github.com/muhammadumar344/Fond_front.git
 ```
 
-Haqiqiy sabab: Git Credential Manager o'rnatilgan
-(`credential.helper = manager`), lekin **GitHub hisobi
-saqlanmagan** — `cmdkey /list` da github yozuvi yo'q. Shuning
-uchun push har safar login so'raydi, agent esa login qila
-olmaydi (parol/token kiritish — taqiqlangan amal).
+Haqiqiy sabab: Git Credential Manager o'rnatilgan, lekin GitHub
+hisobi saqlanmagan edi. Muhammadumar bir marta oddiy terminaldan
+push qildi → brauzerda kirdi → token Windows Credential
+Manager'ga saqlandi. **Shundan keyin agent ham push qila oladi**
+va qildi ham.
 
-Noutbuk yoningizda bo'lganda, **oddiy terminalda bir marta**:
-
-```bash
-cd /c/Users/Lenovo/Desktop/school_fond && git push origin main
-```
-
-Brauzer ochiladi → GitHub'ga kirasiz → ruxsat berasiz. Token
-Windows Credential Manager'ga saqlanadi. Keyin frontend
-so'ramaydi ham:
-
-```bash
-cd /c/Users/Lenovo/Desktop/font_front/font && git push origin main
-```
-
-Shundan keyin **agent ham push qila oladi** — bu bir martalik ish.
-
-⚠️ Tekshirish (agent buni o'zi qila oladi, hisobga kirmasdan):
+⚠️ Agar kelajakda yana so'ray boshlasa — bu SSH emas, token
+eskirgan. Tekshirish (hisobga kirmasdan):
 
 ```powershell
-cmdkey /list | Select-String github    # yozuv bormi
-git config --show-origin --get-all credential.helper
+cmdkey /list | Select-String github
 ```
+
+Yozuv yo'qolgan bo'lsa, yana bir marta qo'lda `git push` —
+brauzer ochiladi va token qaytadan saqlanadi.
 
 ### 4.2 Qolganlari
 
@@ -215,35 +240,42 @@ git config --show-origin --get-all credential.helper
 
 ## 5. Keyin nima qilinadi
 
-Rollar bo'yicha o'ylash davom etadi. Xona (avvalgi A-variant) bajarildi.
+Rollar bo'yicha o'ylash davom etadi. Xona **va** bo'sh vaqt qidirgichi
+(avvalgi A-variantlar) bajarildi.
 
-### A. Bo'sh vaqtni topish — "yangi guruhni qachon ochsam bo'ladi?"  ⭐ tavsiya
+### A. Xarajat kassadan chiqsin  ⭐ tavsiya
 
-Hozir jarayon teskari: administrator vaqtni **taxmin qiladi**, keyin
-tizim "ustoz band" yoki "xona band" deydi. U yana taxmin qiladi. Yangi
-guruh ochish — telefonda o'tirib beshinchi urinishda topiladigan narsa.
+**Bu funksiya emas, TUZATISH — va ayblov darajasidagi tuzatish.**
 
-Kerak bo'lgani: *"Ingliz tili, Malika opa, 12 bola, haftada 3 kun"* →
-tizim **bo'sh oynalarni o'zi ko'rsatadi**. Uchala cheklov allaqachon
-kodda bor:
+Hozir `Expense` kassaga umuman bog'liq emas. Administrator kun bo'yi
+naqd pul yig'adi, tushdan keyin o'sha qutidan 200 000 so'm olib
+marker va qog'oz sotib oladi, xarajatni tizimga kiritadi. Kechqurun
+smenani yopadi — va tizim **"kamomad 200 000"** deb yozadi.
 
-- ustoz bandligi — `utils/teacherAvailability.js`
-- xona bandligi va sig'imi — `utils/roomAvailability.js` (yangi)
-- markazning ish vaqti — `utils/supportSlots.js` naqshi
+Ya'ni halol ishlagan odam har safar o'g'ri bo'lib chiqadi. Direktor
+esa jurnalda haqiqiy kamomadni soxtasidan ajrata olmaydi, chunki
+ikkalasi bir xil ko'rinadi. Kassaning butun ma'nosi shu yerda
+yo'qoladi.
 
-Ya'ni bu yangi ma'lumot emas, **mavjud uchtasini kesishtirish**.
-Modme'da bunday narsa yo'q va aynan shu — direktor sotuvda
-ko'rsatadigan farq.
+Kerak: `Expense` ga `paidFrom` (`cash` | `card` | `bank`) va naqd
+bo'lsa `CashShift.expected.cash` dan chiqarish. Asos bor —
+`services/cashShift.js` dagi `totals`.
 
-### B. Kassa ustiga qurilishi mumkin bo'lganlar
-
-Asos allaqachon bor (`paymentMethod`, `receivedBy`, `CashShift`):
+### B. Kassa ustiga qurilishi mumkin bo'lgan qolganlari
 
 - **Pulni direktorga topshirish.** Hozir smena yopiladi, lekin naqd pul
   jismonan kimga o'tgani yozilmaydi. Ikki tomonlama tasdiq kerak.
-- **Xarajatni kassadan chiqarish.** `Expense` hozir kassaga bog'liq emas —
-  administrator kassadan pul olib xarajat qilsa, kamomad bo'lib chiqadi.
 - **Kassa haqida kunlik Telegram xabari** direktorga: kim yopdi, farq bormi.
+
+### C. Lid → guruh → jadval oqimi uzuq
+
+Bo'sh vaqt qidirgichi bo'sh oynani topadi, lekin guruh baribir alohida
+sahifada yaratiladi, jadval esa uchinchi joyda qo'shiladi. Lidni
+o'quvchiga aylantirish ham to'rtinchi joyda. Administrator bitta ish
+uchun to'rtta sahifani aylanib chiqadi va yo'lda ma'lumot yo'qotadi.
+
+Bu — katta ish, lekin avval A bajarilsin: uzuq oqim noqulaylik,
+noto'g'ri kamomad esa ishonchni buzadi.
 
 ### Ataylab keyinga qoldirilgan (mayda ish deb hisoblangan)
 
