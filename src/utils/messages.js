@@ -83,6 +83,8 @@ const MESSAGES = {
   "Bu topshiriq allaqachon yakunlangan": { ru: "Эта передача уже завершена", en: "This handover is already completed" },
   "Sanalgan summa noto'g'ri": { ru: "Неверная пересчитанная сумма", en: "Invalid counted amount" },
   "Topshiriq topilmadi yoki uni bekor qilib bo'lmaydi": { ru: "Передача не найдена или её нельзя отменить", en: "Handover not found or cannot be cancelled" },
+  "Rejim noto'g'ri": { ru: "Неверный режим", en: "Invalid mode" },
+  "Ulanish uzildi": { ru: "Подключение разорвано", en: "Connection removed" },
 
   // ── Autentifikatsiya ────────────────────────────────────
   "Email yoki parol noto'g'ri": { ru: "Неверный email или пароль", en: "Wrong email or password" },

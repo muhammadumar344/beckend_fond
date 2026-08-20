@@ -124,6 +124,51 @@ async function askPhone(bot, chatId, lang, prefix = '') {
   })
 }
 
+// ── Direktorni ulash ──────────────────────────────────────────
+//
+// ⚠️ ALOHIDA OQIM. Ota-ona telefon raqami bilan isbotlanadi;
+//    direktor esa CRM'da tugmani bosgan bo'ladi va bir martalik
+//    token bilan keladi. Isbot shu tokenda: uni faqat o'z
+//    hisobiga kirgan direktor ola oladi.
+//
+// ⚠️ Xato token uchun SABAB AYTILADI ("muddati o'tgan"), lekin
+//    hech qanday ma'lumot berilmaydi. Tokenni taxmin qilib
+//    ko'rayotgan odam qaysi markaz borligini ham bilmasin.
+const handleDirectorLink = async (bot, msg, token) => {
+  const chatId = msg.chat.id
+
+  try {
+    const { consumeLinkToken } = require('../services/directorTelegram')
+    const director = await consumeLinkToken(token, {
+      chatId,
+      username: msg.from?.username || '',
+    })
+
+    if (!director) {
+      await bot.sendMessage(
+        chatId,
+        "Havola eskirgan yoki allaqachon ishlatilgan.\n\n" +
+          "Lumo'ga kiring → Kassa sahifasi → \"Telegram'ga ulash\" tugmasini qayta bosing.",
+      )
+      return
+    }
+
+    await bot.sendMessage(
+      chatId,
+      `✅ *${director.name || 'Markaz'}* ulandi.\n\n` +
+        "Endi kunlik kassa xabarini shu yerda olasiz.\n\n" +
+        "Sozlamani Kassa sahifasidan o'zgartirishingiz mumkin: " +
+        "faqat muammo bo'lganda, har kuni yoki umuman yubormaslik.",
+      { parse_mode: 'Markdown' },
+    )
+  } catch (err) {
+    console.error('handleDirectorLink xatosi:', err.message)
+    try {
+      await bot.sendMessage(chatId, 'Xatolik yuz berdi. Birozdan keyin urinib ko\'ring.')
+    } catch {}
+  }
+}
+
 // ── /start ────────────────────────────────────────────────────
 //
 // ⚠️ /start HECH QACHON BOSHI BERK KO'CHA BO'LMASLIGI KERAK.
@@ -138,6 +183,18 @@ const handleStart = async (bot, msg) => {
   const lang = langOf(msg.from)
 
   try {
+    // ⚠️ DIREKTOR ULANISHI — ota-ona oqimidan OLDIN tekshiriladi.
+    //    Havola `t.me/bot?start=dir_<token>` ko'rinishida keladi.
+    //    Bu butunlay boshqa oqim: raqam ham, o'quvchi ham
+    //    ishtirok etmaydi. Ikkalasini aralashtirmang — direktor
+    //    tokeni ota-ona bog'lanishiga tushib qolsa, markaz
+    //    xabarlari begona odamga ketardi.
+    const payload = String(msg.text || '').split(/\s+/)[1] || ''
+    if (payload.startsWith('dir_')) {
+      await handleDirectorLink(bot, msg, payload.slice(4))
+      return
+    }
+
     const existing = await activeLinks(msg.from.id)
 
     if (existing.length) {

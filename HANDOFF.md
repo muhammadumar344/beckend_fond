@@ -5,7 +5,7 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-20** (pulni topshirish tugagach,
+> Oxirgi yangilanish: **2026-08-20** (kunlik kassa xabari tugagach,
 > ikkala repo push qilingan)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
@@ -61,7 +61,52 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Pulni direktorga topshirish"
+### Oxirgi tugagan ish — "Kunlik kassa xabari"
+
+Kassa zanjiri to'liq edi, lekin direktor uni **ko'rish uchun saytga
+kirishi** kerak edi — va u har kuni kirmaydi. Uch kundan keyin kirsa,
+uch kunlik yopilmagan smena chiqadi va endi hech kim eslay olmaydi.
+
+⚠️ **Yo'lda ma'lum bo'ldi: bot ilgari faqat ota-ona uchun edi.**
+Direktorga tizimdan xabar yuborishning umuman yo'li yo'q edi. Ya'ni
+avval **kanalning o'zini** qurish kerak bo'ldi — va u bitta funksiya
+uchun emas: keyingi xabarlar (ketish arafasidagi o'quvchi,
+tasdiqlanmagan to'lov) ham shu yerdan ketadi.
+
+**Backend:**
+- `Teacher.telegram` — `chatId`, hash bo'lib yotgan bir martalik
+  `linkTokenHash`, muddat. `Teacher.cashReport.mode`.
+- `src/services/directorTelegram.js` — token yaratish/ishlatish/uzish.
+- `src/bot/handlers.js` — `/start dir_<token>` **ota-ona oqimidan
+  oldin** ushlanadi.
+- `src/services/cashReport.js` — **sof** `buildReport()` + `collect()`.
+- `src/cron/cashReportCron.js` — 21:00 Toshkent, `server.js` ga ulandi.
+- `/teacher/telegram/director` (GET/POST/DELETE) va `.../mode`.
+- 25 ta yangi test.
+
+**Frontend:**
+- `Cash.vue` — direktorga "Kunlik xabar" kartochkasi: ulash, rejim
+  tanlash, uzish.
+- ~17 ta i18n kalit × 3 til.
+
+**Uchta ataylab qilingan qaror:**
+
+1. **Standart `problems` — har kuni emas.** Har kuni "hammasi joyida"
+   yozsak, direktor bir haftada xabarni o'qimay qo'yadi va rostdan
+   muhim kunini ham ko'rmaydi. Bu — `notify.js` dagi "farzandingiz
+   darsga keldi" xabari bilan **aynan bir xil xato**, u yerda bir
+   marta o'rganilgan. `daily` — xohlagan direktor uchun.
+2. **Direktor oqimi ota-onanikidan butunlay alohida.** `handleStart`
+   da direktor tokeni birinchi tekshiriladi. Aralashsa markaz
+   xabarlari begona odamga ketardi.
+3. **Token hash, bir martalik, 15 daqiqalik.** Telegram havolasi
+   yozishmada qolib ketadi; muddatsiz token o'sha yozishmani ko'rgan
+   har kimga markaz xabarlarini ochib berardi.
+
+⚠️ Telegram **403** = direktor botni bloklagan. Bu xato emas, holat:
+ulanish tozalanadi, aks holda har kuni log'ga bir xil xato yozilardi.
+
+### Undan oldingi ish — "Pulni direktorga topshirish"
 
 Kassaning **ikkinchi yarmi**. Birinchi yarim (`CashShift`) bitta
 savolga javob berardi: "qutida qancha bo'lishi kerak edi va qancha
@@ -107,7 +152,7 @@ administratorda dalil yo'q edi.
 olinadi, `expected.cash` emas: odamning qo'lida sanalgan pul bor.
 Tartib majburiy — avval kunni yop, keyin topshir.
 
-### Undan oldingi ish — "Xarajat kassadan chiqsin"
+### Undan ham oldingi ish — "Xarajat kassadan chiqsin"
 
 **Funksiya emas, TUZATISH — va ayblov darajasidagi tuzatish.**
 
@@ -159,7 +204,7 @@ mos (`npm run check:perms` — 18 ta havola, 0 nomuvofiq).
 ya'ni kechagi kamomadni yashirishning eng oson yo'li shu. Shuning
 uchun `expense.deleted` jurnalda **qizil** (`DANGER`) ro'yxatda.
 
-### Undan ham oldingi ish — "Bo'sh vaqt qidirgichi"
+### Eskiroq — bo'sh vaqt qidirgichi
 
 **"Yangi guruhni qachon ochsam bo'ladi?"** Jarayon teskari edi:
 administrator vaqtni **taxmin qiladi**, tizim "ustoz band" yoki "xona
@@ -284,7 +329,7 @@ O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test              →  349/349
+backend :  npm test              →  374/374
 backend :  npm run check:messages →  yangi xabarlar ru/en bilan
 frontend:  npm run build         →  ✓
 frontend:  npm run check         →  check:api, check:perms, check:css, check:i18n — 0 xato
@@ -338,34 +383,23 @@ brauzer ochiladi va token qaytadan saqlanadi.
 
 ## 5. Keyin nima qilinadi
 
-Rollar bo'yicha o'ylash davom etadi. Kassa zanjiri to'liq yopildi:
-yig'ildi → sanaldi → xarajat chiqdi → topshirildi → qabul qilindi.
+Rollar bo'yicha o'ylash davom etadi. **Kassa butunlay tugadi:**
+yig'ildi → sanaldi → xarajat chiqdi → topshirildi → qabul qilindi →
+direktorga xabar ketdi.
 
-### A. Kassa haqida kunlik Telegram xabari  ⭐ tavsiya
-
-Kassa endi to'liq: yig'ildi → sanaldi → xarajat chiqdi → topshirildi →
-qabul qilindi. Lekin direktor buni **ko'rish uchun sahifaga kirishi**
-kerak, va u har kuni kirmaydi.
-
-Kerak: kechqurun bitta xabar — kim yopdi, farq bormi, kim topshirdi,
-qabul qilinmagan pul bormi. Asos bor: `services/notify.js`,
-`cron/` naqshi va `CashShift` + `CashHandover` ma'lumotlari.
-
-⚠️ **Har kuni "hammasi joyida" yozmang.** Shovqin bo'lgan xabarni
-direktor bir haftada o'qimay qo'yadi va rostdan muhimini ham
-ko'rmaydi (`notify.js` dagi "keldi" xabari bilan bir xil sabab).
-Faqat **e'tibor talab qiladigan** kun haqida yozilsin: farq bor,
-kun yopilmagan yoki topshiriq tasdiqlanmagan.
-
-### B. Lid → guruh → jadval oqimi uzuq
+### A. Lid → guruh → jadval oqimi uzuq  ⭐ tavsiya
 
 Bo'sh vaqt qidirgichi bo'sh oynani topadi, lekin guruh baribir alohida
 sahifada yaratiladi, jadval esa uchinchi joyda qo'shiladi. Lidni
 o'quvchiga aylantirish ham to'rtinchi joyda. Administrator bitta ish
 uchun to'rtta sahifani aylanib chiqadi va yo'lda ma'lumot yo'qotadi.
 
-Bu — katta ish, lekin avval A bajarilsin: uzuq oqim noqulaylik,
-noto'g'ri kamomad esa ishonchni buzadi.
+### B. Landing sahifasi tarjimasi
+
+`Landing.vue` da **42 ta** qattiq yozilgan matn bor. Bu — qolgan
+tarjimalardan farqli o'laroq **sotuv sahifasi**: ruscha gapiradigan
+direktor uni tushunmasa, ichkariga umuman kirmaydi. Qolgan
+tarjimalar mayda ish, bu bittasi esa — sotuvga tegadigan ish.
 
 ### Ataylab keyinga qoldirilgan (mayda ish deb hisoblangan)
 

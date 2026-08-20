@@ -182,6 +182,17 @@ router.delete("/expenses/:expenseId", allowTeacherOrStaff, ctrl.deleteExpense);
 
 // ══ TELEGRAM — faqat Director ════════════════════════════════
 router.get("/telegram/bot-link", onlyTeacher, tgCtrl.getBotLink);
+
+// ── Direktorning O'Z Telegram ulanishi ───────────────────────
+// ⚠️ Ota-onalar oqimidan BUTUNLAY ALOHIDA. Bu — markazga
+//    tizimdan xabar yuborish kanali; kunlik kassa xabari
+//    birinchi ishlatuvchisi, xolos.
+// ⚠️ `onlyTeacher`: xodim markaz nomidan ulanish tokeni ola
+//    olmasligi kerak.
+router.get("/telegram/director", onlyTeacher, tgCtrl.getDirectorLink);
+router.post("/telegram/director", onlyTeacher, tgCtrl.createDirectorLink);
+router.delete("/telegram/director", onlyTeacher, tgCtrl.unlinkDirector);
+router.put("/telegram/director/mode", onlyTeacher, tgCtrl.setCashReportMode);
 router.get("/telegram/parents", onlyTeacher, tgCtrl.getParents);
 router.get(
   "/telegram/parents/class/:classId",

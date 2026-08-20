@@ -98,6 +98,49 @@ const teacherSchema = new mongoose.Schema({
     slotMinutes: { type: Number, default: 30, min: 10, max: 120 },
   },
 
+  // ── Direktorning Telegram ulanishi ─────────────────────────
+  //
+  // ⚠️ BOT ILGARI FAQAT OTA-ONA UCHUN EDI. Direktorga tizimdan
+  //    xabar yuborishning umuman yo'li yo'q edi: u hamma narsani
+  //    saytga kirib ko'rishi kerak edi va kunda kirmasdi. Bu
+  //    ulanish bitta funksiya uchun emas — kunlik kassa xabari
+  //    birinchisi, xolos.
+  //
+  // ⚠️ TOKEN HASH BO'LIB YOTADI, ochig'i faqat havolada ketadi
+  //    (parol tiklash tokeni bilan bir xil qoida). Baza nusxasi
+  //    chiqib ketsa ham u bilan hech kimning hisobiga
+  //    ulanib bo'lmaydi.
+  //
+  // ⚠️ Token BIR MARTALIK va qisqa muddatli. Telegram havolasi
+  //    yozishmada qolib ketadi; muddatsiz token esa keyinchalik
+  //    o'sha yozishmani ko'rgan har kimga markaz xabarlarini
+  //    ochib berardi.
+  telegram: {
+    chatId: { type: Number, default: null },
+    username: { type: String, default: "" },
+    linkedAt: { type: Date, default: null },
+    linkTokenHash: { type: String, default: null },
+    linkTokenExpires: { type: Date, default: null },
+  },
+
+  // ── Kunlik kassa xabari ────────────────────────────────────
+  //
+  // ⚠️ STANDART `problems` — har kuni emas. Har kuni "hammasi
+  //    joyida" yozsak, direktor bir haftada xabarni o'qimay
+  //    qo'yadi va rostdan muhim kunini ham ko'rmaydi
+  //    (`services/notify.js` dagi "farzandingiz keldi" xabari
+  //    bilan aynan bir xil xato).
+  //
+  //    `daily` — xohlagan direktor uchun: ba'zilar kunlik
+  //    tushumni bilishni yoqtiradi va bu ularning haqi.
+  cashReport: {
+    mode: {
+      type: String,
+      enum: ["off", "problems", "daily"],
+      default: "problems",
+    },
+  },
+
   // ── Xodim davomati ─────────────────────────────────────────
   // Ustoz ishga o'z vaqtida keldimi — filial boshqaruvchisi
   // kuzatadi, maosh hisobiga ta'sir qiladi.

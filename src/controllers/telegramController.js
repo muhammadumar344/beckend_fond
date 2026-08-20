@@ -134,3 +134,91 @@ exports.sendToStudents = async (req, res) => {
     res.status(500).json({ success: false, error: e.message })
   }
 }
+// ════════════════════════════════════════════════════════════
+// DIREKTORNI TELEGRAM'GA ULASH
+//
+// ⚠️ Bot ilgari faqat ota-ona uchun edi — direktorga tizimdan
+//    xabar yuborishning umuman yo'li yo'q edi. Bu ulanish
+//    bitta funksiya uchun emas: kunlik kassa xabari
+//    birinchisi, xolos.
+//
+// ⚠️ FAQAT DIREKTOR (`onlyTeacher`). Xodim markaz nomidan
+//    ulanish tokeni ola olmasligi kerak.
+// ════════════════════════════════════════════════════════════
+const Teacher = require('../models/Teacher')
+const dirTg = require('../services/directorTelegram')
+
+// GET /api/teacher/telegram/director — ulanish holati
+exports.getDirectorLink = async (req, res) => {
+  try {
+    const doc = await Teacher.findById(req.user.id)
+      .select('telegram.chatId telegram.username telegram.linkedAt cashReport')
+      .lean()
+
+    res.json({
+      success: true,
+      linked: Boolean(doc?.telegram?.chatId),
+      username: doc?.telegram?.username || '',
+      linkedAt: doc?.telegram?.linkedAt || null,
+      mode: doc?.cashReport?.mode || 'problems',
+    })
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message })
+  }
+}
+
+// POST /api/teacher/telegram/director — bir martalik havola
+exports.createDirectorLink = async (req, res) => {
+  try {
+    const bot = getBot()
+    if (!bot)
+      return res.status(503).json({ success: false, error: 'Bot ishlamayapti' })
+
+    const info = await bot.getMe()
+    const { token, expiresAt } = await dirTg.createLinkToken(req.user.id)
+
+    // ⚠️ Ochiq token FAQAT shu javobda ketadi va bazada
+    //    qaytmaydi (hash bo'lib yotadi).
+    res.json({
+      success: true,
+      link: `https://t.me/${info.username}?start=dir_${token}`,
+      expiresAt,
+    })
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message })
+  }
+}
+
+// DELETE /api/teacher/telegram/director — ulanishni uzish
+exports.unlinkDirector = async (req, res) => {
+  try {
+    await dirTg.unlink(req.user.id)
+    res.json({ success: true, message: 'Ulanish uzildi' })
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message })
+  }
+}
+
+// PUT /api/teacher/telegram/director/mode   { mode }
+//
+// ⚠️ `problems` standart va shunday qolishi kerak. Har kuni
+//    "hammasi joyida" yozsak, direktor bir haftada xabarni
+//    o'qimay qo'yadi va rostdan muhim kunini ham ko'rmaydi.
+exports.setCashReportMode = async (req, res) => {
+  try {
+    const mode = String(req.body.mode || '')
+    if (!['off', 'problems', 'daily'].includes(mode)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Rejim noto'g'ri" })
+    }
+
+    await Teacher.updateOne(
+      { _id: req.user.id },
+      { $set: { 'cashReport.mode': mode } },
+    )
+    res.json({ success: true, mode })
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message })
+  }
+}

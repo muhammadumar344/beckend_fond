@@ -363,6 +363,60 @@ guruhlar bilan ishlaydi va `Student.class` ga hech qachon tegmaydi.
 **Migratsiya kerak emas:** mavjud o'quvchilar avtomatik "asosiy
 guruhda" hisoblanadi.
 
+## Direktorning Telegram ulanishi
+
+⚠️ **Bot ilgari faqat ota-ona va o'quvchi uchun edi.** Direktorga
+tizimdan xabar yuborishning umuman yo'li yo'q edi — u hamma
+narsani saytga kirib ko'rishi kerak edi va kunda kirmasdi.
+
+`Teacher.telegram`: `chatId`, `username`, `linkedAt`,
+`linkTokenHash`, `linkTokenExpires`.
+
+Oqim: CRM'da tugma → `POST /teacher/telegram/director` →
+`t.me/bot?start=dir_<token>` → bot `handleStart` da payload'ni
+ushlaydi → `handleDirectorLink`.
+
+⚠️ **Ota-ona oqimidan BUTUNLAY ALOHIDA.** `handleStart` da
+direktor tokeni **birinchi** tekshiriladi. Ikkalasini
+aralashtirmang: direktor tokeni ota-ona bog'lanishiga tushib
+qolsa, markaz xabarlari begona odamga ketardi.
+
+⚠️ **Token hash bo'lib yotadi** (parol tiklash bilan bir xil
+qoida), **bir martalik** va **15 daqiqalik**. Telegram havolasi
+yozishmada qolib ketadi; muddatsiz token o'sha yozishmani
+ko'rgan har kimga markaz xabarlarini ochib berardi.
+Egallash `findOneAndUpdate` bilan — ikki kishi bir vaqtda
+ocholmaydi.
+
+⚠️ Bu kanal **bitta funksiya uchun emas**. Kunlik kassa xabari
+birinchi ishlatuvchisi, xolos.
+
+## Kunlik kassa xabari
+
+`cron/cashReportCron.js` — har kuni **21:00 Toshkent**
+(kechki dars 20:00–20:30 da tugaydi; undan oldin yuborsak xabar
+yarim kunlik bo'lib chiqardi).
+
+⚠️ **`Teacher.cashReport.mode` standart `problems`.** Har kuni
+"hammasi joyida" yozsak, direktor bir haftada xabarni o'qimay
+qo'yadi va rostdan muhim kunini ham ko'rmaydi — bu
+`services/notify.js` dagi "farzandingiz darsga keldi" xabari
+bilan **aynan bir xil xato**, u yerda bir marta o'rganilgan.
+`daily` — xohlagan direktor uchun alohida tanlov.
+
+⚠️ Matn `services/cashReport.js` dagi **sof** `buildReport()`
+da va `test/cashReport.test.js` uni qulflaydi. E'tibor talab
+qiladigan to'rt holat: yopilmagan kun, kassadagi farq,
+tasdiqlanmagan topshiriq, topshirishdagi farq.
+
+⚠️ **`Intl.NumberFormat` uzilmas probel (U+00A0) qo'yadi.**
+`money()` uni oddiy probelga almashtiradi — aks holda
+Telegram'dan nusxa olingan son qidiruvda topilmasdi.
+
+⚠️ Telegram **403** = direktor botni bloklagan. Bu xato emas,
+holat: `telegram.chatId` tozalanadi, aks holda har kuni log'ga
+bir xil xato yozilib turardi.
+
 ## Pulni topshirish — kassaning ikkinchi yarmi
 
 `CashShift` bitta savolga javob beradi: "qutida qancha bo'lishi
