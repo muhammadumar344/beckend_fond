@@ -5,7 +5,7 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-20** (tarjima qarzi yopilgach,
+> Oxirgi yangilanish: **2026-08-20** (sozlamalar sahifasi tugagach,
 > ikkala repo push qilingan)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
@@ -56,12 +56,62 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
    yoqmaydi. Kod izohlari ham o'zbekcha va **nima uchun** shundayligini
    yozadi, nima qilishini emas.
 6. **Artifact yaratmang** — ishni to'g'ridan-to'g'ri kodda qiling.
+7. **Tarjimaga ortiqcha vaqt sarflamang** (2026-08-20 da aytilgan).
+   Frontend allaqachon to'liq uch tilda va `npm run check` uni
+   qulflab turibdi — qarz qaytib to'planmaydi. E'tibor
+   **funksiya, yangilik, qulaylik, sozlama va dizaynga** qaratilsin.
+   Qolgan tarjimalar (backend xabarlari) katta ish orasida
+   o'z-o'zidan tuzatilsa — yaxshi; alohida ish sifatida emas.
 
 ---
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Tarjima qarzi yopildi"
+### Oxirgi tugagan ish — "Markaz sozlamalari sahifasi"
+
+Sozlamalar **besh xil sahifaga tarqalgan** edi: qo'shimcha mashg'ulot
+o'z sahifasida, xodim davomati o'zinikida, kassa xabari Kassa ostida,
+to'lov rekvizitlari To'lov so'rovlari ichida, brend esa Profilda.
+
+⚠️ **Asosiy muammo sozlash emas, KO'RINMASLIK edi.** Yoqilmagan
+funksiyani direktor umuman bilmasdi — bilmagan narsasini esa
+yoqmaydi ham. Qo'shimcha mashg'ulot, xodim davomati, ota-onadan
+to'lov qabul qilish: uchalasi ham tayyor turgan, lekin tasodifan
+o'sha sahifaga kirmaguncha mavjud emasdek edi.
+
+`/lc/settings` — bitta sahifa, beshta blok. Har biri **o'chiq
+holatda ham to'liq ko'rinadi** va "yoqilmasa nima bo'lmaydi" deb
+yozib turadi: *"O'chiq: o'quvchi ilovasida \"Yozilish\" bo'limi
+umuman ko'rinmaydi."*
+
+**Uchta ataylab qilingan qaror:**
+
+1. **Yangi endpoint qo'shilmadi.** Sahifa mavjud to'rtta GET ni
+   `Promise.allSettled` bilan birga chaqiradi. Aggregator yozsak,
+   bir xil mantiq ikki joyda bo'lib qolardi va biri jimgina
+   eskirardi. Yon foydasi: bittasi yiqilsa qolgan bloklar baribir
+   chiziladi.
+2. **Chuqur boshqaruv ko'chirilmadi.** Sahifa faqat markaz
+   darajasidagi kalitni tutadi; yozuvlar, jadval va Telegram ulash
+   o'z sahifalarida qoladi va ularga havola beriladi. Aks holda
+   ikkita joyda bir xil interfeys paydo bo'lardi.
+3. **Rekvizitlar avtomatik saqlanmaydi, tugma bilan.** Karta
+   raqamini yozib turganda har bosishda saqlasak, yarim raqam
+   bazaga tushardi va ota-ona ilovada o'shani ko'rardi.
+
+⚠️ **Qo'shimcha mashg'ulot bloki alohida ogohlantiradi:** xizmat
+yoqilgan, lekin "Support Teacher" rolidagi xodim yo'q bo'lsa
+o'quvchi bo'sh ro'yxat ko'radi. Direktor buni sozlamalar
+sahifasidayoq bilsin, o'quvchi shikoyat qilgandan keyin emas.
+
+⚠️ **Faqat direktorga**, `/staff/settings` ataylab yo'q.
+
+⚠️ Sahifa tizimga kirishni talab qilgani va lokal API
+production'ga CORS bilan bloklangani uchun **brauzerda
+ko'rilmadi** — build, `npm run check` va endpoint shakllari qo'lda
+solishtirildi. Birinchi deploy'dan keyin ko'z bilan tekshiring.
+
+### Undan oldingi ish — "Tarjima qarzi yopildi"
 
 18 ta faylda **159 ta** qattiq yozilgan matn bor edi — endi **0**.
 ~130 ta yangi kalit × 3 til, 25 tasi mavjud kalitdan qayta ishlatildi.
@@ -95,7 +145,7 @@ ikkiga bo'lish tarjimada so'z tartibini buzardi — `lg_restoreText`,
 Brauzerda uch tilda tekshirildi; guardrail ataylab buzib sinaldi
 (bitta matn → exit 1).
 
-### Undan oldingi ish — "Mini App uch tilda"
+### Undan ham oldingi ish — "Mini App uch tilda"
 
 `tma/App.vue` dagi **32 ta** qattiq matn → **0**. ~70 kalit × 3 til.
 
@@ -138,7 +188,7 @@ yiqitardi.
 ⚠️ Izohda `t(…)` ko'rinishida misol yozmang — skaner uni
 haqiqiy kalit deb o'qiydi (bir marta shunday bo'ldi).
 
-### Undan ham oldingi ish — "Landing tarjimasi"
+### Eskiroq — Landing tarjimasi
 
 Ichkaridagi hamma narsa allaqachon uz/ru/en edi, **sotuv sahifasi esa
 faqat o'zbekcha**. Ruscha gapiradigan direktor landing'ni tushunmasa,
