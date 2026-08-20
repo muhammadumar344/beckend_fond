@@ -16,6 +16,7 @@ const { countGroupStudents } = require("../utils/enrollment");
 const {
   resolveContext,
   requirePermission,
+  requireAnyPermission,
 } = require("../utils/resolveContext");
 const {
   limitsFor,
@@ -25,19 +26,9 @@ const {
 
 const STATUSES = Lead.STATUSES;
 
-/**
- * Lidlarni KO'RISH uchun 'viewLeads' yoki 'manageLeads' dan biri yetarli.
- * requirePermission bitta huquqni tekshiradi, shuning uchun alohida helper.
- */
-function requireLeadRead(ctx) {
-  if (ctx.isDirector) return;
-  const perms = Array.isArray(ctx.permissions) ? ctx.permissions : [];
-  if (!perms.includes("viewLeads") && !perms.includes("manageLeads")) {
-    const err = new Error("Ruxsat yo'q: \"viewLeads\" huquqi kerak");
-    err.status = 403;
-    throw err;
-  }
-}
+/** Lidlarni KO'RISH uchun 'viewLeads' yoki 'manageLeads' yetarli */
+const requireLeadRead = (ctx) =>
+  requireAnyPermission(ctx, ["viewLeads", "manageLeads"]);
 
 /** Filialga biriktirilgan xodim faqat o'z filiali lidlarini ko'radi */
 function scopeQuery(ctx, extra = {}) {

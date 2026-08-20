@@ -3,23 +3,34 @@
 // + default rollar avtomatik beriladi
 const mongoose = require('mongoose')
 
-// ✅ Barcha mumkin bo'lgan ruxsat turlari — yangi permission qo'shilganda
-// shu ro'yxatga ham qo'shing (masalan kelajakda 'manageSchedule' kabi)
-// ✅ TUZATILDI — StaffManagement.vue'dagi 25 ta ruxsat (view/manage
-// granularity) bilan bir xil qilindi. Oldin bu yerda faqat 11 tasi bor edi,
-// StaffManagement.vue orqali yuborilgan qolgan ruxsatlar (viewGroups,
-// viewStudents, manageSchedule va h.k.) enum tomonidan jimgina o'chirilib
-// ketardi.
+// Barcha mumkin bo'lgan ruxsat turlari.
+//
+// ⚠️ RO'YXAT UCH JOYDA MOS BO'LISHI SHART:
+//    1. shu enum
+//    2. backend'da `requirePermission` / `requireAnyPermission`
+//    3. frontend `lc/StaffManagement.vue` dagi taklif ro'yxati
+//
+//    2026-08-20 da audit qilindi va uch xil nomuvofiqlik topildi:
+//    · sakkizta huquq interfeysda taklif qilinardi, lekin hech
+//      qayerda TEKSHIRILMASDI — direktor bergan huquq hech narsa
+//      ochmasdi ("Xabar yuborish", "Jadvalni ko'rish" va h.k.).
+//      Ular olib tashlandi.
+//    · `manageSubjects` va `manageRooms` tekshiriladi, lekin
+//      interfeysda TAKLIF QILINMASDI — ya'ni ularni berib
+//      bo'lmasdi. Interfeysga qo'shildi.
+//    · `viewGrades` va `viewStaff` taklif qilinardi-yu ishlamasdi
+//      — endi haqiqiy "faqat ko'rish" darajasi.
+//
+//    Yangi huquq qo'shsangiz uchala joyni ham yangilang.
+//    `npm run check:perms` (frontend) buni nazorat qiladi.
 const PERMISSION_TYPES = [
   // Guruhlar
   'manageGroups',      // guruh yaratadi/tahrirlaydi/o'chiradi
-  'viewGroups',        // faqat ko'radi
   // O'quvchilar
   'manageStudents',    // o'quvchi qo'shadi/tahrirlaydi/o'chiradi
   'viewStudents',      // faqat ko'radi
   // Davomat
   'manageAttendance',  // davomat oladi
-  'viewAttendance',    // faqat ko'radi
   // Baholar
   'manageGrades',      // baho qo'yadi
   'viewGrades',        // faqat ko'radi
@@ -32,13 +43,11 @@ const PERMISSION_TYPES = [
   'viewStaff',         // faqat ko'radi
   // Maoshlar
   'manageSalaries',    // xodimlar maoshini boshqaradi
-  'viewOwnSalary',      // faqat o'z maoshini ko'radi
   // Filiallar
   'manageBranches',    // filiallarni boshqaradi
   'viewBranchStats',   // o'z filiali statistikasi
   // Jadval
   'manageSchedule',    // jadval tuzadi
-  'viewSchedule',      // faqat ko'radi
   // ⚠️ Xonalar. Bu `manageSchedule` dan ALOHIDA huquq: jadval
   //    tuzadigan odam dars qo'yadi, lekin binoni qayta
   //    rejalashtirmaydi. Xonani arxivlash butun jadvalga
@@ -47,12 +56,8 @@ const PERMISSION_TYPES = [
   //    Xona ro'yxatini KO'RISH uchun huquq kerak emas: jadval
   //    sahifasi uni har safar o'qiydi.
   'manageRooms',       // xona qo'shadi/tahrirlaydi/arxivlaydi
-  // Xabarlar
-  'sendSMS',
-  'sendTelegram',
   // Hisobotlar
   'viewReports',
-  'exportData',
   // Lidlar (CRM voronkasi)
   'manageLeads',       // lid qo'shadi/tahrirlaydi/o'quvchiga aylantiradi
   'viewLeads',         // faqat ko'radi
@@ -61,7 +66,6 @@ const PERMISSION_TYPES = [
   'viewHomework',
   // Umumiy
   'manageSubjects',    // fanlar ro'yxatini boshqaradi (Rus tili, IT va h.k.)
-  'viewAllStats',      // barcha filiallar statistikasi (odatda faqat director)
   // ⚠️ O'zgarishlar tarixi. Direktorda bu huquq AVTOMATIK bor.
   //    Xodimga berishdan oldin o'ylab ko'ring: o'z izini ko'ra
   //    oladigan administrator uchun jurnal ogohlantirishga
@@ -122,6 +126,24 @@ const roleSchema = new mongoose.Schema(
 )
 
 roleSchema.index({ director: 1, slug: 1 }, { unique: true })
+
+// ⚠️ ESKIRGAN HUQUQLAR JIMGINA TASHLANADI, xato bermaydi.
+//    2026-08-20 da sakkizta huquq ro'yxatdan olib tashlandi —
+//    ular interfeysda taklif qilinardi, lekin backend'da hech
+//    qayerda tekshirilmasdi (`sendSMS`, `viewSchedule` va h.k.).
+//    Bazadagi eski rollarda ular hali ham yotibdi. Enum xato
+//    tashlasa, direktor eski rolni tahrirlashga urinib
+//    "validation failed" olardi va o'zi hech narsa qila
+//    olmasdi. Shuning uchun yozishda jimgina tozalanadi.
+roleSchema.pre('validate', function (next) {
+  if (Array.isArray(this.permissions)) {
+    this.permissions = this.permissions.filter((p) =>
+      PERMISSION_TYPES.includes(p),
+    )
+  }
+  next()
+})
+
 
 // Boshqa fayllarda (masalan frontend uchun) ro'yxatni ishlatish mumkin bo'lsin
 roleSchema.statics.PERMISSION_TYPES = PERMISSION_TYPES

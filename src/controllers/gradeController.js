@@ -6,7 +6,18 @@ const { getGroupStudents } = require("../utils/enrollment");
 const {
   resolveContext,
   requirePermission,
+  requireAnyPermission,
 } = require("../utils/resolveContext");
+
+// ⚠️ O'QISH — "yoki", YOZISH — aniq `manageGrades`.
+//    Ilgari o'qish endpointlarida ruxsat tekshiruvi UMUMAN yo'q
+//    edi: davomat uchun qo'shilgan ustoz o'z tokeni bilan butun
+//    markazning barcha baholarini o'qiy olardi. Ayni paytda
+//    interfeys `viewGrades` huquqini taklif qilardi va u hech
+//    qayerda ishlatilmasdi — direktor bergan huquq hech narsa
+//    ochmasdi.
+const requireGradeRead = (ctx) =>
+  requireAnyPermission(ctx, ["viewGrades", "manageGrades"]);
 const { notifyGrades, inBackground } = require("../services/notify");
 
 // ── Baho qo'yish (bulk) ──────────────────────────────────────
@@ -115,6 +126,7 @@ exports.saveGrades = async (req, res) => {
 exports.getDayGrades = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
+    requireGradeRead(ctx);
     const { classId } = req.params;
     const { date, subject, type = "homework" } = req.query;
 
@@ -157,6 +169,7 @@ exports.getDayGrades = async (req, res) => {
 exports.getSubjects = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
+    requireGradeRead(ctx);
     const { classId } = req.params;
     const subjects = await Grade.find({
       class: classId,
@@ -172,6 +185,7 @@ exports.getSubjects = async (req, res) => {
 exports.getMonthlyAverage = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
+    requireGradeRead(ctx);
     const { classId } = req.params;
     const { month, year, subject } = req.query;
 
@@ -262,6 +276,7 @@ exports.getMonthlyAverage = async (req, res) => {
 exports.getStudentGrades = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
+    requireGradeRead(ctx);
     const { studentId } = req.params;
     const { month, year } = req.query;
 

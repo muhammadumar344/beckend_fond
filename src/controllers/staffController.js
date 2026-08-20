@@ -4,7 +4,11 @@ const Branch = require('../models/Branch');
 const Teacher = require('../models/Teacher');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { resolveContext, requirePermission } = require('../utils/resolveContext');
+const {
+  resolveContext,
+  requirePermission,
+  requireAnyPermission,
+} = require('../utils/resolveContext');
 const { sendStaffWelcomeEmail, sendPasswordResetEmail } = require('../services/emailService');
 
 // ─── HELPER ───────────────────────────────────────────────────────────────────
@@ -126,7 +130,10 @@ const createStaff = async (req, res) => {
 const getStaff = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
-    requirePermission(ctx, 'manageStaff');
+    // ⚠️ Ro'yxatni KO'RISH uchun `manageStaff` shart emas.
+    //    Buxgalterga maosh uchun xodimlar ro'yxati kerak, lekin
+    //    unga xodim QO'SHISH huquqini berish ortiqcha bo'lardi.
+    requireAnyPermission(ctx, ['viewStaff', 'manageStaff']);
 
     const query = { director: ctx.directorId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;

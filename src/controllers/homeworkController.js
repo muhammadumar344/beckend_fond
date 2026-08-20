@@ -10,20 +10,14 @@ const { sendHomeworkReport } = require("../services/telegramService");
 const {
   resolveContext,
   requirePermission,
+  requireAnyPermission,
 } = require("../utils/resolveContext");
 
 const STATUSES = HomeworkResult.STATUSES;
 
 /** O'qish uchun viewHomework yoki manageHomework dan biri yetarli */
-function requireHomeworkRead(ctx) {
-  if (ctx.isDirector) return;
-  const perms = Array.isArray(ctx.permissions) ? ctx.permissions : [];
-  if (!perms.includes("viewHomework") && !perms.includes("manageHomework")) {
-    const err = new Error("Ruxsat yo'q: \"viewHomework\" huquqi kerak");
-    err.status = 403;
-    throw err;
-  }
-}
+const requireHomeworkRead = (ctx) =>
+  requireAnyPermission(ctx, ["viewHomework", "manageHomework"]);
 
 /** Guruh shu direktorga tegishli va xodimning filialiga mosmi */
 async function findOwnedClass(ctx, classId) {

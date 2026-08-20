@@ -5,7 +5,7 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-20** (lid→guruh oqimi tugagach,
+> Oxirgi yangilanish: **2026-08-20** (ruxsatlar auditi tugagach,
 > ikkala repo push qilingan)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
@@ -61,7 +61,60 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Lid → guruh oqimi va xona teshigi"
+### Oxirgi tugagan ish — "Ruxsatlar auditi"
+
+Direktor xodimga huquq beradi — va hech narsa o'zgarmaydi. Interfeys
+ro'yxati, backend tekshiruvi va menyu bir-biriga mos emas edi.
+
+**Uch xil nomuvofiqlik topildi:**
+
+1. **Sakkizta huquq taklif qilinardi, lekin hech qayerda
+   TEKSHIRILMASDI** — `sendSMS`, `sendTelegram`, `exportData`,
+   `viewAttendance`, `viewGroups`, `viewSchedule`, `viewOwnSalary`,
+   `viewAllStats`. Direktor "SMS yuborish" ni belgilaydi va u hech
+   narsa ochmaydi. Olib tashlandi.
+2. **`manageSubjects` va `manageRooms` tekshirilardi, lekin
+   interfeysda YO'Q edi** — ya'ni ularni berib bo'lmasdi. `Fanlar`
+   sahifasi standart Branch Manager rolidan boshqa hech kimga
+   ochilmasdi. (`manageRooms` — men qoldirgan teshik.)
+3. **`viewGrades` va `viewStaff` taklif qilinardi-yu ishlamasdi** —
+   endi haqiqiy "faqat ko'rish" darajasi.
+
+**Yana bir qatlam:** `viewHomework` va `viewLeads` backendda ishlab
+turardi, lekin **menyu va route hamon `manage*` talab qilardi** —
+ya'ni o'sha huquqli xodim sahifaga umuman kira olmasdi. Yolg'on bir
+qavat yuqorida edi.
+
+**Backend:**
+- `utils/resolveContext.js` → `requireAnyPermission`. Naqsh ilgari
+  `homeworkController` va `leadController` ichida qo'lda takrorlangan
+  edi — uchinchi marta yozish o'rniga umumiy qilindi.
+- Baho **o'qish** endpointlarida ruxsat tekshiruvi UMUMAN yo'q edi:
+  davomat uchun qo'shilgan ustoz butun markazning barcha baholarini
+  o'qiy olardi. Endi `viewGrades` yoki `manageGrades`.
+- `staffController.getStaff` — `viewStaff` ham yetadi.
+- `Role.js` enum 32 dan **24 ga** tushdi + `pre('validate')` eskirgan
+  qiymatlarni jimgina tashlaydi.
+- 6 ta yangi test, jumladan **enum'dagi har bir huquq backendda
+  ishlatilishini** tekshiradigani.
+
+**Frontend:**
+- Router guard massiv `meta.permission` ni qabul qiladi (bittasi
+  yetarli), menyu `anyPerm` ishlatadi.
+- `Grades`, `Team`, `Homework`, `Leads` sahifalarida `canManage` —
+  tahrirlash tugmalari yashiriladi. Leads'da **sudrab ko'chirish**
+  ham yopiladi: karta sudralib keyin 403 qaytsa, odam voronkani
+  buzdim deb o'ylab qoladi.
+- `StaffManagement.vue` katalogi backend enum bilan **24 = 24** mos.
+- `check-perms.cjs` massiv va `anyPerm` ni solishtiradi — ataylab
+  nomuvofiqlik kiritib sinaldi, ushlaydi.
+
+**Yo'lda topilgan bug:** `Schedule.vue` dagi bo'sh vaqt qidirgichi
+ustozlar ro'yxatini `getStaff` orqali olardi — u `manageStaff`
+talab qiladi va jadval tuzadigan administratorda u yo'q. Ro'yxat
+jimgina bo'sh qolardi. `getAvailableTeachers` ga o'tkazildi.
+
+### Undan oldingi ish — "Lid → guruh oqimi va xona teshigi"
 
 Ikki qismli ish: biri — avvalgi sessiyada **qoldirilgan teshik**,
 ikkinchisi — rejadagi oqim.
@@ -105,7 +158,7 @@ ma'lumot sahifalar orasida yo'qolardi.
 Yo'lda `Leads.vue` dagi qattiq yozilgan matnlar 9 tadan **7 taga**
 tushdi (konvertatsiya oynasi tarjima qilindi).
 
-### Undan oldingi ish — "Kunlik kassa xabari"
+### Undan ham oldingi ish — "Kunlik kassa xabari"
 
 Kassa zanjiri to'liq edi, lekin direktor uni **ko'rish uchun saytga
 kirishi** kerak edi — va u har kuni kirmaydi. Uch kundan keyin kirsa,
@@ -150,7 +203,7 @@ tasdiqlanmagan to'lov) ham shu yerdan ketadi.
 ⚠️ Telegram **403** = direktor botni bloklagan. Bu xato emas, holat:
 ulanish tozalanadi, aks holda har kuni log'ga bir xil xato yozilardi.
 
-### Undan ham oldingi ish — "Pulni direktorga topshirish"
+### Eskiroq — pulni topshirish
 
 Kassaning **ikkinchi yarmi**. Birinchi yarim (`CashShift`) bitta
 savolga javob berardi: "qutida qancha bo'lishi kerak edi va qancha
@@ -373,7 +426,7 @@ O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test              →  374/374
+backend :  npm test              →  380/380
 backend :  npm run check:messages →  yangi xabarlar ru/en bilan
 frontend:  npm run build         →  ✓
 frontend:  npm run check         →  check:api, check:perms, check:css, check:i18n — 0 xato

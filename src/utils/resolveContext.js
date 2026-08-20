@@ -82,4 +82,29 @@ function requirePermission(ctx, permission) {
   }
 }
 
-module.exports = { resolveContext, requirePermission };
+/**
+ * Sanab o'tilganlardan BITTASI yetarli.
+ *
+ * ⚠️ "Faqat ko'rish" darajasi uchun. O'qish endpointi ikkala
+ *    huquqni ham qabul qilishi kerak: `manageGrades` bo'lgan
+ *    odam baholarni ko'ra olmasa bema'nilik bo'lardi, lekin
+ *    `viewGrades` bo'lgan odam ularni o'zgartira olmasligi
+ *    kerak. Ya'ni O'QISH — "yoki", YOZISH — aniq `manage*`.
+ *
+ * ⚠️ Bu naqsh ilgari `homeworkController` va `leadController`
+ *    ichida ikki marta qo'lda yozilgan edi. Uchinchi marta
+ *    yozish o'rniga shu yerga ko'chirildi: nusxalar sekin-asta
+ *    bir-biridan uzoqlashadi va qaysi biri to'g'ri ekani
+ *    bilinmay qoladi.
+ */
+function requireAnyPermission(ctx, permissions) {
+  if (ctx.isDirector) return;
+  const perms = Array.isArray(ctx.permissions) ? ctx.permissions : [];
+  if (permissions.some((p) => perms.includes(p))) return;
+
+  const err = new Error(`Ruxsat yo'q: "${permissions[0]}" huquqi kerak`);
+  err.status = 403;
+  throw err;
+}
+
+module.exports = { resolveContext, requirePermission, requireAnyPermission };

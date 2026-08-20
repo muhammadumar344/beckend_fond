@@ -117,6 +117,55 @@ bo'lib chiqadi va hammani bloklaydi. Direktor uchun har doim o'tadi.
 Shu sabab har bir `catch` bloki `res.status(err.status || 500)` yozishi shart —
 aks holda 403 xatolar 500 bo'lib chiqadi.
 
+### Ruxsatlar — ro'yxat UCH JOYDA mos bo'lishi shart
+
+| Joy | Nima |
+|---|---|
+| `models/Role.js` → `PERMISSION_TYPES` | enum |
+| `requirePermission` / `requireAnyPermission` | haqiqiy tekshiruv |
+| frontend `lc/StaffManagement.vue` → `PERMISSIONS` | direktor ko'radigan ro'yxat |
+
+2026-08-20 da audit qilindi va **uch xil nomuvofiqlik** topildi:
+
+1. **Sakkizta huquq interfeysda taklif qilinardi, lekin hech qayerda
+   tekshirilmasdi** (`sendSMS`, `sendTelegram`, `exportData`,
+   `viewAttendance`, `viewGroups`, `viewSchedule`, `viewOwnSalary`,
+   `viewAllStats`). Direktor "SMS yuborish" ni belgilaydi — va hech
+   narsa o'zgarmaydi. Olib tashlandi.
+2. **`manageSubjects` va `manageRooms` tekshirilardi, lekin
+   interfeysda YO'Q edi** — ya'ni ularni berib bo'lmasdi. Qo'shildi.
+3. **`viewGrades` va `viewStaff` taklif qilinardi-yu ishlamasdi** —
+   endi haqiqiy "faqat ko'rish" darajasi.
+
+### "Faqat ko'rish" darajasi
+
+`requireAnyPermission(ctx, ["viewX", "manageX"])` — **o'qish uchun
+"yoki", yozish uchun aniq `manage*`**. Naqsh ilgari `homeworkController`
+va `leadController` ichida qo'lda takrorlangan edi; endi
+`utils/resolveContext.js` da.
+
+Hozir shunday ishlaydiganlar: `viewGrades`, `viewStaff`,
+`viewHomework`, `viewLeads`.
+
+⚠️ **Uch qatlam bir vaqtda o'zgaradi.** Faqat backendni ochish
+yetarli emas: `viewHomework` va `viewLeads` backendda ishlab turardi,
+lekin menyu va route hamon `manage*` talab qilardi — ya'ni o'sha
+huquqli xodim sahifaga UMUMAN kira olmasdi. Frontendda `anyPerm`
+(menyu) va massiv `meta.permission` (route) ishlatiladi.
+
+⚠️ **Sahifa ichida tahrirlash tugmalari yashirilishi shart.**
+Aks holda odam tugmani bosib 403 oladi va nima noto'g'ri ekanini
+tushunmaydi. Har bir bunday sahifada `canManage` computed bor.
+
+⚠️ **Enum'dan huquq olib tashlansa eski rollar YIQILMAYDI.**
+`Role.js` dagi `pre('validate')` eskirgan qiymatlarni jimgina
+tashlaydi. Busiz direktor eski rolni tahrirlashga urinib
+"validation failed" olardi va o'zi hech narsa qila olmasdi.
+
+⚠️ `test/permissions.test.js` da **enum'dagi har bir huquq
+backendda ishlatilishini** tekshiradigan test bor. Yangi huquq
+qo'shib, uni tekshirishni unutsangiz — test yiqiladi.
+
 ### Ruxsatsiz ochiq endpoint'lar — ataylab
 
 `npm run check:perms` (frontend loyihasida) uch qatlamni solishtiradi:
@@ -889,9 +938,6 @@ qo'shsangiz `server.js` dagi shu blokka qo'shishni unutmang.
 
 - `markPayment` (teacherController) eksport qilingan, lekin hech qaysi route'ga
   ulanmagan — o'lik kod.
-- Frontend `lc/StaffManagement.vue` rol yaratishda `viewGroups`, `manageHomework`,
-  `sendSMS`, `viewOwnSalary` kabi ruxsatlarni taklif qiladi, lekin backend
-  **faqat `manage*` guruhini** tekshiradi. Ro'yxatni moslashtirish kerak.
-  (`manageExpenses` 2026-08-20 da yopildi — u ham shu ro'yxatda edi va
-  direktor bergan huquq hech qanday sahifa ochmasdi.)
+- ~~`StaffManagement.vue` taklif qiladigan ruxsatlar backend bilan mos
+  emas~~ — **2026-08-20 da yopildi**, pastdagi bo'limga qarang.
 - README.md eskirgan (loyihaning eng birinchi versiyasini tasvirlaydi).
