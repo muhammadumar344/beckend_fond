@@ -5,7 +5,7 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-20** (Mini App tarjimasi tugagach,
+> Oxirgi yangilanish: **2026-08-20** (tarjima qarzi yopilgach,
 > ikkala repo push qilingan)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
@@ -61,7 +61,41 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Mini App uch tilda"
+### Oxirgi tugagan ish — "Tarjima qarzi yopildi"
+
+18 ta faylda **159 ta** qattiq yozilgan matn bor edi — endi **0**.
+~130 ta yangi kalit × 3 til, 25 tasi mavjud kalitdan qayta ishlatildi.
+
+**Lekin eng qimmatlisi kod emas, guardrail.** Matn qoldirish
+`check:i18n` da faqat **ogohlantirish** edi — yumshoq ro'yxat
+o'qilmasdi va qarz aynan shunday to'plandi. Endi:
+
+- tarjimasiz matn — **XATO**, `npm run check` yiqiladi;
+- chegara **3 tadan 1 taga** tushdi (uchtadan kam matn qolgan fayl
+  jimgina o'tib ketardi);
+- `<label>`, `<button>`, `<h1..h3>`, `<option>`, `<th>` ichidagi
+  **bitta so'zli** matn ham ushlanadi.
+
+⚠️ **Oxirgi band aynan haqiqiy bugni yopdi.** Ruscha kirish
+sahifasida "Parol" va "Kirish" o'zbekcha qolib ketgan edi, tekshiruv
+esa yashil turardi — bitta so'zli matn kod nomi bilan chalkashmasin
+deb ataylab o'tkazib yuborilardi. Endi faqat aniq matn teglarida
+ushlanadi.
+
+⚠️ **Ataylab chetlab o'tiladi:** til nomlari
+(`LanguageSwitcher.vue` — "Русский" har doim ruscha yoziladi) va
+mahsulot nomlari (`PRODUCT` ro'yxati: Telegram Bot, Excel, Lumo).
+Ro'yxatga qo'shishdan oldin o'ylang: bu haqiqatan nommi yoki
+tarjima qilinmagan matnmi?
+
+⚠️ **Bo'lingan matnlar parametrga o'tkazildi.** Bold uchun matnni
+ikkiga bo'lish tarjimada so'z tartibini buzardi — `lg_restoreText`,
+`pf_deleteGrace`, `fp_expires`.
+
+Brauzerda uch tilda tekshirildi; guardrail ataylab buzib sinaldi
+(bitta matn → exit 1).
+
+### Undan oldingi ish — "Mini App uch tilda"
 
 `tma/App.vue` dagi **32 ta** qattiq matn → **0**. ~70 kalit × 3 til.
 
@@ -104,7 +138,7 @@ yiqitardi.
 ⚠️ Izohda `t(…)` ko'rinishida misol yozmang — skaner uni
 haqiqiy kalit deb o'qiydi (bir marta shunday bo'ldi).
 
-### Undan oldingi ish — "Landing tarjimasi"
+### Undan ham oldingi ish — "Landing tarjimasi"
 
 Ichkaridagi hamma narsa allaqachon uz/ru/en edi, **sotuv sahifasi esa
 faqat o'zbekcha**. Ruscha gapiradigan direktor landing'ni tushunmasa,
@@ -141,7 +175,7 @@ Build ham, `npm run check` ham uchalasini o'tkazib yubordi:
 bug ham `npm run dev` da sahifani ochib, uch tilni almashtirib
 ko'rilgandagina chiqdi.
 
-### Undan ham oldingi ish — "Ruxsatlar auditi"
+### Eskiroq — ruxsatlar auditi
 
 Direktor xodimga huquq beradi — va hech narsa o'zgarmaydi. Interfeys
 ro'yxati, backend tekshiruvi va menyu bir-biriga mos emas edi.
@@ -560,26 +594,23 @@ brauzer ochiladi va token qaytadan saqlanadi.
 
 ## 5. Keyin nima qilinadi
 
-Rollar bo'yicha o'ylash davom etadi. Kassa zanjiri va lid→guruh
-oqimi tugadi.
+Rollar bo'yicha o'ylash davom etadi. Kassa zanjiri, lid→guruh oqimi
+va **butun frontend tarjimasi** tugadi.
 
-### A. Qolgan tarjimalar
+### A. Backend xabarlari tarjimasi
 
-Landing va Mini App tugadi — tashqi auditoriya ko'radigan ikkalasi
-ham. Qolgani ichki sahifalar, ahamiyati kamroq:
+Frontend butunlay tugadi — interfeysda tarjimasiz matn **yo'q** va
+`npm run check` buni qulflab turibdi. Backendda esa hali **26 ta**
+xabar qolgan (`npm run check:messages`).
 
-```
-Onboarding.vue       20     ResetPassword.vue    13
-StaffManagement.vue  20     VerifyEmail.vue      10
-Profile.vue          17     Reports.vue          10
-```
+Bular foydalanuvchi ko'radigan xato matnlari: "Belgilandi",
+"Karta raqami 16 xonali bo'lishi kerak", "Oy formati: YYYY-MM"…
+Ruscha interfeysda ular jimgina o'zbekcha chiqadi.
 
-Backend'da ham **26 ta** tarjimasiz xabar (`npm run check:messages`).
+⚠️ Ish hajmi kichik, lekin **`check:messages` ni ham xatoga
+aylantirish** mumkin — frontendda aynan shu narsa qarzni to'xtatdi.
 
-⚠️ Bulardan `Onboarding.vue` biroz muhimroq — uni yangi
-direktor **birinchi marta** ko'radi.
-
-### B. Guruh/sinf ajratish (reja 1.2)
+### B. Guruh/sinf ajratish (reja 1.2)  ⭐ katta ish
 
 LC guruhlari hali `Class` da yashaydi. Skript va hujjat **tayyor**,
 ishga tushirilmagan: `src/scripts/migrateGroups.js`,
