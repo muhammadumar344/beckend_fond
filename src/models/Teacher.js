@@ -141,6 +141,24 @@ const teacherSchema = new mongoose.Schema({
     },
   },
 
+  // ── Haftalik "ketish arafasida" xabari ─────────────────────
+  //
+  // Ketish belgilari CRM'da hisoblanadi (`/lc/at-risk`), lekin
+  // sahifada yotgan ro'yxat hech kimni qutqarmaydi: direktor
+  // har kuni kirmaydi va bola ketib bo'lgach biladi.
+  //
+  // ⚠️ STANDART `weekly` — va bu kassa xabaridagi `problems`
+  //    bilan bir xil mantiq: xabar FAQAT ro'yxat bo'sh
+  //    bo'lmaganda ketadi, ya'ni "yoqilgan" holat o'z-o'zidan
+  //    shovqin yaratmaydi. Bo'sh haftada jimlik.
+  churnDigest: {
+    mode: {
+      type: String,
+      enum: ["off", "weekly"],
+      default: "weekly",
+    },
+  },
+
   // ── Xodim davomati ─────────────────────────────────────────
   // Ustoz ishga o'z vaqtida keldimi — filial boshqaruvchisi
   // kuzatadi, maosh hisobiga ta'sir qiladi.

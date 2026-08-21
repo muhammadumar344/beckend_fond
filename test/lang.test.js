@@ -225,3 +225,21 @@ test("tarjima o'zbekchaning nusxasi emas", () => {
     assert.notEqual(v.en, uz, `${uz}: en tarjima qilinmagan`);
   }
 });
+
+// ── Guardrail: tarjimasiz matn XATO ──────────────────────────
+// Ilgari `check:messages` faqat ro'yxat ko'rsatardi va qarz
+// aynan shu sababli yig'ilardi: 26 ta xabar oylab ro'yxatda
+// turdi. Frontendda `check:i18n` ni xatoga aylantirish uni bir
+// kunda to'xtatgan edi.
+test("check:messages tarjimasiz matnda exit code 1 beradi", () => {
+  const src = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "../src/scripts/checkMessages.js"),
+    "utf8",
+  );
+  const block = src.slice(src.indexOf("if (missing.length)"));
+  const closing = block.indexOf("\n} else {");
+  assert.ok(
+    block.slice(0, closing).includes("process.exitCode = 1"),
+    "tarjimasiz matn yana ogohlantirishga aylanib qolgan",
+  );
+});

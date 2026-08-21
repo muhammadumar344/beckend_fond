@@ -466,6 +466,64 @@ Telegram'dan nusxa olingan son qidiruvda topilmasdi.
 holat: `telegram.chatId` tozalanadi, aks holda har kuni log'ga
 bir xil xato yozilib turardi.
 
+⚠️ **Xabarga tasdiqlanmagan `PaymentClaim` lar ham kiradi**
+(nechta, umumiy summa, eng eskisi necha kun). Bu pul markazda
+turibdi va ota-ona kutyapti — alohida cron emas, shu xabar
+ichida: ikkinchi kunlik xabar birinchisining o'qilishini
+kamaytirardi.
+
+## Haftalik "ketish arafasida" xabari
+
+`cron/churnDigestCron.js` — **dushanba 09:00 Toshkent**. Matn
+`services/churnDigest.js` dagi **sof** `buildDigest()` da,
+`test/churnDigest.test.js` uni qulflaydi. Ro'yxatning o'zi
+`services/churnRisk.js` dan keladi (CRM'dagi `/lc/at-risk` bilan
+bitta manba).
+
+⚠️ **Ota-ona telefoni xabarning o'zida va ALOHIDA qatorda.**
+Telegram raqamni bosiladigan qiladi — direktor xabarni o'qib
+o'sha yerdan qo'ng'iroq qiladi. Markdown belgilari (`*`, `_`)
+orasida qolsa Telegram uni tanimaydi.
+
+⚠️ **Bo'sh hafta — xabar yo'q.** Kassa xabaridagi `problems`
+bilan bir xil qoida: xabar kelsa — ish bor.
+
+⚠️ Ro'yxat **8 tagacha**, qolgani "va yana N ta". Yigirmata ismli
+xabar ro'yxat emas, devor bo'lib qoladi.
+
+## `POST /teacher/telegram/director/preview`
+
+"Xabar qanday keladi?" — ulanishni tekshirishning yagona halol
+yo'li. Busiz direktor tugmani bosib ertaga 21:00 gacha kutishi
+va xabar kelmasa nima buzilganini bilmasligi kerak edi: bot
+bloklanganmi, rejim o'chiqmi, ulanish uzilganmi — uchalasi ham
+JIM.
+
+⚠️ **Bugungi HAQIQIY ma'lumot yuboriladi**, soxta namuna emas.
+Namuna ulanishni tekshiradi, lekin "menga bu kerakmi?" degan
+savolga javob bermaydi.
+
+## ⚠️ Sxemadagi standart qiymat MAVJUD hujjatlarga tushmaydi
+
+Mongoose standart qiymatni faqat hujjat `save()` qilinganda
+yozadi. `updateOne` / `findOneAndUpdate` yozmaydi — ya'ni yangi
+maydon qo'shsangiz, eski hisoblarda u bazada **umuman yo'q**.
+
+Shu sabab cron va hisobot filtrlarida **"qiymat X ga teng" emas,
+"X emas"** deb yoziladi:
+
+```js
+"cashReport.mode": { $in: ["problems", "daily"] }  // ❌ eski hisob tushmaydi
+"cashReport.mode": { $ne: "off" }                  // ✅ standart ham qamrab olinadi
+```
+
+O'qiyotganda ham shunday: `dir.cashReport?.mode || "problems"`.
+
+Bu haqiqiy bug bo'lgan (2026-08-21 da topildi): kunlik kassa
+xabari `cashReport` maydoni paydo bo'lishidan oldin ochilgan
+hisoblarga **hech qachon kelmagan** — xato bermagani uchun buni
+hech kim sezmagan.
+
 ## Pulni topshirish — kassaning ikkinchi yarmi
 
 `CashShift` bitta savolga javob beradi: "qutida qancha bo'lishi
@@ -710,8 +768,13 @@ npm run check:messages   # tarjimasiz qolgan xabarlarni ko'rsatadi
 ```
 
 ⚠️ Kodda xabar matnini o'zgartirsangiz `utils/messages.js` dagi kalitni
-ham yangilang. Aks holda o'sha xabar **jimgina** o'zbekcha chiqaveradi —
-xato bermaydi. `check:messages` aynan shuni topadi.
+ham yangilang. Aks holda o'sha xabar **jimgina** o'zbekcha chiqaveradi.
+`check:messages` aynan shuni topadi va 2026-08-21 dan beri
+**exit 1** qaytaradi (ilgari yumshoq ro'yxat edi va shu sababli
+26 ta xabar oylab tarjimasiz turdi — frontendda aynan shu
+qattiqlashtirish qarzni to'xtatgan edi).
+
+`npm run check` — `npm test` va `check:messages` birga.
 
 ⚠️ `X-Lang` `server.js` dagi CORS `allowedHeaders` ro'yxatida bo'lishi
 shart. Bo'lmasa brauzer sarlavhani umuman yubormaydi va hamma narsa
@@ -928,6 +991,8 @@ qildi — foydalanuvchi qaytadan so'rasa bo'ldi.
 | `cron/reminderCron.js` | 1-sana 09:00 | Ota-onalarga Telegram eslatma |
 | `cron/accountCleanupCron.js` | har kuni 03:30 | Muhlati o'tgan hisoblarni o'chirish |
 | `cron/supportCron.js` | har 5 daqiqa | Kelmagan o'quvchini belgilash + 3 kun blok |
+| `cron/cashReportCron.js` | har kuni 21:00 | Kunlik kassa xabari direktorga |
+| `cron/churnDigestCron.js` | dushanba 09:00 | Ketish arafasidagi o'quvchilar direktorga |
 
 ⚠️ `startReminderCron` yozilgan edi, lekin **hech qayerdan
 chaqirilmagan** — ya'ni Pro/Premium da sotilayotgan "oylik eslatma"

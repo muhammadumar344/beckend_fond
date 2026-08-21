@@ -147,12 +147,16 @@ exports.sendToStudents = async (req, res) => {
 // ════════════════════════════════════════════════════════════
 const Teacher = require('../models/Teacher')
 const dirTg = require('../services/directorTelegram')
+const cashReport = require('../services/cashReport')
+const churnDigest = require('../services/churnDigest')
 
 // GET /api/teacher/telegram/director — ulanish holati
 exports.getDirectorLink = async (req, res) => {
   try {
     const doc = await Teacher.findById(req.user.id)
-      .select('telegram.chatId telegram.username telegram.linkedAt cashReport')
+      .select(
+        'telegram.chatId telegram.username telegram.linkedAt cashReport churnDigest',
+      )
       .lean()
 
     res.json({
@@ -161,6 +165,8 @@ exports.getDirectorLink = async (req, res) => {
       username: doc?.telegram?.username || '',
       linkedAt: doc?.telegram?.linkedAt || null,
       mode: doc?.cashReport?.mode || 'problems',
+      // Haftalik "ketish arafasida" xabari — ayni shu kanal
+      churnMode: doc?.churnDigest?.mode || 'weekly',
     })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })
@@ -218,6 +224,91 @@ exports.setCashReportMode = async (req, res) => {
       { $set: { 'cashReport.mode': mode } },
     )
     res.json({ success: true, mode })
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message })
+  }
+}
+
+// PUT /api/teacher/telegram/director/churn-mode   { mode }
+//
+// ⚠️ Kassa rejimidan ALOHIDA saqlanadi. Ikkalasini bitta
+//    sozlamaga yig'sak, kunlik kassa xabarini o'chirgan direktor
+//    ketayotgan o'quvchilar haqidagi xabardan ham ayrilardi —
+//    va buni bilmasdi ham.
+exports.setChurnDigestMode = async (req, res) => {
+  try {
+    const mode = String(req.body.mode || '')
+    if (!['off', 'weekly'].includes(mode)) {
+      return res.status(400).json({ success: false, error: "Rejim noto'g'ri" })
+    }
+
+    await churnDigest.setMode(req.user.id, mode)
+    res.json({ success: true, mode })
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message })
+  }
+}
+
+// POST /api/teacher/telegram/director/preview   { type }
+//
+// "Xabar qanday keladi?" — ulanishni tekshirishning yagona
+// halol yo'li. Busiz direktor tugmani bosib, ertaga soat 21:00
+// gacha kutishi va xabar kelmasa nima buzilganini bilmasligi
+// kerak edi: bot bloklanganmi, rejim o'chiqmi, ulanish
+// uzilganmi — uchalasi ham JIM.
+//
+// ⚠️ Bu yerda BUGUNGI HAQIQIY ma'lumot yuboriladi, soxta namuna
+//    emas. Namuna xabar ulanishni tekshiradi, lekin "menga bu
+//    kerakmi?" degan savolga javob bermaydi.
+exports.sendDirectorPreview = async (req, res) => {
+  try {
+    const type = String(req.body.type || 'cash')
+    if (!['cash', 'churn'].includes(type)) {
+      return res.status(400).json({ success: false, error: "Xabar turi noto'g'ri" })
+    }
+
+    const doc = await Teacher.findById(req.user.id)
+      .select('name telegram.chatId')
+      .lean()
+    if (!doc?.telegram?.chatId) {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Telegram ulanmagan' })
+    }
+
+    const bot = getBot()
+    if (!bot)
+      return res.status(503).json({ success: false, error: 'Bot ishlamayapti' })
+
+    let text
+    if (type === 'cash') {
+      const data = await cashReport.collect(doc)
+      text = cashReport.buildReport(data).text
+    } else {
+      const data = await churnDigest.collect(doc, churnDigest.crmLink())
+      text = churnDigest.buildDigest(data).text
+    }
+
+    try {
+      await bot.sendMessage(doc.telegram.chatId, text, { parse_mode: 'Markdown' })
+    } catch (e) {
+      // ⚠️ 403 = botni bloklagan. Ulanishni tozalaymiz —
+      //    aks holda interfeys "ulangan" deb turaveradi va
+      //    direktor nega xabar kelmayotganini tushunmasdi.
+      if (e.response?.body?.error_code === 403) {
+        await Teacher.updateOne(
+          { _id: req.user.id },
+          { $set: { 'telegram.chatId': null, 'telegram.linkedAt': null } },
+        )
+        return res.status(400).json({
+          success: false,
+          error: 'Bot bloklangan — Telegram\'da botni oching va qayta ulaning',
+        })
+      }
+      throw e
+    }
+
+    res.json({ success: true, message: 'Yuborildi' })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })
   }

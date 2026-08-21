@@ -193,6 +193,17 @@ router.get("/telegram/director", onlyTeacher, tgCtrl.getDirectorLink);
 router.post("/telegram/director", onlyTeacher, tgCtrl.createDirectorLink);
 router.delete("/telegram/director", onlyTeacher, tgCtrl.unlinkDirector);
 router.put("/telegram/director/mode", onlyTeacher, tgCtrl.setCashReportMode);
+router.put(
+  "/telegram/director/churn-mode",
+  onlyTeacher,
+  tgCtrl.setChurnDigestMode,
+);
+// "Xabar qanday keladi?" — bugungi haqiqiy ma'lumot bilan
+router.post(
+  "/telegram/director/preview",
+  onlyTeacher,
+  tgCtrl.sendDirectorPreview,
+);
 router.get("/telegram/parents", onlyTeacher, tgCtrl.getParents);
 router.get(
   "/telegram/parents/class/:classId",

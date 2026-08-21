@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "node --test \"test/*.test.js\"",
-    "check:messages": "node src/scripts/checkMessages.js"
+    "check:messages": "node src/scripts/checkMessages.js",
+    "check": "npm test && npm run check:messages"
   },
   "keywords": [
     "school",

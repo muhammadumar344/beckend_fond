@@ -5,8 +5,8 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-20** (sozlamalar sahifasi tugagach,
-> ikkala repo push qilingan)
+> Oxirgi yangilanish: **2026-08-21** (ketish arafasidagi o'quvchilar
+> Telegram'ga chiqdi, backend xabarlari tarjimasi tugadi)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
 > `HANDOFF.md` — **shu paytdagi holat**: nima tugadi, nima to'xtab turibdi,
@@ -67,7 +67,102 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Markaz sozlamalari sahifasi"
+### Oxirgi tugagan ish — "Ketayotgan o'quvchi direktorga o'zi aytadi"
+
+Ro'yxat allaqachon bor edi (`/lc/at-risk`, `services/churnRisk.js`) —
+lekin u **sahifada yotardi**. Direktor esa har kuni saytga kirmaydi:
+bola uch dars kelmaydi, keyin to'rt, keyin butunlay qoladi va markaz
+buni navbatdagi to'lov kelmaganda biladi. O'sha paytda qaytarib
+bo'lmaydi.
+
+Bu — kunlik kassa xabari bilan **aynan bir xil muammo**, shuning
+uchun aynan o'sha kanal ishlatildi (`Teacher.telegram`). HANDOFF'da
+u kanal haqida "bitta funksiya uchun emas" deb yozib qo'yilgandi;
+ikkinchi ishlatuvchisi shu.
+
+**Backend:**
+- `services/churnDigest.js` — **sof** `buildDigest()` + `collect()`.
+- `cron/churnDigestCron.js` — **dushanba 09:00 Toshkent**, `server.js` ga ulandi.
+- `Teacher.churnDigest.mode` (`weekly` | `off`, standart `weekly`).
+- `PUT /teacher/telegram/director/churn-mode`.
+- `POST /teacher/telegram/director/preview` — **"Hozir yuborib ko'rish"**.
+- 18 ta yangi test.
+
+**Frontend:**
+- `AtRisk.vue` — haftalik xabar sozlamasi aynan ro'yxat ostida.
+- `Cash.vue` — kassa xabari uchun ham "Hozir yuborib ko'rish".
+- `Settings.vue` — bitta ulanish, ikkita xabar ekani yozib qo'yildi.
+- 10 ta i18n kalit × 3 til.
+
+**Uchta ataylab qilingan qaror:**
+
+1. **Telefon raqami xabarning O'ZIDA.** Telegram raqamni bosiladigan
+   qiladi — direktor xabarni o'qib, o'sha yerdan qo'ng'iroq qiladi.
+   Faqat ism yozsak, u CRM'ni ochib, o'quvchini qidirib, raqamni
+   ko'chirishi kerak bo'lardi va ish aynan shu yerda "keyinroq" ga
+   qolardi. Raqam **alohida qatorda, bezaksiz**: Markdown belgilari
+   orasida qolsa Telegram uni tanimaydi (test bilan qulflangan).
+2. **Bo'sh hafta — xabar yo'q.** "Bu hafta hech kim ketmayapti"
+   foydali ko'rinadi, lekin odatni buzadi: xabar kelsa — ish bor.
+   Kassa xabaridagi `problems` bilan bir xil qoida.
+3. **Sozlama ro'yxat ostida, ULANISH esa Kassa sahifasida qoldi.**
+   Bir martalik token ikki joydan so'ralsa, ikkinchisi jimgina
+   eskirgan havola berardi.
+
+⚠️ **"Hozir yuborib ko'rish" — bugungi HAQIQIY ma'lumot**, soxta
+namuna emas. Namuna ulanishni tekshiradi, lekin "menga bu kerakmi?"
+degan savolga javob bermaydi. Busiz direktor tugmani bosib ertaga
+21:00 gacha kutishi va xabar kelmasa nima buzilganini bilmasligi
+kerak edi: bot bloklanganmi, rejim o'chiqmi, ulanish uzilganmi —
+uchalasi ham JIM.
+
+### Shu bilan birga — tasdiqlanmagan to'lovlar kassa xabariga qo'shildi
+
+Ota-ona kartaga o'tkazadi va ilovada "to'ladim" deydi
+(`PaymentClaim`). Hech kim tasdiqlamasa, uning qarzi ochiq turadi
+va u o'zini e'tiborsiz qoldirilgandek his qiladi — pul esa
+allaqachon markazda.
+
+Endi kunlik kassa xabarida alohida qator bor: nechta so'rov,
+umumiy summa va **eng eskisi necha kundan beri kutayotgani**.
+
+⚠️ **Yangi cron YOZILMADI.** Bu ham kassa haqidagi gap va xabar
+allaqachon har kuni 21:00 da ketadi. Ikkinchi xabar birinchisining
+o'qilishini kamaytirardi — bu loyihada bir necha marta takrorlangan
+qoida.
+
+⚠️ Tasdiqlanmagan so'rov `hasProblems` ni yoqadi, ya'ni `problems`
+rejimidagi direktor ham ko'radi. Kutayotgan ota-ona — bu muammo.
+
+### Yo'lda topilgan IKKITA jim bug
+
+⚠️ **1. Kunlik kassa xabari eski hisoblarga UMUMAN kelmasdi.**
+Cron `"cashReport.mode": { $in: ["problems", "daily"] }` deb
+qidirardi. Lekin Mongoose standart qiymatni faqat hujjat
+**saqlanganda** yozadi, ulanish esa `updateOne` bilan ketadi —
+ya'ni `cashReport` maydoni paydo bo'lishidan oldin ochilgan
+hisoblarda u bazada **umuman yo'q**. `$in` bunday hujjatni topmaydi.
+Direktor Telegram'ga ulanadi, "Faqat muammo bo'lganda" turadi,
+va xabar hech qachon kelmaydi — xatosiz, jimgina. Endi
+`{ $ne: "off" }` (maydoni yo'q hujjat ham qamrab olinadi) va rejim
+`dir.cashReport?.mode || "problems"` bilan o'qiladi.
+
+**Yangi sxema maydoni qo'shsangiz shu tuzoqni eslang:** mavjud
+hujjatlarda u yo'q. Filtrni "qiymat X ga teng" emas, "X emas" deb
+yozing.
+
+⚠️ **2. `check:api` va `check:perms` bulutli/yangi klonda umuman
+ishlamasdi.** Backend yo'li qattiq yozilgan edi
+(`../../school_fond`), GitHub'dagi repo nomi esa `beckend_fond`.
+Skript to'rtta ogohlantirish yozib, ENOENT bilan yiqilardi — va bu
+zanjirning o'rtasida bo'lgani uchun `check:perms`, `check:css`,
+`check:i18n` **umuman ishlamasdi**. Ya'ni guardrail o'zi jimgina
+o'chib qolardi. Endi `scripts/backend-path.cjs`: `LUMO_BACKEND`
+o'zgaruvchisi → yonidagi papkalar (nomi muhim emas, `src/routes/lc.js`
+va `src/models/Role.js` bo'yicha taniladi) → topilmasa tushunarli
+xabar va exit 1.
+
+### Undan oldingi ish — "Markaz sozlamalari sahifasi"
 
 Sozlamalar **besh xil sahifaga tarqalgan** edi: qo'shimcha mashg'ulot
 o'z sahifasida, xodim davomati o'zinikida, kassa xabari Kassa ostida,
@@ -590,10 +685,11 @@ O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test              →  380/380
-backend :  npm run check:messages →  yangi xabarlar ru/en bilan
+backend :  npm test              →  403/403
+backend :  npm run check:messages →  tarjimasiz matn 0 ta (endi XATO beradi)
+backend :  npm run check          →  test + check:messages (yangi qisqartma)
 frontend:  npm run build         →  ✓
-frontend:  npm run check         →  check:api, check:perms, check:css, check:i18n — 0 xato
+frontend:  npm run check         →  verify, check:api, check:perms, check:css, check:i18n — 0 xato
 ```
 
 ---
@@ -644,21 +740,26 @@ brauzer ochiladi va token qaytadan saqlanadi.
 
 ## 5. Keyin nima qilinadi
 
-Rollar bo'yicha o'ylash davom etadi. Kassa zanjiri, lid→guruh oqimi
-va **butun frontend tarjimasi** tugadi.
+Rollar bo'yicha o'ylash davom etadi. Kassa zanjiri, lid→guruh oqimi,
+**butun frontend tarjimasi** va **backend xabarlari** tugadi.
 
-### A. Backend xabarlari tarjimasi
+Direktorning Telegram kanali endi **ikkita** xabar tashiydi (kunlik
+kassa, haftalik ketish arafasida). Uchinchisi uchun tayyor o'rin bor:
+xabar matni sof funksiyada, cron esa bitta naqshdan nusxa
+(`cashReportCron` / `churnDigestCron` — ikkalasi bir xil).
 
-Frontend butunlay tugadi — interfeysda tarjimasiz matn **yo'q** va
-`npm run check` buni qulflab turibdi. Backendda esa hali **26 ta**
-xabar qolgan (`npm run check:messages`).
+### A. Backend xabarlari tarjimasi — ✅ TUGADI (2026-08-21)
 
-Bular foydalanuvchi ko'radigan xato matnlari: "Belgilandi",
-"Karta raqami 16 xonali bo'lishi kerak", "Oy formati: YYYY-MM"…
-Ruscha interfeysda ular jimgina o'zbekcha chiqadi.
+Qolgan **30 ta** xabar (26 tasi eski ro'yxatdan + 4 tasi yangi kod)
+`utils/messages.js` ga qo'shildi. `npm run check:messages` endi
+**xato beradi** (exit 1), ogohlantirish emas — frontendda aynan shu
+narsa qarzni bir kunda to'xtatgan edi. Guardrail ataylab buzib
+sinaldi va `test/lang.test.js` uni qulflab turibdi.
 
-⚠️ Ish hajmi kichik, lekin **`check:messages` ni ham xatoga
-aylantirish** mumkin — frontendda aynan shu narsa qarzni to'xtatdi.
+ℹ️ Chiqishdagi "lug'atda bor, kodda topilmadi" ro'yxati (19 ta) —
+**hisobot, xato emas**: skaner faqat `error:`/`message:` dan keyin
+darhol qo'shtirnoq kelgan joyni ko'radi, shart ichida yasalgan
+xabarni esa topmaydi.
 
 ### B. Guruh/sinf ajratish (reja 1.2)  ⭐ katta ish
 
@@ -741,8 +842,29 @@ Bular allaqachon bir marta bug chiqargan. Takrorlamang.
 
 9. **Yangi xabar yozsangiz `utils/messages.js` ga ham qo'shing.** Aks
    holda ruscha va inglizcha interfeysda o'sha xabar **jimgina**
-   o'zbekcha chiqaveradi — xato bermaydi. `npm run check:messages`
-   aynan shuni topadi.
+   o'zbekcha chiqaveradi. `npm run check:messages` aynan shuni topadi
+   va 2026-08-21 dan beri **exit 1** qaytaradi.
+
+10. **Sxemadagi standart qiymat MAVJUD hujjatlarga tushmaydi.**
+    Mongoose uni faqat hujjat `save()` qilinganda yozadi;
+    `updateOne` / `findOneAndUpdate` yozmaydi. Ya'ni yangi maydon
+    qo'shsangiz, eski hisoblarda u bazada **umuman yo'q**.
+
+    Shu sabab cron va hisobot filtrlarida **"qiymat X ga teng"
+    emas, "X emas"** deb yozing:
+
+    ```js
+    "cashReport.mode": { $in: ["problems", "daily"] }  // ❌ eski hisob tushmaydi
+    "cashReport.mode": { $ne: "off" }                  // ✅ standart ham qamrab olinadi
+    ```
+
+    Kodda o'qiyotganda ham shunday: `dir.cashReport?.mode || "problems"`.
+    Kunlik kassa xabari aynan shu sababli eski hisoblarga hech qachon
+    kelmagan — va xato bermagani uchun buni hech kim sezmagan.
+
+11. **Ikkala repoda `HANDOFF.md` bir xil bo'lishi shart.** Birini
+    yangilab ikkinchisini unutsangiz, keyingi sessiya qaysi
+    repodan boshlashiga qarab boshqa holatni o'qiydi.
 
 ---
 
@@ -751,8 +873,7 @@ Bular allaqachon bir marta bug chiqargan. Takrorlamang.
 ```bash
 # backend
 cd /c/Users/Lenovo/Desktop/school_fond
-npm test
-npm run check:messages
+npm run check          # npm test + check:messages
 
 # frontend
 cd /c/Users/Lenovo/Desktop/font_front/font

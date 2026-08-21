@@ -35,10 +35,19 @@ const sendCashReports = async () => {
 
   // ⚠️ Faqat LC rejimi. Fond'da kassa tushunchasi yo'q —
   //    sinf rahbariga "smena yopilmagan" deb yozish ma'nosiz.
+  // ⚠️ `$ne: "off"` — `$in: [...]` EMAS, va bu jiddiy farq.
+  //    Mongoose standart qiymatni faqat hujjat SAQLANGANDA
+  //    yozadi; `updateOne`/`findOneAndUpdate` esa yozmaydi.
+  //    Ya'ni `cashReport` maydoni paydo bo'lishidan oldin
+  //    ochilgan hisoblarda u bazada UMUMAN YO'Q — Telegram'ga
+  //    ulangan bo'lsa ham. `$in` bunday hujjatni topmasdi va
+  //    kunlik xabar o'sha direktorlarga hech qachon
+  //    kelmasdi — jimgina, xatosiz. `$ne` esa maydoni yo'q
+  //    hujjatni ham qamrab oladi (standart = `problems`).
   const directors = await Teacher.find({
     institutionType: "learning_center",
     "telegram.chatId": { $ne: null },
-    "cashReport.mode": { $in: ["problems", "daily"] },
+    "cashReport.mode": { $ne: "off" },
     deletionScheduledFor: null,
     isActive: { $ne: false },
   })
@@ -55,7 +64,13 @@ const sendCashReports = async () => {
 
       // ⚠️ Bu yerda butun funksiyaning ma'nosi. `problems`
       //    rejimida jim kun — JIM QOLADI.
-      if (dir.cashReport?.mode === "problems" && !hasProblems) {
+      //
+      // ⚠️ Maydon yo'q bo'lsa `problems` deb olinadi — sxemadagi
+      //    standart bilan bir xil. Busiz maydonsiz hisob har
+      //    kuni xabar olardi va aynan biz qochayotgan
+      //    shovqinga aylanardi.
+      const mode = dir.cashReport?.mode || "problems";
+      if (mode === "problems" && !hasProblems) {
         skipped += 1;
         continue;
       }
