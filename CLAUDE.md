@@ -716,7 +716,66 @@ qo'shing** — aks holda o'chirilgan direktorning hujjatlari bazada
 egasiz qoladi. `test/accountPurge.test.js` buni ushlaydi (modellar
 papkasini o'zi skanerlaydi).
 
-## Tarif limitlari — `effectivePlan`
+## Tarif limitlari — YAGONA MANBA `planHelper`
+
+Narx, chegara va funksiyalar **faqat** `utils/planHelper.js` da.
+Boshqa joyda jadval yozilmaydi — na controllerda, na frontendda.
+
+Bu qoida ikkita haqiqiy zarardan keyin yozildi (2026-08-21):
+
+1. **`branchController` o'z jadvalini tutardi** (`free: 1, pro: 3,
+   premium: 10`). Natijada Premium LC'ga 9999 ta filial va'da
+   qilinardi, kod esa 10 tada to'xtatardi — eng ko'p to'lagan
+   mijoz tushunarsiz devorga urilardi.
+2. **`Subscription.vue` narxni o'zi yozib turardi** (29 000 /
+   59 000 — Fond raqamlari). Sahifa LC menyusida ham bor, ya'ni
+   markaz direktori Pro'ni 29 000 deb ko'rib o'shancha
+   o'tkazardi; so'rov esa `priceFor` bo'yicha 199 000 bo'lib
+   tushardi va admin uni rad etardi.
+
+Frontend katalogni `GET /teacher/subscription` dan oladi:
+
+```js
+{ mode, plans: [{ id, price, limits, features }], usage, limits }
+```
+
+`usage` — hozirgi sanoq (guruh, o'quvchi, xodim, filial, ochiq
+lid). Interfeys chegarani **bosishdan oldin** ko'rsatishi uchun;
+`src/composables/usePlanLimits.js` shuni o'qiydi.
+
+⚠️ O'quvchi sanog'i `countUniqueStudents` orqali — ikki guruhda
+o'qiydigan bola ikki marta sanalmasin.
+
+### Qaysi chegara qayerda tekshiriladi
+
+| Chegara | Joy |
+|---|---|
+| `classes` | `teacherController.createClass` → `canOpenNewClass` |
+| `students` | `teacherController.addStudent`, `enrollmentController`, `leadController` → `canAddStudent` |
+| `staff` | `staffController.createStaff` → `canAddStaff` |
+| `branches` | `branchController.createBranch` → `canOpenBranch` |
+| `leads` | `leadController.createLead` → `limitsFor(...).leads` |
+
+⚠️ `canAddStaff` va `canOpenBranch` 2026-08-21 gacha **yozilgan-u
+hech qayerdan chaqirilmagan** edi — ya'ni Free hisob cheksiz
+xodim qo'sha olardi. `test/planHelper.test.js` endi ulanishning
+o'zini ham tekshiradi.
+
+⚠️ **Lidlarda faqat OCHIQ lidlar sanaladi** (`won`/`lost` emas)
+va **markaz bo'yicha**, filial bo'yicha emas.
+
+⚠️ Chegaraga urilgan javob: `403` + `requiresUpgrade: true` +
+`limit: { max, current, plan }`. **Raqam matn ichida emas** —
+shablonli xabar tarjima qilinmaydi va ruscha interfeysda
+o'zbekcha chiqib qolardi.
+
+⚠️ **Fond filiallari 1 / 3 / 10** — bu `branchController` dan
+ko'chirilgan ISHLAB TURGAN qiymat. Jadvaldagi eski `0 / 0 / 5`
+hech qachon qo'llanmagan; uni "tiklash" bugun filiali bor
+direktordan imkoniyatni tortib olardi. Chegarani pasaytirish —
+mahsulot qarori.
+
+## Sinf tarifi — `effectivePlan`
 
 `Class.plan` — sinf ochilgandagi tarifning nusxasi. O'quvchi limiti
 endi **undan va direktorning hozirgi tarifidan kattarog'i** bo'yicha

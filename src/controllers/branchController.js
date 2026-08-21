@@ -15,6 +15,11 @@ const {
   resolveContext,
   requirePermission,
 } = require("../utils/resolveContext");
+const {
+  canOpenBranch,
+  limitsFor,
+  activePlanOf,
+} = require("../utils/planHelper");
 
 // ── Filial yaratish ──────────────────────────────────────────
 exports.createBranch = async (req, res) => {
@@ -27,21 +32,31 @@ exports.createBranch = async (req, res) => {
         .status(400)
         .json({ success: false, error: "Filial nomi majburiy" });
 
-    // Limit tekshirish (premium: 10, pro: 3, free: 1)
+    // ⚠️ CHEGARA `planHelper` DAN — bu yerda o'z jadvali bor edi
+    //    (`{ free: 1, pro: 3, premium: 10 }`) va u `PLAN_LIMITS`
+    //    bilan mos kelmasdi. Ikkita jadval ikkita haqiqat degani:
+    //    Premium LC'ga 9999 ta filial va'da qilinardi, kod esa
+    //    10 tada to'xtatardi — ya'ni eng ko'p to'lagan mijoz
+    //    tushunarsiz devorga urilardi. Jadval endi bitta joyda
+    //    (`utils/planHelper.js`) va rejimni ham hisobga oladi:
+    //    Fond va LC uchun raqamlar boshqacha.
     const Teacher = require("../models/Teacher");
     const teacher = await Teacher.findById(teacherId);
-    const plan = teacher?.activePlan() || "free";
-    const limits = { free: 1, pro: 3, premium: 10 };
 
     const count = await Branch.countDocuments({
       teacher: teacherId,
       isActive: true,
     });
-    if (count >= limits[plan]) {
+    if (!canOpenBranch(teacher, count)) {
+      const max = limitsFor(activePlanOf(teacher), teacher).branches || 0;
       return res.status(403).json({
         success: false,
-        error: `${plan.toUpperCase()} rejada maksimal ${limits[plan]} ta filial ochishingiz mumkin`,
+        // ⚠️ Matn SODDA, raqam esa alohida maydonda: shablonli
+        //    xabar (`${max} ta filial`) tarjima qilinmaydi va
+        //    ruscha interfeysda o'zbekcha chiqib qolardi.
+        error: "Tarif chegarasi: bu rejada ko'proq filial ochib bo'lmaydi",
         requiresUpgrade: true,
+        limit: { max, current: count, plan: activePlanOf(teacher) },
       });
     }
 

@@ -13,8 +13,15 @@ const {
   hasFeature,
   canOpenNewClass,
   canAddStudent,
+  canAddStaff,
+  canOpenBranch,
   effectivePlan,
 } = require("../src/utils/planHelper");
+
+const fs = require("node:fs");
+const path = require("node:path");
+const readSrc = (rel) =>
+  fs.readFileSync(path.join(__dirname, "../src", rel), "utf8");
 
 /** Teacher hujjatining soddalashtirilgan modeli */
 const teacher = (plan, active = true) => ({
@@ -219,4 +226,98 @@ test("canAddStudent — obunasi tugagan premium free limitida qoladi", () => {
   const expired = teacher("premium", false);
   assert.equal(canAddStudent("free", 29, expired), true);
   assert.equal(canAddStudent("free", 30, expired), false);
+});
+
+// ── Xodim va filial chegaralari ──────────────────────────────
+// ⚠️ Bu ikkalasi 2026-08-21 gacha YOZILGAN-U ULANMAGAN edi:
+//    `canAddStaff` va `canOpenBranch` hech qayerdan
+//    chaqirilmasdi. Ya'ni Free hisob cheksiz xodim qo'sha
+//    olardi va Pro sotib olishning ma'nosi qolmasdi.
+
+const lcTeacher = (plan, active = true) => ({
+  plan,
+  institutionType: LC,
+  isPlanActive: () => active,
+});
+
+test("canAddStaff — LC free'da bitta xodim", () => {
+  const t = lcTeacher("free");
+  assert.equal(canAddStaff(t, 0), true);
+  assert.equal(canAddStaff(t, 1), false);
+});
+
+test("canAddStaff — pro 10 ta, premium amalda cheksiz", () => {
+  assert.equal(canAddStaff(lcTeacher("pro"), 9), true);
+  assert.equal(canAddStaff(lcTeacher("pro"), 10), false);
+  assert.equal(canAddStaff(lcTeacher("premium"), 500), true);
+});
+
+test("canAddStaff — Fond rejimida xodim umuman yo'q", () => {
+  // Fond = bitta sinf rahbari. `staff: 0` — ataylab.
+  assert.equal(canAddStaff(teacher("premium"), 0), false);
+});
+
+test("canOpenBranch — Premium LC 10 tada TO'XTAMAYDI", () => {
+  // Aynan shu bug edi: `branchController` o'z jadvalini tutardi
+  // (`premium: 10`), `PLAN_LIMITS` esa 9999 deydi. Eng ko'p
+  // to'lagan mijoz tushunarsiz devorga urilardi.
+  assert.equal(canOpenBranch(lcTeacher("premium"), 10), true);
+  assert.equal(canOpenBranch(lcTeacher("pro"), 3), false);
+  assert.equal(canOpenBranch(lcTeacher("free"), 1), false);
+});
+
+test("obunasi tugagan hisob free chegarasiga tushadi", () => {
+  const expired = lcTeacher("premium", false);
+  assert.equal(canAddStaff(expired, 1), false);
+  assert.equal(canOpenBranch(expired, 1), false);
+});
+
+// ── Chegaralar HAQIQATAN ulanganmi ───────────────────────────
+// Sof mantiq to'g'ri bo'lgani yetarli emas — bu loyihada aynan
+// ULANISH tushib qolgan edi (`startReminderCron` bilan bir xil).
+
+test("staffController xodim chegarasini tekshiradi", () => {
+  const src = readSrc("controllers/staffController.js");
+  assert.ok(src.includes("canAddStaff("), "createStaff chegarani tekshirmayapti");
+});
+
+test("branchController o'z jadvalini emas, planHelper'ni ishlatadi", () => {
+  const src = readSrc("controllers/branchController.js");
+  assert.ok(src.includes("canOpenBranch("));
+  // Izohda eski jadval matn sifatida qolgan (tarix uchun),
+  // shuning uchun KOD tekshiriladi: mahalliy jadval e'loni.
+  assert.ok(
+    !/const\s+limits\s*=\s*\{/.test(src),
+    "ikkinchi jadval qaytib kelgan — endi bitta manba bo'lishi kerak",
+  );
+});
+
+test("leadController ochiq lidlar chegarasini tekshiradi", () => {
+  const src = readSrc("controllers/leadController.js");
+  assert.ok(src.includes("limit.leads") || src.includes(".leads"));
+  // ⚠️ Yopilgan lidlar sanalmasin: aks holda yigirmata lid
+  //    yozgan markaz abadiy to'xtab qolardi.
+  assert.ok(src.includes('$nin: ["won", "lost"]'));
+});
+
+test("tarif katalogi backenddan ketadi (narx frontendda qotirilmaydi)", () => {
+  // LC direktori Fond narxini ko'rib, o'shancha to'lardi va
+  // so'rovi rad etilardi — narx endi `priceFor` dan keladi.
+  const src = readSrc("controllers/teacherController.js");
+  assert.ok(src.includes("buildPlanCatalog"));
+  assert.ok(src.includes("priceFor(id, teacher)"));
+  assert.ok(src.includes("collectUsage"));
+});
+
+test("Fond filiallari ishlab turgan xatti-harakatni saqlaydi", () => {
+  // ⚠️ Jadval birlashtirilganda `branchController` dagi haqiqiy
+  //    qiymatlar olindi (1 / 3 / 10). Bu yerdagi eski `0 / 0 / 5`
+  //    hech qachon qo'llanmagan — uni "tiklash" bugun filiali bor
+  //    direktordan imkoniyatni tortib olardi.
+  assert.equal(canOpenBranch(teacher("free"), 0), true);
+  assert.equal(canOpenBranch(teacher("free"), 1), false);
+  assert.equal(canOpenBranch(teacher("pro"), 2), true);
+  assert.equal(canOpenBranch(teacher("pro"), 3), false);
+  assert.equal(canOpenBranch(teacher("premium"), 9), true);
+  assert.equal(canOpenBranch(teacher("premium"), 10), false);
 });

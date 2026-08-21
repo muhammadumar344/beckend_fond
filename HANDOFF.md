@@ -6,7 +6,8 @@
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
 > Oxirgi yangilanish: **2026-08-21** (ketish arafasidagi o'quvchilar
-> Telegram'ga chiqdi, backend xabarlari tarjimasi tugadi)
+> Telegram'ga chiqdi, backend xabarlari tarjimasi tugadi, tarif
+> chegaralari haqiqatan ishlay boshladi)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
 > `HANDOFF.md` — **shu paytdagi holat**: nima tugadi, nima to'xtab turibdi,
@@ -67,7 +68,83 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Ketayotgan o'quvchi direktorga o'zi aytadi"
+### Oxirgi tugagan ish — "Sotilayotgan tarif haqiqatan sotilsin"
+
+Uchta narsa bir vaqtda ma'lum bo'ldi va uchalasi ham **pulga
+tegadi**. Boshlanishi oddiy edi: "yozilgan-u ulanmagan kod bormi?"
+degan sidirg'a qidiruv (bu loyihada `startReminderCron` va
+`manageExpenses` bilan ikki marta takrorlangan xato).
+
+#### 1. LC direktoriga FOND narxi ko'rsatilardi 🔴
+
+`Subscription.vue` uchta tarifni **o'zi yozib turardi**:
+`29 000 / 59 000` va "1 ta sinf, 30 ta o'quvchi". Bular Fond
+raqamlari. Sahifa esa `lcNav` da ham bor.
+
+Ya'ni o'quv markazi direktori Pro narxini **29 000** deb ko'rar,
+o'shancha pul o'tkazar va chekni yuborardi. Backend esa so'rovni
+`priceFor` bo'yicha **199 000** deb yozardi (bu joyi to'g'ri
+ishlagan) — admin panelida 199 000 lik so'rov va 29 000 lik chek.
+So'rov rad etiladi. Mijoz pul yubordi, xizmat olmadi va nima
+uchunligini bilmadi.
+
+Endi katalog **backenddan** keladi (`GET /teacher/subscription`):
+narx, chegara va funksiyalar — hammasi `planHelper` dan, rejim
+bo'yicha. Frontendda faqat ko'rinish qoldi (ikonka, tartib).
+
+#### 2. Xodim va lid chegarasi UMUMAN tekshirilmasdi 🔴
+
+`canAddStaff` yozilgan, eksport qilingan — va hech qayerdan
+**chaqirilmagan**. `PLAN_LIMITS` dagi `leads` ham xuddi shunday.
+Ya'ni Free hisob cheksiz xodim qo'sha olardi va cheksiz lid
+yuritardi. Pro sotib olishning ma'nosi qolmasdi.
+
+Endi `createStaff` va `createLead` chegarani tekshiradi.
+
+⚠️ **Lidlarda faqat OCHIQ lidlar sanaladi** (`won`/`lost` emas).
+Hammasini sansak, yigirmata lid yozgan markaz abadiy to'xtab
+qolardi — hatto hammasini o'quvchiga aylantirgan bo'lsa ham.
+Chegara "qancha ish yuritasan" haqida, "qancha ish yuritgansan"
+haqida emas.
+
+⚠️ Lid chegarasi **markaz bo'yicha**, filial bo'yicha emas —
+aks holda uchta filiali bor Free markaz 60 ta lid tutardi.
+
+#### 3. Filial chegarasi IKKITA jadvaldan o'qilardi 🔴
+
+`branchController` o'z jadvalini tutardi (`free: 1, pro: 3,
+premium: 10`), `planHelper` esa boshqa raqamlarni. Ikkita jadval —
+ikkita haqiqat: **Premium LC'ga 9999 ta filial va'da qilinardi,
+kod esa 10 tada to'xtatardi.** Eng ko'p to'lagan mijoz tushunarsiz
+devorga urilardi.
+
+Endi jadval bitta: `utils/planHelper.js`.
+
+⚠️ **Fond filiallari (1 / 3 / 10) — ishlab turgan xatti-harakat.**
+`planHelper` da `0 / 0 / 5` yozilgandi va u hech qachon
+qo'llanmagan. Birlashtirishda ishlayotgani olindi: aks holda
+bugun filiali bor Fond direktori ertaga yangisini ocholmay
+qolardi. **Chegarani pasaytirish — mahsulot qarori**, kod
+tozalashning yon ta'siri emas. Qaror qilsangiz, o'zgartirish
+endi faqat bitta joyda.
+
+#### Interfeys: chegara BOSISHDAN OLDIN ko'rinadi
+
+- `composables/usePlanLimits.js` — `limits` va `usage` ni bir
+  marta oladi, keshlaydi (raqam frontendda o'ylab topilmaydi).
+- `StaffManagement.vue` (xodim va filial), `Leads.vue` — tugma
+  o'chadi va "Tarifni ko'tarish" havolasi chiqadi.
+- `Subscription.vue` — "Hozir ishlatilyapti: Guruh 3/15,
+  Xodim 1/10…" va to'lgani to'q sariq.
+
+⚠️ So'rov yiqilsa chegara ko'rsatkichi **jim o'chadi va tugmalar
+ochiq qoladi** — haqiqiy tekshiruv baribir backendda. Qulaylik
+sahifani bloklamasin.
+
+**Tekshirildi:** backend 413/413 test, `check:messages` toza;
+frontend build + `check` 0 xato.
+
+### Undan oldingi ish — "Ketayotgan o'quvchi direktorga o'zi aytadi"
 
 Ro'yxat allaqachon bor edi (`/lc/at-risk`, `services/churnRisk.js`) —
 lekin u **sahifada yotardi**. Direktor esa har kuni saytga kirmaydi:
@@ -685,7 +762,7 @@ O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test              →  403/403
+backend :  npm test              →  413/413
 backend :  npm run check:messages →  tarjimasiz matn 0 ta (endi XATO beradi)
 backend :  npm run check          →  test + check:messages (yangi qisqartma)
 frontend:  npm run build         →  ✓
@@ -862,7 +939,21 @@ Bular allaqachon bir marta bug chiqargan. Takrorlamang.
     Kunlik kassa xabari aynan shu sababli eski hisoblarga hech qachon
     kelmagan — va xato bermagani uchun buni hech kim sezmagan.
 
-11. **Ikkala repoda `HANDOFF.md` bir xil bo'lishi shart.** Birini
+11. **Tarif raqamini FRONTENDDA yozmang.** Narx ham, chegara ham
+    `utils/planHelper.js` da va `GET /teacher/subscription`
+    orqali keladi. `Subscription.vue` ilgari o'zi yozib turardi
+    va LC direktoriga Fond narxini ko'rsatardi — u o'sha summani
+    kartaga o'tkazardi.
+
+12. **"Yozilgan-u ulanmagan" kodni vaqti-vaqti bilan qidiring.**
+    Bu loyihada uch marta takrorlandi: `startReminderCron`
+    (cron ulanmagan), `manageExpenses` (ruxsat tekshirilmagan),
+    `canAddStaff` / `canOpenBranch` (chegara chaqirilmagan).
+    Hech biri xato bermaydi — funksiya shunchaki **yo'q** bo'lib
+    turadi. Eng oson tekshiruv: `module.exports` dagi nomni
+    boshqa fayllarda qidirib ko'ring.
+
+13. **Ikkala repoda `HANDOFF.md` bir xil bo'lishi shart.** Birini
     yangilab ikkinchisini unutsangiz, keyingi sessiya qaysi
     repodan boshlashiga qarab boshqa holatni o'qiydi.
 

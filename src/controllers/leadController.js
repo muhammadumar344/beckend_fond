@@ -22,6 +22,7 @@ const {
   limitsFor,
   canAddStudent,
   effectivePlan,
+  activePlanOf,
 } = require("../utils/planHelper");
 
 const STATUSES = Lead.STATUSES;
@@ -159,6 +160,38 @@ const createLead = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, error: "Noto'g'ri status" });
+    }
+
+    // ⚠️ TARIF CHEGARASI. `PLAN_LIMITS` da `leads` bor edi
+    //    (Free — 20 ta), lekin u hech qayerda tekshirilmasdi.
+    //
+    // ⚠️ FAQAT OCHIQ LIDLAR sanaladi (`won`/`lost` emas).
+    //    Hammasini sansak, yigirmata lid yozgan markaz abadiy
+    //    to'xtab qolardi — hatto hammasini o'quvchiga
+    //    aylantirgan bo'lsa ham. Chegara "qancha ish yuritasan"
+    //    haqida, "qancha ish yuritgansan" haqida emas.
+    const director = await Teacher.findById(ctx.directorId);
+    const leadLimit = limitsFor(activePlanOf(director), director).leads || 0;
+    if (leadLimit) {
+      // ⚠️ `scopeQuery` EMAS: chegara butun markazniki, filialniki
+      //    emas. Filial bo'yicha sanasak, uchta filiali bor Free
+      //    markaz 60 ta ochiq lid tutib turardi.
+      const openLeads = await Lead.countDocuments({
+        director: ctx.directorId,
+        status: { $nin: ["won", "lost"] },
+      });
+      if (openLeads >= leadLimit) {
+        return res.status(403).json({
+          success: false,
+          error: "Tarif chegarasi: bu rejada ko'proq ochiq lid saqlab bo'lmaydi",
+          requiresUpgrade: true,
+          limit: {
+            max: leadLimit,
+            current: openLeads,
+            plan: activePlanOf(director),
+          },
+        });
+      }
     }
 
     // Xodim o'z filialiga biriktiradi, direktor tanlashi mumkin

@@ -359,6 +359,14 @@ const MESSAGES = {
   "SMS reminder yuborildi": { ru: "SMS-напоминание отправлено", en: "SMS reminder sent" },
   "studentIds bo'sh": { ru: "studentIds пуст", en: "studentIds is empty" },
 
+  // ── Tarif chegaralari ──────────────────────────────────
+  // ⚠️ Raqam matnda EMAS — javobdagi `limit` maydonida.
+  //    Shablonli xabar tarjima qilinmaydi va ruscha
+  //    interfeysda o'zbekcha chiqib qolardi.
+  "Tarif chegarasi: bu rejada ko'proq xodim qo'shib bo'lmaydi": { ru: "Ограничение тарифа: на этом плане больше сотрудников добавить нельзя", en: "Plan limit: this plan does not allow more staff" },
+  "Tarif chegarasi: bu rejada ko'proq filial ochib bo'lmaydi": { ru: "Ограничение тарифа: на этом плане больше филиалов открыть нельзя", en: "Plan limit: this plan does not allow more branches" },
+  "Tarif chegarasi: bu rejada ko'proq ochiq lid saqlab bo'lmaydi": { ru: "Ограничение тарифа: на этом плане больше открытых лидов держать нельзя", en: "Plan limit: this plan does not allow more open leads" },
+
   // ── 2026-08-21 da qo'shilgan: qolgan tarjimasiz xabarlar ──
   // Ular foydalanuvchi ko'radigan xato matnlari edi va ruscha
   // interfeysda jimgina o'zbekcha chiqardi.

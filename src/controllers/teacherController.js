@@ -7,10 +7,13 @@ const Teacher = require("../models/Teacher");
 const {
   getGroupStudents,
   countGroupStudents,
+  countUniqueStudents,
 } = require("../utils/enrollment");
 const TelegramParent = require("../models/TelegramParent");
 const Staff = require("../models/Staff");
 const Branch = require("../models/Branch");
+// Tarif katalogidagi "ochiq lidlar" hisobi uchun
+const Lead = require("../models/Lead");
 const cloudinary = require("../services/cloudinary");
 const cloudinaryCfg = require("../config/cloudinary");
 const XLSX = require("xlsx");
@@ -2362,6 +2365,55 @@ const exportPayments = async (req, res) => {
 // ============================================================
 //  SUBSCRIPTION
 // ============================================================
+//
+// ⚠️ NARX VA CHEGARA FRONTENDDA QOTIRILMAYDI. Ilgari
+//    `Subscription.vue` uchta tarifni o'zi yozib turardi —
+//    29 000 / 59 000 va "1 ta sinf, 30 ta o'quvchi". Bu FOND
+//    raqamlari, sahifa esa LC menyusida ham bor. Ya'ni o'quv
+//    markazi direktori Pro narxini 29 000 deb ko'rar, o'shancha
+//    to'lar edi — backend esa so'rovni `priceFor` bo'yicha
+//    199 000 deb yozardi va admin uni rad etardi. Mijoz pul
+//    yubordi, xizmat olmadi va sababini bilmadi.
+//
+//    Shuning uchun katalog SHU YERDAN, `planHelper` dan ketadi:
+//    narx ham, chegara ham, funksiyalar ham. Rejim
+//    (`institutionType`) hisobga olinadi.
+//
+// ⚠️ `usage` ham qo'shildi: interfeys chegarani BOSISHDAN
+//    OLDIN ko'rsatsin. Aks holda odam "Xodim qo'shish" ni bosib
+//    403 oladi va nima noto'g'ri ekanini tushunmaydi.
+const PLAN_IDS = ["free", "pro", "premium"];
+
+const buildPlanCatalog = (teacher) =>
+  PLAN_IDS.map((id) => ({
+    id,
+    price: priceFor(id, teacher)?.monthly || 0,
+    limits: limitsFor(id, teacher),
+    features: featuresFor(id, teacher),
+  }));
+
+/** Hozir nechtadan foydalanilyapti — chegara bilan yonma-yon ko'rsatish uchun */
+const collectUsage = async (teacher) => {
+  const id = teacher._id;
+
+  // ⚠️ O'quvchi `Student.teacher` orqali bog'lanmaydi — bunday
+  //    maydon umuman yo'q. Guruh orqali topiladi va sanoq
+  //    `countUniqueStudents` bilan: ikkita guruhda o'qiydigan
+  //    bola ikki marta sanalmasin (`utils/enrollment.js`).
+  const classIds = (await Class.find({ teacher: id }).select("_id").lean()).map(
+    (c) => c._id,
+  );
+
+  const [students, staff, branches, leads] = await Promise.all([
+    countUniqueStudents(classIds),
+    Staff.countDocuments({ director: id, isActive: { $ne: false } }),
+    Branch.countDocuments({ teacher: id, isActive: true }),
+    // Ochiq lidlar — chegara ham aynan shularni sanaydi
+    Lead.countDocuments({ director: id, status: { $nin: ["won", "lost"] } }),
+  ]);
+  return { classes: classIds.length, students, staff, branches, leads };
+};
+
 const getSubscriptionInfo = async (req, res) => {
   try {
     const teacher = await Teacher.findById(req.user.id);
@@ -2372,6 +2424,10 @@ const getSubscriptionInfo = async (req, res) => {
 
     return res.json({
       success: true,
+      mode: teacher.institutionType || "school",
+      plans: buildPlanCatalog(teacher),
+      usage: await collectUsage(teacher),
+      limits: limitsFor(activePlanOf(teacher), teacher),
       currentPlan: teacher.plan,
       planActive: teacher.isPlanActive(),
       daysLeft: teacher.daysLeft(),

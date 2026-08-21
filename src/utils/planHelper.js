@@ -21,11 +21,23 @@ const SCHOOL = "school";
 const LC = "learning_center";
 
 // ── Limitlar ──────────────────────────────────────────────────
+// ⚠️ FOND FILIALLARI (1 / 3 / 10) — bu jadvaldagi eski qiymat
+//    emas, ISHLAB TURGAN xatti-harakat. `branchController` o'z
+//    jadvalini tutardi (`free: 1, pro: 3, premium: 10`) va
+//    filial chegarasi amalda o'shandan o'qilardi; shu yerdagi
+//    `0 / 0 / 5` hech qachon qo'llanmagan.
+//
+//    Ikkita jadval birlashtirilganda ishlab turgani olindi:
+//    aks holda bugun filiali bor Fond direktori ertaga yangi
+//    filial ocholmay qolardi — va buni hech kim ogohlantirmagan
+//    bo'lardi. Chegarani pasaytirish — mahsulot qarori, kod
+//    tozalashning yon ta'siri emas. Qaror qilinsa, o'zgartirish
+//    endi FAQAT shu yerda.
 const PLAN_LIMITS = {
   [SCHOOL]: {
-    free: { classes: 1, students: 30, staff: 0, branches: 0 },
-    pro: { classes: 3, students: 60, staff: 0, branches: 0 },
-    premium: { classes: 10, students: 999, staff: 0, branches: 5 },
+    free: { classes: 1, students: 30, staff: 0, branches: 1 },
+    pro: { classes: 3, students: 60, staff: 0, branches: 3 },
+    premium: { classes: 10, students: 999, staff: 0, branches: 10 },
   },
   [LC]: {
     // LC'da "classes" = guruhlar
