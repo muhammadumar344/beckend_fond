@@ -19,6 +19,7 @@ const cloudinary = require("../services/cloudinary");
 const platform = require("../config/platform");
 const studentImport = require("../services/studentImport");
 const centerHealth = require("../services/centerHealth");
+const { purgeStudent } = require("../utils/studentPurge");
 const billing = require("../services/billing");
 const cloudinaryCfg = require("../config/cloudinary");
 const XLSX = require("xlsx");
@@ -1254,7 +1255,13 @@ const deleteStudent = async (req, res) => {
     //    to'lamagan" degan bahs chiqsa, javob shu yerda bo'ladi.
     const wiped = await MonthlyPayment.countDocuments({ student: studentId });
 
-    await MonthlyPayment.deleteMany({ student: studentId });
+    // ⚠️ FAQAT TO'LOVLAR EMAS. Ilgari shu yerda faqat
+    //    `MonthlyPayment` o'chirilardi va davomat, baholar,
+    //    uy vazifasi natijalari, qo'shimcha guruhlarga
+    //    yozilishi, Telegram bog'lanishi bazada EGASIZ qolib
+    //    ketardi — davomat foizi esa o'sha yozuvlarni sanashda
+    //    davom etardi.
+    const removed = await purgeStudent(studentId);
     await Student.findByIdAndDelete(studentId);
 
     audit(req, ctx, {
@@ -1266,6 +1273,10 @@ const deleteStudent = async (req, res) => {
         { field: "name", from: student.name, to: null },
         { field: "parentPhone", from: student.parentPhone || null, to: null },
         { field: "o'chirilgan to'lovlar", from: wiped, to: 0 },
+        // Qaysi to'plamdan nechta yozuv ketgani ham jurnalda
+        // qolsin: keyin "davomat qayerga ketdi?" degan savol
+        // chiqsa, javob shu yerda.
+        { field: "o'chirilgan yozuvlar", from: JSON.stringify(removed), to: null },
       ],
     });
 
