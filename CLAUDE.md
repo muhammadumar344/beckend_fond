@@ -657,6 +657,25 @@ uchun `create` va `import` arxivdagi bir xil nomli xonani topsa
 uni **qayta faollashtiradi** — aks holda "allaqachon mavjud"
 deb rad etilardi va ekranda hech qanday o'sha xona ko'rinmasdi.
 
+## Platformaning to'lov kartasi
+
+Direktor tarif uchun pulni shu kartaga o'tkazadi.
+`config/platform.js` → `PLATFORM_CARD`, `PLATFORM_CARD_HOLDER`.
+Javobda `GET /teacher/subscription` → `payTo`.
+
+⚠️ **Frontendda `8600 1234 5678 9012` qotirib yozilgandi** va bu
+haqiqiy karta emas — aynan shu satr ikkita boshqa faylda
+`placeholder` sifatida turadi. Ya'ni Pro sotib olmoqchi bo'lgan
+direktor uni nusxa olib, pulni yo'qqa yuborardi.
+
+⚠️ **Kalit yo'q → `configured: false` va sahifa soxta raqam
+o'rniga ogohlantirish ko'rsatadi.** Payme/Click bilan bir xil
+qoida: yarim sozlangan holatda pul qabul qilishga urinmaymiz.
+
+⚠️ **16 xona tekshiriladi.** Yarim yozilgan raqam ham
+`configured: false` — aks holda u ekranga chiqib, kimdir o'shanga
+o'tkazishga urinardi.
+
 ## To'lov tizimlari — o'chiq turibdi
 
 Payme va Click kodi yozilgan, lekin **kalitlar yo'q → 503**.

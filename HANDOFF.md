@@ -141,7 +141,34 @@ endi faqat bitta joyda.
 ochiq qoladi** — haqiqiy tekshiruv baribir backendda. Qulaylik
 sahifani bloklamasin.
 
-**Tekshirildi:** backend 413/413 test, `check:messages` toza;
+#### 4. To'lov kartasi SOXTA edi 🔴
+
+Sahifada `8600 1234 5678 9012` qotirib yozilgandi. Bu haqiqiy karta
+emas — aynan shu satr `PaymentClaims.vue` va `Settings.vue` da
+**`placeholder`** sifatida turadi, ya'ni namuna matn. Backendda
+platforma kartasi degan tushuncha umuman yo'q edi.
+
+Ya'ni yuqoridagi uchta xato tuzatilgandan keyin ham direktor
+to'g'ri narxni ko'rib, **noto'g'ri kartaga** pul yuborardi.
+
+Endi `config/platform.js` → `PLATFORM_CARD` / `PLATFORM_CARD_HOLDER`
+env o'zgaruvchilari, javobda `payTo: { configured, card, cardPlain,
+holder }`.
+
+⚠️ **Kalit yo'q bo'lsa SOXTA RAQAM O'RNIGA OGOHLANTIRISH** chiqadi:
+"rekvizitlar kiritilmagan, administrator bilan bog'laning". Bu
+Payme/Click bilan bir xil qoida — yarim sozlangan holatda pul
+qabul qilishga urinmaymiz.
+
+⚠️ **Yarim yozilgan raqam ham `configured: false`** (16 xona
+tekshiriladi): aks holda 12 xonali raqam ekranga chiqib, kimdir
+o'shanga o'tkazishga urinardi.
+
+⚠️ Kalitni **Muhammadumar qo'yadi** — 4.2 bo'limiga qarang.
+Qo'yilmaguncha sotib olish oqimi ochiq qoladi (so'rov yuborish
+mumkin), lekin karta ko'rsatilmaydi.
+
+**Tekshirildi:** backend 420/420 test, `check:messages` toza;
 frontend build + `check` 0 xato.
 
 ### Undan oldingi ish — "Ketayotgan o'quvchi direktorga o'zi aytadi"
@@ -762,7 +789,7 @@ O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test              →  413/413
+backend :  npm test              →  420/420
 backend :  npm run check:messages →  tarjimasiz matn 0 ta (endi XATO beradi)
 backend :  npm run check          →  test + check:messages (yangi qisqartma)
 frontend:  npm run build         →  ✓
@@ -803,6 +830,21 @@ Yozuv yo'qolgan bo'lsa, yana bir marta qo'lda `git push` —
 brauzer ochiladi va token qaytadan saqlanadi.
 
 ### 4.2 Qolganlari
+
+- 🔴 **Render → Environment: `PLATFORM_CARD`** — tarif uchun pul
+  tushadigan karta. **Bugun sahifada soxta raqam turgan edi**
+  (`8600 1234 5678 9012` — namuna matn), ya'ni Pro sotib olmoqchi
+  bo'lgan har bir direktor pulni yo'qqa yuborardi. Endi raqam
+  backenddan keladi va kalit qo'yilmaguncha sahifa "rekvizitlar
+  kiritilmagan" deb yozib turadi — soxta raqam ko'rsatilmaydi.
+
+  ```
+  PLATFORM_CARD=8600XXXXXXXXXXXX
+  PLATFORM_CARD_HOLDER=FAMILIYA ISM
+  ```
+
+  Kalit qo'yilishi bilan ishlaydi, deploy dan boshqa hech narsa
+  kerak emas.
 
 - **Render → Environment:** `TELEGRAM_BOT_TOKEN` (almashtirilgan — eskisi
   ochiq qolgan edi), `NODE_ENV=production`, Cloudinary kalitlari.

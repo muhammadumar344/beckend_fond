@@ -15,6 +15,7 @@ const Branch = require("../models/Branch");
 // Tarif katalogidagi "ochiq lidlar" hisobi uchun
 const Lead = require("../models/Lead");
 const cloudinary = require("../services/cloudinary");
+const platform = require("../config/platform");
 const cloudinaryCfg = require("../config/cloudinary");
 const XLSX = require("xlsx");
 const {
@@ -2426,6 +2427,17 @@ const getSubscriptionInfo = async (req, res) => {
       success: true,
       mode: teacher.institutionType || "school",
       plans: buildPlanCatalog(teacher),
+      // ⚠️ Karta raqami frontendda QOTIRILMAYDI. U yerda
+      //    `8600 1234 5678 9012` turgandi — namuna matn, haqiqiy
+      //    karta emas. Direktor uni nusxa olib pul yuborardi.
+      //    Kalit qo'yilmagan bo'lsa `configured: false` va sahifa
+      //    soxta raqam o'rniga ogohlantirish ko'rsatadi.
+      payTo: {
+        configured: platform.configured,
+        card: platform.card,
+        cardPlain: platform.cardPlain,
+        holder: platform.holder,
+      },
       usage: await collectUsage(teacher),
       limits: limitsFor(activePlanOf(teacher), teacher),
       currentPlan: teacher.plan,
