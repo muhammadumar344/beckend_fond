@@ -8,6 +8,7 @@ const {
   getGroupStudents,
   countGroupStudents,
   countUniqueStudents,
+  buildGroupStudentMap,
 } = require("../utils/enrollment");
 const TelegramParent = require("../models/TelegramParent");
 const Staff = require("../models/Staff");
@@ -608,29 +609,62 @@ const getMyClasses = async (req, res) => {
       createdAt: -1,
     });
 
-    const classesWithStats = await Promise.all(
-      classes.map(async (cls) => {
-        const studentCount = await countGroupStudents(cls._id);
-        const payments = await MonthlyPayment.find({ class: cls._id });
-        const paidPayments = payments.filter((p) => p.status === "paid");
-        const paidCount = paidPayments.length;
-        const collectedOnSite = paidPayments.reduce((s, p) => s + p.amount, 0);
-        const totalCollected = (cls.initialBalance || 0) + collectedOnSite;
-        const expenses = await Expense.find({ class: cls._id });
-        const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+    // ⚠️ ILGARI BU YERDA N+1 BOR EDI: har bir sinf uchun alohida
+    //    `countGroupStudents`, `MonthlyPayment.find` va
+    //    `Expense.find`. Ikkinchisi va uchinchisi sinfning BUTUN
+    //    tarixini xotiraga yuklab, keyin JS'da yig'ardi — ya'ni
+    //    uch yillik markazda o'n minglab hujjat. Bu esa Fond
+    //    rejimidagi eng ko'p ochiladigan sahifa.
+    //
+    //    Endi hammasi uchta so'rovda: o'quvchilar
+    //    `buildGroupStudentMap` orqali (u aynan shu maqsad uchun
+    //    yozilgan), pul esa bazada yig'iladi.
+    const classIds = classes.map((c) => c._id);
+    const [studentMap, payRows, expRows] = await Promise.all([
+      buildGroupStudentMap(classIds),
+      MonthlyPayment.aggregate([
+        { $match: { class: { $in: classIds } } },
+        {
+          $group: {
+            _id: { class: "$class", status: "$status" },
+            sum: { $sum: "$amount" },
+            n: { $sum: 1 },
+          },
+        },
+      ]),
+      Expense.aggregate([
+        { $match: { class: { $in: classIds } } },
+        { $group: { _id: "$class", sum: { $sum: "$amount" } } },
+      ]),
+    ]);
 
-        return {
-          ...cls.toObject(),
-          studentCount,
-          paidCount,
-          unpaidCount: payments.length - paidCount,
-          collectedOnSite,
-          totalCollected,
-          totalExpenses,
-          realBalance: totalCollected - totalExpenses,
-        };
-      }),
-    );
+    const paid = new Map();   // classId → { sum, n }
+    const total = new Map();  // classId → jami yozuvlar soni
+    for (const r of payRows) {
+      const id = String(r._id.class);
+      total.set(id, (total.get(id) || 0) + r.n);
+      if (r._id.status === "paid") paid.set(id, { sum: r.sum, n: r.n });
+    }
+    const spent = new Map(expRows.map((r) => [String(r._id), r.sum]));
+
+    const classesWithStats = classes.map((cls) => {
+      const id = String(cls._id);
+      const p = paid.get(id) || { sum: 0, n: 0 };
+      const collectedOnSite = p.sum;
+      const totalCollected = (cls.initialBalance || 0) + collectedOnSite;
+      const totalExpenses = spent.get(id) || 0;
+
+      return {
+        ...cls.toObject(),
+        studentCount: studentMap.get(id)?.size || 0,
+        paidCount: p.n,
+        unpaidCount: (total.get(id) || 0) - p.n,
+        collectedOnSite,
+        totalCollected,
+        totalExpenses,
+        realBalance: totalCollected - totalExpenses,
+      };
+    });
 
     return res.json({ success: true, classes: classesWithStats });
   } catch (err) {
@@ -1860,55 +1894,53 @@ const getDashboard = async (req, res) => {
     const realTotalBalance =
       totalInitialBalance + allCollectedEver - allExpensesTotalEver;
 
-    const classDetails = await Promise.all(
-      classes.map(async (cls) => {
-        const classStudents = allStudents.filter(
-          (s) => s.class.toString() === cls._id.toString(),
-        );
-        const classPayments = monthlyPayments.filter(
-          (p) => p.class.toString() === cls._id.toString(),
-        );
-        const classPaid = classPayments.filter((p) => p.status === "paid");
-        const classCollectedThisMonth = classPaid.reduce(
-          (sum, p) => sum + p.amount,
-          0,
-        );
-        const classExpensesThisMonth = monthlyExpenses
-          .filter((e) => e.class?.toString() === cls._id.toString())
-          .reduce((sum, e) => sum + e.amount, 0);
+    // ⚠️ BU YERDA HAM N+1 BOR EDI: har bir sinf uchun alohida
+    //    `MonthlyPayment.find` va `Expense.find` — ikkalasi ham
+    //    sinfning BUTUN tarixini xotiraga yuklardi. Dashboard —
+    //    kirgandan keyin birinchi ochiladigan sahifa, ya'ni har
+    //    bir seans shu yerdan boshlanadi.
+    const dashClassIds = classes.map((c) => c._id);
+    const [allPaidRows, allExpRows] = await Promise.all([
+      MonthlyPayment.aggregate([
+        { $match: { class: { $in: dashClassIds }, status: "paid" } },
+        { $group: { _id: "$class", sum: { $sum: "$amount" } } },
+      ]),
+      Expense.aggregate([
+        { $match: { class: { $in: dashClassIds } } },
+        { $group: { _id: "$class", sum: { $sum: "$amount" } } },
+      ]),
+    ]);
+    const paidEver = new Map(allPaidRows.map((r) => [String(r._id), r.sum]));
+    const spentEver = new Map(allExpRows.map((r) => [String(r._id), r.sum]));
 
-        const classAllPaid = await MonthlyPayment.find({
-          class: cls._id,
-          status: "paid",
-        });
-        const classAllCollected = classAllPaid.reduce(
-          (s, p) => s + p.amount,
-          0,
-        );
-        const classAllExpenses = await Expense.find({ class: cls._id });
-        const classAllExpensesTotal = classAllExpenses.reduce(
-          (s, e) => s + e.amount,
-          0,
-        );
-        const classRealBalance =
-          (cls.initialBalance || 0) + classAllCollected - classAllExpensesTotal;
+    const classDetails = classes.map((cls) => {
+      const id = String(cls._id);
+      const classStudents = allStudents.filter((s) => String(s.class) === id);
+      const classPayments = monthlyPayments.filter((p) => String(p.class) === id);
+      const classPaid = classPayments.filter((p) => p.status === "paid");
+      const classCollectedThisMonth = classPaid.reduce((sum, p) => sum + p.amount, 0);
+      const classExpensesThisMonth = monthlyExpenses
+        .filter((e) => e.class && String(e.class) === id)
+        .reduce((sum, e) => sum + e.amount, 0);
 
-        return {
-          id: cls._id,
-          name: cls.name,
-          defaultAmount: cls.defaultAmount,
-          studentCount: classStudents.length,
-          paidCount: classPaid.length,
-          unpaidCount: classStudents.length - classPaid.length,
-          collectedThisMonth: classCollectedThisMonth,
-          expectedThisMonth: classStudents.length * cls.defaultAmount,
-          expensesThisMonth: classExpensesThisMonth,
-          initialBalance: cls.initialBalance || 0,
-          initialBalanceNote: cls.initialBalanceNote || "",
-          realBalance: classRealBalance,
-        };
-      }),
-    );
+      const classRealBalance =
+        (cls.initialBalance || 0) + (paidEver.get(id) || 0) - (spentEver.get(id) || 0);
+
+      return {
+        id: cls._id,
+        name: cls.name,
+        defaultAmount: cls.defaultAmount,
+        studentCount: classStudents.length,
+        paidCount: classPaid.length,
+        unpaidCount: classStudents.length - classPaid.length,
+        collectedThisMonth: classCollectedThisMonth,
+        expectedThisMonth: classStudents.length * cls.defaultAmount,
+        expensesThisMonth: classExpensesThisMonth,
+        initialBalance: cls.initialBalance || 0,
+        initialBalanceNote: cls.initialBalanceNote || "",
+        realBalance: classRealBalance,
+      };
+    });
 
     return res.json({
       success: true,
