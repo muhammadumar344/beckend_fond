@@ -904,39 +904,118 @@ const getStudents = async (req, res) => {
   }
 };
 
+// ⚠️ BU FUNKSIYA YOZILGAN-U ULANMAGAN edi — va ustiga BUZUQ
+//    ham edi: `Student.findOne({ _id, teacher })` deb qidirardi,
+//    `Student` da esa `teacher` maydoni UMUMAN YO'Q (o'quvchi
+//    guruh orqali bog'lanadi). Ya'ni route'ga ulangan taqdirda
+//    ham har doim "O'quvchi topilmadi" qaytarardi.
+//
+//    Natijada tizimda o'quvchi ma'lumotini tahrirlashning
+//    umuman iloji yo'q edi: telefon o'zgarsa yoki ismda xato
+//    bo'lsa, yagona yo'l — o'chirib qayta yaratish. U esa
+//    o'quvchining BUTUN TO'LOV TARIXINI o'chiradi
+//    (`deleteStudent` ga qarang). Xato uchun ma'lumot
+//    yo'qotiladigan tizim — bu tizim emas.
 const updateStudent = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
     requirePermission(ctx, "manageStudents");
 
-    const student = await Student.findOne({
-      _id: req.params.studentId || req.params.id,
-      teacher: ctx.directorId,
-    });
+    const student = await Student.findById(
+      req.params.studentId || req.params.id,
+    );
     if (!student)
       return res
         .status(404)
         .json({ success: false, error: "O'quvchi topilmadi" });
 
-    const { name, parentPhone, classId, notes, isActive } = req.body;
-    if (name !== undefined) student.name = name;
-    if (parentPhone !== undefined) student.parentPhone = parentPhone;
-    if (notes !== undefined) student.notes = notes;
-    if (isActive !== undefined) student.isActive = isActive;
+    // Egalik guruh orqali tekshiriladi — `deleteStudent` bilan
+    // bir xil qolip. Xodimda filial cheklovi ham bor.
+    const ownQuery = { _id: student.class, teacher: ctx.directorId };
+    if (ctx.branchFilter) ownQuery.branch = ctx.branchFilter;
+    const cls = await Class.findOne(ownQuery);
+    if (!cls)
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
 
+    const { name, parentPhone, classId, rollNumber, isActive } = req.body;
+
+    // O'zgarishlar jurnal uchun yig'iladi: "kim telefonni
+    // almashtirdi?" degan savolga javob bo'lsin.
+    const changes = [];
+    const track = (field, from, to) => {
+      if (to !== undefined && String(from ?? "") !== String(to ?? "")) {
+        changes.push({ field, from: from ?? null, to: to ?? null });
+      }
+    };
+
+    if (name !== undefined) {
+      const trimmed = String(name).trim();
+      if (!trimmed) {
+        return res
+          .status(400)
+          .json({ success: false, error: "Ism bo'sh bo'lmasin" });
+      }
+      track("name", student.name, trimmed);
+      student.name = trimmed;
+    }
+    if (parentPhone !== undefined) {
+      const phone = String(parentPhone).trim();
+      track("parentPhone", student.parentPhone, phone);
+      student.parentPhone = phone;
+    }
+    if (rollNumber !== undefined && rollNumber !== null && rollNumber !== "") {
+      track("rollNumber", student.rollNumber, Number(rollNumber));
+      student.rollNumber = Number(rollNumber);
+    }
+    if (isActive !== undefined) {
+      track("isActive", student.isActive, Boolean(isActive));
+      student.isActive = Boolean(isActive);
+    }
+
+    // ── Boshqa guruhga ko'chirish ──
     if (classId && String(classId) !== String(student.class)) {
-      const classQuery = { _id: classId, teacher: ctx.directorId };
-      if (ctx.branchFilter) classQuery.branch = ctx.branchFilter;
-      const cls = await Class.findOne(classQuery);
-      if (!cls)
+      const targetQuery = { _id: classId, teacher: ctx.directorId };
+      if (ctx.branchFilter) targetQuery.branch = ctx.branchFilter;
+      const target = await Class.findOne(targetQuery);
+      if (!target)
         return res
           .status(404)
           .json({ success: false, error: "Yangi guruh topilmadi" });
-      student.class = classId;
+
+      // ⚠️ Ko'chirish ham tarif chegarasidan o'tadi. Aks holda
+      //    to'lgan guruhga "qo'shish" mumkin bo'lmasa ham,
+      //    "ko'chirish" bilan chetlab o'tish mumkin bo'lardi.
+      const director = await Teacher.findById(ctx.directorId);
+      const count = await countGroupStudents(target._id);
+      if (!canAddStudent(target.plan, count, director)) {
+        const limit = limitsFor(effectivePlan(target.plan, director), director);
+        return res.status(403).json({
+          success: false,
+          error: "Tarif chegarasi: bu guruhga ko'proq o'quvchi sig'maydi",
+          requiresUpgrade: true,
+          limit: { max: limit.students, current: count },
+        });
+      }
+
+      changes.push({ field: "guruh", from: cls.name, to: target.name });
+      student.class = target._id;
+    }
+
+    if (!changes.length) {
+      return res.json({ success: true, student, message: "O'zgarish yo'q" });
     }
 
     await student.save();
-    res.json({ success: true, student });
+
+    audit(req, ctx, {
+      action: "student.updated",
+      entity: "Student",
+      entityId: student._id,
+      entityLabel: `${student.name} — ${cls.name}`,
+      changes,
+    });
+
+    res.json({ success: true, student, message: "Saqlandi" });
   } catch (err) {
     res.status(err.status || 500).json({ success: false, error: err.message });
   }

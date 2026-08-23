@@ -359,6 +359,9 @@ const MESSAGES = {
   "SMS reminder yuborildi": { ru: "SMS-напоминание отправлено", en: "SMS reminder sent" },
   "studentIds bo'sh": { ru: "studentIds пуст", en: "studentIds is empty" },
 
+  "Ism bo'sh bo'lmasin": { ru: "Имя не может быть пустым", en: "The name cannot be empty" },
+  "Tarif chegarasi: bu guruhga ko'proq o'quvchi sig'maydi": { ru: "Ограничение тарифа: в эту группу больше учеников не поместится", en: "Plan limit: this group cannot take more students" },
+  "O'zgarish yo'q": { ru: "Изменений нет", en: "Nothing changed" },
   // ── Tarif chegaralari ──────────────────────────────────
   // ⚠️ Raqam matnda EMAS — javobdagi `limit` maydonida.
   //    Shablonli xabar tarjima qilinmaydi va ruscha

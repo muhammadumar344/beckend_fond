@@ -119,6 +119,12 @@ router.get(
   allowTeacherOrStaff,
   ctrl.getClassStudents,
 );
+// ⚠️ TAHRIRLASH 2026-08-21 gacha UMUMAN YO'Q edi: funksiya
+//    yozilgan, lekin route'ga ulanmagan (va ustiga buzuq edi).
+//    Ya'ni telefonda xato bo'lsa, o'quvchini o'chirib qayta
+//    yaratishdan boshqa yo'l yo'q edi — u esa butun to'lov
+//    tarixini o'chiradi.
+router.put("/students/:studentId", allowTeacherOrStaff, ctrl.updateStudent);
 router.delete("/students/:studentId", allowTeacherOrStaff, ctrl.deleteStudent);
 
 // ══ MINI APP ULANISHI — ota-onani Telegram'ga bog'lash ══════
