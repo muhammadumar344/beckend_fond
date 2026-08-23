@@ -76,7 +76,4 @@ async function collectTargets(filter = {}) {
 }
 
 /** Bitta o'quvchi bo'yicha — xabarnomalar uchun qulay qisqartma */
-const targetsForStudent = (studentId) =>
-  collectTargets({ studentIds: [studentId] });
-
-module.exports = { collectTargets, targetsForStudent };
+module.exports = { collectTargets };

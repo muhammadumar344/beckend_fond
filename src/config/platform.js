@@ -50,5 +50,4 @@ module.exports = {
   // Nusxa olish uchun — faqat raqamlar
   cardPlain: configured ? card : "",
   holder: configured ? holder : "",
-  formatCard,
 };
