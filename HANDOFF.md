@@ -68,7 +68,105 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Sotilayotgan tarif haqiqatan sotilsin"
+### Oxirgi tugagan ish — "Yozilgan-u ulanmagan kod" auditi
+
+Sidirg'a qidiruv: `module.exports` dagi har bir nom boshqa
+fayllarda ishlatiladimi? Bu loyihada shu turdagi xato allaqachon
+ikki marta bo'lgan (`startReminderCron`, `manageExpenses`) —
+uchinchi, to'rtinchi va beshinchisi ham topildi.
+
+#### 1. O'quvchini tahrirlash UMUMAN yo'q edi 🔴
+
+`updateStudent` yozilgan, route'ga ulanmagan — **va ustiga buzuq
+ham edi**: `Student.findOne({ _id, teacher })` deb qidirardi,
+`Student` da esa `teacher` maydoni umuman yo'q (o'quvchi guruh
+orqali bog'lanadi). Ya'ni ulangan taqdirda ham har doim
+"topilmadi" qaytarardi.
+
+Natijada telefon o'zgarsa yoki ismda bitta harf xato bo'lsa,
+yagona yo'l — **o'chirib qayta yaratish**. `deleteStudent` esa
+o'quvchining butun to'lov tarixini o'chiradi. Xato uchun
+ma'lumot yo'qotiladigan tizim — bu tizim emas.
+
+Qayta yozildi: egalik guruh orqali tekshiriladi, boshqa guruhga
+ko'chirish tarif chegarasidan o'tadi (aks holda "qo'shib"
+bo'lmaydigan to'lgan guruhga "ko'chirib" bo'lardi), o'zgarishlar
+`AuditLog` ga tushadi. Interfeys: `lc/Students.vue` va
+`teacher/ClassDetail.vue` da tahrir tugmasi.
+
+#### 2. Sinf nomini o'zgartirish ham yo'q edi
+
+`updateClass` — xuddi shunday holat, faqat buzuq emas edi.
+`PUT /teacher/classes/:classId` qo'shildi, nom o'zgarishi
+jurnalga tushadi.
+
+#### 3. Obuna muzlatilganda direktorga xabar bormasdi
+
+`sendFreezeNotification` / `sendUnfreezeNotification`
+`telegramService.js` da yozilgan, lekin **hech qayerdan
+chaqirilmagan**. Sabab tushunarli: yozilgan paytda direktorga
+xabar yuboradigan kanalning o'zi yo'q edi (bot faqat ota-onalar
+uchun ishlardi). Kanal bu hafta paydo bo'ldi — ulandi.
+
+`services/freezeNotify.js`: kimga ketishini sof funksiya
+ajratadi, xabar **fonda** yuboriladi (200 ta hisob saqlanib,
+200 ta Telegram xabari ketishi mumkin — admin so'rovi kutib
+turmasin), har 20 tadan keyin tanaffus, 403 da ulanish
+tozalanadi.
+
+⚠️ **Rejim tanloviga qaramaydi.** `cashReport.mode` va
+`churnDigest.mode` — kunlik/haftalik shovqin darajasi uchun.
+Obuna muzlatilishi esa HISOB haqidagi xabar: uni o'chirib
+qo'ygan direktor ham bilishi kerak, chunki bu uning puliga
+tegadi.
+
+#### 4. Bekor qilish qoidasi ikki joyda edi
+
+`services/supportBooking.cancelBooking` faqat **faol** yozuvni
+bekor qiladi; `supportController.updateBooking` esa o'z qo'lda
+yozilgan nusxasini ishlatardi va **istalganini** bekor qilardi.
+Ya'ni o'quvchi kelib, QR skanerlab `done` bo'lgan yozuvni ham
+"bekor qilindi" ga o'tkazish mumkin edi — kelgani haqidagi yozuv
+yo'qolardi. Endi controller servisni chaqiradi.
+
+### Undan oldingi ish — "O'quvchilarni Excel'dan import qilish"
+
+Yangi markaz Lumo'ga o'tayotganda 200 ta o'quvchini qo'lda
+kiritishi kerak edi. Bu — tizimga o'tishning eng katta to'sig'i:
+direktor bir kunlik ishni ko'radi va "keyinroq" deb qo'yadi.
+Ro'yxat esa allaqachon uning Excel faylida turibdi.
+
+`services/studentImport.js` — **sof** parser, `POST
+/teacher/classes/:classId/students/import`.
+
+**To'rtta ataylab qilingan qaror:**
+
+1. **Avval ko'rsatadi, keyin yozadi.** `apply` berilmasa faqat
+   tahlil qaytadi: nechta qo'shiladi, qaysilari takror, qaysi
+   qatorda ism yo'q. Begona faylni ko'r-ko'rona bazaga
+   to'kmaymiz (`/lc/rooms/import` bilan bir xil qoida).
+2. **Yarim import yo'q.** Tarif chegarasidan oshsa hech narsa
+   yozilmaydi: yarmi tushgan ro'yxatda direktor qaysi bola
+   qolganini bilmaydi va butun faylni qo'lda solishtirishga
+   majbur bo'ladi.
+3. **Takror ikki qatlamda** — fayl ichida va bazada. Telefon
+   **oxirgi 9 raqam** bo'yicha solishtiriladi (`utils/phone.js`):
+   aks holda `+998 90 123 45 67` va `90 123 45 67` boshqa-boshqa
+   ko'rinib, bitta bola ikki marta tushardi. Bu bug o'z sinovimda
+   chiqdi.
+4. **Bir xil ismli ikki bola ikkalasi ham tushadi** (raqami
+   boshqa) — faqat ism bo'yicha solishtirsak ikkinchisi
+   yo'qolardi, bu esa haqiqiy hol.
+
+⚠️ **Fayl BACKENDDA o'qiladi.** Brauzerda o'qish uchun xlsx
+kutubxonasi kerak bo'lardi — u ~500 KB, ya'ni butun CRM
+bundle'ining yarmi. Backendda `xlsx` allaqachon bor (export
+uchun).
+
+⚠️ Ustun nomi topilmasa javobda **fayldagi sarlavhalar**
+qaytadi — odam nimani tuzatishni bilsin.
+
+### Undan oldingi ish — "Sotilayotgan tarif haqiqatan sotilsin"
 
 Uchta narsa bir vaqtda ma'lum bo'ldi va uchalasi ham **pulga
 tegadi**. Boshlanishi oddiy edi: "yozilgan-u ulanmagan kod bormi?"
@@ -789,7 +887,7 @@ O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test              →  420/420
+backend :  npm test              →  453/453
 backend :  npm run check:messages →  tarjimasiz matn 0 ta (endi XATO beradi)
 backend :  npm run check          →  test + check:messages (yangi qisqartma)
 frontend:  npm run build         →  ✓

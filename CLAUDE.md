@@ -708,6 +708,48 @@ Batafsil: **`docs/CLOUDINARY.md`**
 ⚠️ Cheklovni frontend **o'zi hisoblamaydi** — `GET /teacher/branding`
 javobidagi `logoMaxBytes` ni ishlatadi (CDN yoqiq: 3MB, o'chiq: 300KB).
 
+## O'quvchilarni Excel'dan import qilish
+
+`services/studentImport.js` — **sof** parser (`parseTable`) +
+`readFile` (base64 → jadval). `POST
+/teacher/classes/:classId/students/import`.
+
+⚠️ **`apply` berilmasa faqat KO'RSATADI.** Yozish uchun ikkinchi
+so'rov kerak — `/lc/rooms/import` bilan bir xil qoida.
+
+⚠️ **Chegaradan oshsa HECH NARSA yozilmaydi.** Yarmi tushgan
+ro'yxatda direktor qaysi bola qolganini bilmaydi.
+
+⚠️ **Takror ikki qatlamda**: fayl ichida va bazada. Telefon
+`utils/phone.js` orqali (oxirgi 9 raqam) solishtiriladi —
+`+998 90 123 45 67` va `90 123 45 67` bitta odam.
+
+⚠️ **Bir xil ismli ikki bola ikkalasi ham tushadi** (raqami
+boshqa bo'lsa). Faqat ism bo'yicha solishtirish ikkinchisini
+yo'qotardi.
+
+⚠️ Ustun nomi topilmasa javobda **fayldagi sarlavhalar** qaytadi.
+Quruq "xato" bilan odam faylni tuzata olmaydi.
+
+⚠️ `rollNumber` bazadagi eng kattadan davom etadi, sanoqdan
+emas: o'chirilgan o'quvchidan keyin raqam takrorlanardi.
+
+## Obuna muzlatilganda direktorga xabar
+
+`services/freezeNotify.js` — admin freeze yoqqanda/o'chirganda
+Telegram'ga xabar. Matn `telegramService.js` da yozilgan edi,
+lekin hech qayerdan chaqirilmagan: yozilgan paytda kanalning
+o'zi yo'q edi.
+
+⚠️ **Rejim tanloviga qaramaydi.** `cashReport.mode` /
+`churnDigest.mode` — kunlik shovqin darajasi uchun; obuna
+muzlatilishi esa hisob haqidagi xabar, uni o'chirgan odam ham
+bilishi kerak.
+
+⚠️ **Fonda yuboriladi** (`inBackground`) va har 20 tadan keyin
+tanaffus — 200 ta xabar admin so'rovini kutdirmasin va Telegram
+chegarasiga urilmasin.
+
 ## Hisobni o'chirish — 30 kunlik muhlat
 
 Direktor `POST /teacher/account/delete` (parol + `O'CHIRISH` so'zi)
@@ -1081,6 +1123,12 @@ qo'shsangiz `server.js` dagi shu blokka qo'shishni unutmang.
 
 - `markPayment` (teacherController) eksport qilingan, lekin hech qaysi route'ga
   ulanmagan — o'lik kod.
+- **"Yozilgan-u ulanmagan" kodni vaqti-vaqti bilan qidiring.** Bu loyihada
+  besh marta takrorlandi: `startReminderCron`, `manageExpenses`,
+  `canAddStaff`/`canOpenBranch`, `updateStudent`/`updateClass`,
+  `sendFreezeNotification`. Hech biri xato bermaydi — funksiya
+  shunchaki **yo'q** bo'lib turadi. Eng oson tekshiruv:
+  `module.exports` dagi nomni boshqa fayllarda qidirib ko'ring.
 - ~~`StaffManagement.vue` taklif qiladigan ruxsatlar backend bilan mos
   emas~~ — **2026-08-20 da yopildi**, pastdagi bo'limga qarang.
 - README.md eskirgan (loyihaning eng birinchi versiyasini tasvirlaydi).
