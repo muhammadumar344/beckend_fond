@@ -253,6 +253,7 @@ haqiqiy `res.json(...)` ni tekshiring:
 | `GET /lc/rooms` | `{ success, rooms }` — har birida `lessonsPerWeek` |
 | `GET /lc/rooms/free` | `{ success, rooms, freeCount }` — har birida `busy`, `busyWith` |
 | `GET /lc/rooms/occupancy` | `{ success, days, rooms, unlinked }` |
+| `GET /teacher/health` | `{ success, health }` — `issues` + `samples` |
 
 ### Xato javoblari — `error` va `message` HAR DOIM teng
 
@@ -786,6 +787,63 @@ o'tgan yilni yopgan direktor yangi guruh ocholmasdi.
 ⚠️ Ro'yxatlar arxivdagilarni ko'rsatmaydi; `?includeArchived=1`
 ularni qaytaradi (`getMyClasses`, `getClassesForStaff`,
 `getGroups`, `getClassStudents` → `?includeInactive=1`).
+
+## Oylik to'lov varaqasi — QO'LDA yaratiladi
+
+Bu tizimdagi eng qimmat "jim" xato: varaqa har guruh uchun
+alohida, qo'lda yaratiladi (`POST /teacher/payments/create-monthly`).
+Administrator bitta guruhni unutsa — o'sha oy o'sha guruhdan pul
+**umuman so'ralmaydi**. Xato yo'q, belgi yo'q; oy oxirida faqat
+"nega tushum kam?" qoladi.
+
+`services/billing.js` — `pickMissing` (sof), `ensureBillsForClass`,
+`ensureBillsForClasses`. `POST /teacher/payments/create-monthly-all`
+hamma faol guruhga bir bosishda yaratadi.
+
+⚠️ **Arxivdagi o'quvchiga varaqa yaratilmaydi**
+(`isActive: { $ne: false }`). Ilgari `Student.find({ class })`
+edi va arxiv paydo bo'lgach bu bug bo'ldi: ketgan bolaga har oy
+yangi qarz yozilib boraverardi.
+
+⚠️ **`{ $ne: false }`, `true` emas** — eski hujjatlarda maydon
+umuman yo'q.
+
+⚠️ **Takror yaratilmaydi.** Mavjud varaqalar bitta so'rov bilan
+olinadi (`pickMissing`), ya'ni tugmani ikki marta bosish
+xavfsiz va N+1 yo'q.
+
+## Markaz salomatligi — `GET /teacher/health`
+
+`services/centerHealth.js` → sof `buildHealth()`,
+`test/centerHealth.test.js` qulflaydi. To'rtta "jim yo'qotish"
+sanaladi: shu oy varaqasi yo'q guruh, telefoni yo'q o'quvchi,
+jadvalsiz guruh, ustozsiz guruh (oxirgi ikkitasi faqat LC).
+
+⚠️ **O'quvchisi yo'q guruh TEKSHIRILMAYDI.** Yangi ochilgan
+guruhda jadval ham, ustoz ham, varaqa ham bo'lmasligi tabiiy.
+Uni qo'shsak kartochka birinchi kundanoq "muammo" bilan to'lib
+ketardi va direktor unga qaramay qo'yardi.
+
+⚠️ **Sanoq + 5 tagacha misol**, to'liq ro'yxat emas — ro'yxat
+o'sha sahifalarda allaqachon bor.
+
+⚠️ So'rovlar `archivedAt: null` bilan cheklangan.
+
+## O'quvchini o'chirish — bog'liq yozuvlar ham o'chadi
+
+`utils/studentPurge.js` — `accountPurge` bilan bir xil naqsh.
+Ilgari faqat `Student` va `MonthlyPayment` o'chardi, qolgani
+bazada egasiz qolardi: `Attendance` (davomat foizi abadiy
+buziladi), `Grade`, `HomeworkResult`, `Enrollment`,
+`StudentLink`, `TelegramParent`, `PaymentClaim`,
+`SupportBooking`, `InviteCode`.
+
+⚠️ **Yangi model `Student` ga `ref` qo'ysa, ro'yxatga ham
+qo'shing.** `test/studentPurge.test.js` `src/models/` papkasini
+o'zi skanerlaydi va yiqiladi.
+
+⚠️ **Odatdagi yo'l baribir ARXIV** (`isActive: false`) —
+o'chirish to'lov tarixini ham olib ketadi.
 
 ## `npm run check:dead` — yozilgan-u ulanmagan kod
 

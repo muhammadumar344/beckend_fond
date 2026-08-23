@@ -68,7 +68,76 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "O'chirish yagona yo'l bo'lmasin"
+### Oxirgi tugagan ish — "Jimgina yo'qotilayotgan pul"
+
+Tizimdagi eng qimmat xatolar xato bermaydi — ular shunchaki
+**sodir bo'lmaydi**. Uchtasi topildi va uchalasi ham pulga
+tegadi.
+
+#### 1. To'lov varaqasi unutilgan guruh 🔴
+
+Oylik varaqa **qo'lda** yaratiladi va **har guruh uchun
+alohida**. Administrator o'n guruhdan bittasini unutsa — o'sha
+oy o'sha guruhdan pul **umuman so'ralmaydi**. Ota-ona ham
+bilmaydi (unga eslatma varaqadan chiqadi), tizim ham xato
+bermaydi. Oy oxirida faqat "nega tushum kam?" degan savol
+qoladi va javobi hech qayerda yo'q.
+
+Endi ikkita narsa bor:
+
+- `GET /teacher/health` → **Dashboard'da "E'tibor talab qiladi"
+  kartochkasi**: shu oy varaqasi yo'q guruhlar, telefoni yo'q
+  o'quvchilar, jadvalsiz va ustozsiz guruhlar (oxirgi ikkitasi
+  faqat LC'da).
+- `POST /teacher/payments/create-monthly-all` — **hamma
+  guruhga bir bosishda**. To'lovlar sahifasidagi tugma.
+
+⚠️ **Bo'sh guruh tekshirilmaydi.** Yangi ochilgan, hali
+o'quvchisi yo'q guruhda na jadval, na ustoz, na varaqa
+bo'lishi tabiiy — u hali tayyorlanyapti. Uni ro'yxatga
+qo'shsak, kartochka birinchi kundanoq "muammo" bilan to'lib
+ketardi va direktor unga qaramay qo'yardi.
+
+⚠️ **Sanoq + bir nechta misol, to'liq ro'yxat emas.**
+Direktorga "nima unutilgan" kerak; ro'yxatning o'zi o'sha
+sahifalarda allaqachon bor.
+
+#### 2. Arxivdagi o'quvchiga har oy yangi qarz yozilardi 🔴
+
+Varaqa yaratish `Student.find({ class })` deb olardi. Arxiv
+paydo bo'lgach bu **bug** bo'ldi: markazni tashlab ketgan
+bolaga har oy yangi qarz yozilib boraverardi, qarz hisoboti
+esa o'sib turardi. Endi `isActive: { $ne: false }`.
+
+⚠️ `{ $ne: false }` — `true` bilan solishtirilmaydi: eski
+hujjatlarda bu maydon umuman yo'q (sxemadagi standart qiymat
+mavjud hujjatlarga tushmaydi).
+
+⚠️ **Ikki marta bosish xavfsiz.** Mavjud varaqalar bitta
+so'rov bilan olinadi va faqat yetishmaganlari qo'shiladi.
+
+#### 3. O'chirilgan o'quvchining yozuvlari bazada qolardi
+
+`deleteStudent` faqat `Student` va `MonthlyPayment` ni
+o'chirardi. Qolgan hammasi **egasiz** qolib ketardi:
+
+| Nima qolardi | Nima buzilardi |
+|---|---|
+| `Attendance` | davomat foizi abadiy — maxrajda yo'q odam |
+| `Grade`, `HomeworkResult` | o'rtacha baho va reyting |
+| `Enrollment` | qo'shimcha guruhda "yo'q odam" turaverardi |
+| `StudentLink`, `TelegramParent` | ota-ona hisobi bog'liq qolardi |
+| `PaymentClaim`, `SupportBooking`, `InviteCode` | — |
+
+Endi `utils/studentPurge.js` — bitta ro'yxat, `accountPurge`
+bilan bir xil naqsh. `test/studentPurge.test.js` `src/models/`
+papkasini **o'zi skanerlaydi**: `ref: "Student"` maydoni bor
+model ro'yxatda bo'lmasa test yiqiladi.
+
+⚠️ **Odatdagi yo'l baribir ARXIV.** O'chirish to'lov tarixini
+ham olib ketadi — u faqat adashib qo'shilgan yozuv uchun.
+
+### Undan oldingi ish — "O'chirish yagona yo'l bo'lmasin"
 
 Uch joyda bir xil naqsh topildi: **ma'lumotni yo'qotish —
 oddiy ishning yagona yo'li**.
