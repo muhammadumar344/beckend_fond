@@ -686,6 +686,10 @@ const getClassesForStaff = async (req, res) => {
     const ctx = await resolveContext(req);
     const query = { teacher: ctx.directorId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
+    // ⚠️ Arxivdagi guruh xodim ro'yxatlarida ko'rinmaydi: davomat
+    //    va baho tanlagichida o'tgan yilning guruhlari turishi
+    //    faqat chalkashtiradi.
+    if (req.query.includeArchived !== "1") query.archivedAt = null;
 
     const classes = await Class.find(query)
       .select("name branch defaultAmount")
