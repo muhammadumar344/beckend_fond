@@ -556,8 +556,11 @@ const createClass = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Teacher topilmadi" });
 
+    // ⚠️ Arxivdagi guruh chegarani band qilmaydi: o'tgan yilni
+    //    yopgan direktor yangi guruh ocholmay qolmasin.
     const currentClassCount = await Class.countDocuments({
       teacher: teacherId,
+      archivedAt: null,
     });
     if (!canOpenNewClass(teacher, currentClassCount)) {
       const activePlan = teacher.isPlanActive() ? teacher.plan : "free";
@@ -605,6 +608,10 @@ const getMyClasses = async (req, res) => {
     const teacherId = ctx.directorId;
     const query = { teacher: teacherId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
+    // ⚠️ Arxivdagilar odatda ko'rinmaydi, lekin yo'qolmaydi.
+    //    `{ archivedAt: null }` maydoni umuman yo'q eski
+    //    sinflarni ham topadi.
+    if (req.query.includeArchived !== "1") query.archivedAt = null;
     const classes = await Class.find(query).sort({
       createdAt: -1,
     });
@@ -720,13 +727,17 @@ const updateClass = async (req, res) => {
       return res.status(404).json({ success: false, error: "Guruh topilmadi" });
 
     const before = { name: cls.name };
-    const { name, monthlyFee, defaultAmount, description, isActive, branch } =
+    const { name, monthlyFee, defaultAmount, description, archived, branch } =
       req.body;
     if (name !== undefined) cls.name = name;
     if (monthlyFee !== undefined) cls.monthlyFee = monthlyFee;
     if (defaultAmount !== undefined) cls.defaultAmount = defaultAmount;
     if (description !== undefined) cls.description = description;
-    if (isActive !== undefined) cls.isActive = isActive;
+    // ⚠️ Ilgari bu yerda `cls.isActive = isActive` turgandi va
+    //    sxemada bunday maydon YO'Q edi — Mongoose uni jimgina
+    //    tashlab yuborardi. Ya'ni "arxivlash" hech qachon
+    //    ishlamagan.
+    if (archived !== undefined) cls.archivedAt = archived ? new Date() : null;
     if (branch !== undefined && ctx.isDirector) cls.branch = branch;
 
     // ⚠️ Nom o'zgarishi jurnalga tushadi: hisobotda "7-A" nima
