@@ -16,6 +16,7 @@ const Branch = require("../models/Branch");
 const Lead = require("../models/Lead");
 const cloudinary = require("../services/cloudinary");
 const platform = require("../config/platform");
+const studentImport = require("../services/studentImport");
 const cloudinaryCfg = require("../config/cloudinary");
 const XLSX = require("xlsx");
 const {
@@ -1018,6 +1019,141 @@ const updateStudent = async (req, res) => {
     res.json({ success: true, student, message: "Saqlandi" });
   } catch (err) {
     res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
+// ══ EXCEL'DAN IMPORT ═══════════════════════════════════════
+//
+// ⚠️ AVVAL KO'RSATADI, KEYIN YOZADI. `apply: false` (standart)
+//    faqat tahlil qaytaradi: nechta qo'shiladi, qaysilari takror,
+//    qaysi qatorda xato. Yozish uchun ikkinchi so'rov kerak.
+//    Begona faylni ko'r-ko'rona bazaga to'kmaymiz
+//    (`/lc/rooms/import` bilan bir xil qoida).
+//
+// ⚠️ YARIM IMPORT YO'Q. Tarif chegarasidan oshsa hech narsa
+//    yozilmaydi: yarmi tushgan ro'yxatda direktor qaysi bola
+//    qolganini bilmaydi va butun faylni qo'lda solishtirib
+//    chiqishga majbur bo'ladi.
+const importStudents = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageStudents");
+
+    const { classId } = req.params;
+    const { file, apply = false } = req.body;
+
+    const classQuery = { _id: classId, teacher: ctx.directorId };
+    if (ctx.branchFilter) classQuery.branch = ctx.branchFilter;
+    const cls = await Class.findOne(classQuery);
+    if (!cls)
+      return res
+        .status(404)
+        .json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" });
+
+    let table;
+    try {
+      table = studentImport.readFile(file);
+    } catch (e) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Faylni o'qib bo'lmadi" });
+    }
+
+    // Takrorni topish uchun guruhdagi hozirgi ro'yxat
+    const existing = await getGroupStudents(classId);
+    const parsed = studentImport.parseTable(
+      table,
+      existing.map((s) => ({ name: s.name, parentPhone: s.parentPhone })),
+    );
+
+    if (!parsed.ok) {
+      return res.status(400).json({
+        success: false,
+        error: parsed.error,
+        // Fayldagi sarlavhalar — odam nimani tuzatishni bilsin
+        headers: parsed.headers,
+      });
+    }
+
+    // ── Tarif chegarasi ──
+    const director = await Teacher.findById(ctx.directorId);
+    const current = existing.length;
+    const limit = limitsFor(effectivePlan(cls.plan, director), director);
+    const fits = Math.max(0, (limit.students || 0) - current);
+
+    const willAdd = parsed.rows.length;
+    const overLimit = willAdd > fits;
+
+    const summary = {
+      willAdd,
+      duplicates: parsed.duplicates.length,
+      invalid: parsed.invalid.length,
+      truncated: parsed.truncated || 0,
+      current,
+      max: limit.students,
+      fits,
+      overLimit,
+      hasPhoneColumn: parsed.hasPhoneColumn,
+    };
+
+    // ── Ko'rib chiqish ──
+    if (!apply) {
+      return res.json({
+        success: true,
+        preview: true,
+        summary,
+        rows: parsed.rows.slice(0, 100),
+        duplicates: parsed.duplicates.slice(0, 50),
+        invalid: parsed.invalid.slice(0, 50),
+      });
+    }
+
+    if (overLimit) {
+      return res.status(403).json({
+        success: false,
+        error: "Tarif chegarasi: bu guruhga ko'proq o'quvchi sig'maydi",
+        requiresUpgrade: true,
+        limit: { max: limit.students, current, fits },
+      });
+    }
+
+    if (!willAdd) {
+      return res.json({ success: true, added: 0, summary, message: "O'zgarish yo'q" });
+    }
+
+    // ⚠️ `rollNumber` ketma-ket davom etadi — ro'yxat aralashib
+    //    ketmasin. Bazadagi eng kattasidan boshlanadi, sanoqdan
+    //    emas: o'chirilgan o'quvchidan keyin raqam takrorlanardi.
+    const maxRoll = existing.reduce((m, s) => Math.max(m, s.rollNumber || 0), 0);
+    const docs = parsed.rows.map((r, i) => ({
+      name: r.name,
+      class: classId,
+      parentPhone: r.phone,
+      rollNumber: maxRoll + i + 1,
+    }));
+    await Student.insertMany(docs);
+
+    audit(req, ctx, {
+      action: "student.imported",
+      entity: "Class",
+      entityId: cls._id,
+      entityLabel: cls.name,
+      changes: [
+        { field: "qo'shildi", from: current, to: current + docs.length },
+        { field: "takror (o'tkazildi)", from: null, to: parsed.duplicates.length },
+      ],
+    });
+
+    return res.json({
+      success: true,
+      added: docs.length,
+      summary,
+      message: "Import tugadi",
+    });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
   }
 };
 
@@ -2571,6 +2707,7 @@ module.exports = {
   deleteStudent,
   getStudents,
   updateStudent,
+  importStudents,
 
   createMonthlyPayments,
   getMonthlyPayments,

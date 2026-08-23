@@ -124,6 +124,15 @@ router.get(
 //    Ya'ni telefonda xato bo'lsa, o'quvchini o'chirib qayta
 //    yaratishdan boshqa yo'l yo'q edi — u esa butun to'lov
 //    tarixini o'chiradi.
+// Excel/CSV import — avval ko'rsatadi (`apply: false`), keyin yozadi.
+// ⚠️ `uploadLimiter`: fayl tanasi katta bo'ladi, serverni bo'g'ib
+//    qo'ymasin (chek rasmlari bilan bir xil himoya).
+router.post(
+  "/classes/:classId/students/import",
+  uploadLimiter,
+  allowTeacherOrStaff,
+  ctrl.importStudents,
+);
 router.put("/students/:studentId", allowTeacherOrStaff, ctrl.updateStudent);
 router.delete("/students/:studentId", allowTeacherOrStaff, ctrl.deleteStudent);
 

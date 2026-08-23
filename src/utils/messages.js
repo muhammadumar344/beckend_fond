@@ -362,6 +362,12 @@ const MESSAGES = {
   "Ism bo'sh bo'lmasin": { ru: "Имя не может быть пустым", en: "The name cannot be empty" },
   "Tarif chegarasi: bu guruhga ko'proq o'quvchi sig'maydi": { ru: "Ограничение тарифа: в эту группу больше учеников не поместится", en: "Plan limit: this group cannot take more students" },
   "O'zgarish yo'q": { ru: "Изменений нет", en: "Nothing changed" },
+  // ── Excel import ───────────────────────────────────────
+  "Faylni o'qib bo'lmadi": { ru: "Не удалось прочитать файл", en: "The file could not be read" },
+  "Import tugadi": { ru: "Импорт завершён", en: "Import finished" },
+  "Fayl bo'sh": { ru: "Файл пустой", en: "The file is empty" },
+  "Ism ustuni topilmadi": { ru: "Столбец с именем не найден", en: "No name column found" },
+  "Faylda varaq yo'q": { ru: "В файле нет листов", en: "The file has no sheets" },
   // ── Tarif chegaralari ──────────────────────────────────
   // ⚠️ Raqam matnda EMAS — javobdagi `limit` maydonida.
   //    Shablonli xabar tarjima qilinmaydi va ruscha
