@@ -916,7 +916,14 @@ const getClassStudents = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" });
 
-    const students = await getGroupStudents(classId);
+    // ⚠️ ARXIVDAGILAR ALOHIDA SO'RALADI. O'quvchi ketganda uni
+    //    o'chirish emas, arxivlash kerak (`isActive: false`) —
+    //    o'chirish uning butun to'lov tarixini ham olib ketadi.
+    //    Odatiy ro'yxatda arxivdagilar ko'rinmaydi, lekin ular
+    //    yo'qolmagan: `?includeInactive=1` ularni ham beradi.
+    const includeInactive =
+      req.query.includeInactive === "1" || req.query.includeInactive === "true";
+    const students = await getGroupStudents(classId, { includeInactive });
     return res.json({ success: true, students });
   } catch (err) {
     console.error("getClassStudents error:", err);
