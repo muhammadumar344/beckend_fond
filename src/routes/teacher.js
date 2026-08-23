@@ -169,6 +169,14 @@ router.post(
   allowTeacherOrStaff,
   ctrl.createMonthlyPayments,
 );
+// ⚠️ HAMMA guruhga bir bosishda — unutilgan guruh qolmasin.
+//    Ikki marta bosish xavfsiz: mavjud varaqalar qayta
+//    yaratilmaydi.
+router.post(
+  "/payments/create-monthly-all",
+  allowTeacherOrStaff,
+  ctrl.createMonthlyPaymentsAll,
+);
 router.get(
   "/payments/class/:classId",
   allowTeacherOrStaff,

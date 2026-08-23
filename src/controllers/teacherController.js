@@ -19,6 +19,7 @@ const cloudinary = require("../services/cloudinary");
 const platform = require("../config/platform");
 const studentImport = require("../services/studentImport");
 const centerHealth = require("../services/centerHealth");
+const billing = require("../services/billing");
 const cloudinaryCfg = require("../config/cloudinary");
 const XLSX = require("xlsx");
 const {
@@ -1308,55 +1309,77 @@ const createMonthlyPayments = async (req, res) => {
         .json({ success: false, error: "Bu sinf sizning filialingizga tegishli emas" });
     }
 
-    const students = await Student.find({ class: classId });
-    if (students.length === 0) {
+    // ⚠️ Mantiq `services/billing.js` da: "hammasiga yaratish"
+    //    tugmasi ham aynan shuni chaqiradi va qoida ikki joyda
+    //    bo'lib qolmasin.
+    const summary = await billing.ensureBillsForClass({
+      cls,
+      teacherId,
+      month: Number(month),
+      year: Number(year),
+    });
+
+    if (!summary.total) {
       return res
         .status(400)
         .json({ success: false, error: "Bu sinfda o'quvchi yo'q" });
     }
 
-    let createdCount = 0;
-    let alreadyExisted = 0;
-
-    for (const student of students) {
-      try {
-        const existing = await MonthlyPayment.findOne({
-          student: student._id,
-          class: classId,
-          month: Number(month),
-          year: Number(year),
-        });
-        if (!existing) {
-          await MonthlyPayment.create({
-            student: student._id,
-            class: classId,
-            teacher: teacherId,
-            amount: cls.defaultAmount,
-            month: Number(month),
-            year: Number(year),
-            status: "not_paid",
-          });
-          createdCount++;
-        } else {
-          alreadyExisted++;
-        }
-      } catch (e) {
-        console.error(`Error creating payment for student ${student._id}:`, e);
-      }
-    }
-
     return res.json({
       success: true,
-      message: `${createdCount} ta to'lov yaratildi`,
-      summary: {
-        created: createdCount,
-        alreadyExisted,
-        total: students.length,
-      },
+      message: `${summary.created} ta to'lov yaratildi`,
+      summary,
     });
   } catch (err) {
     console.error("createMonthlyPayments error:", err);
     return res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
+// ══ HAMMA GURUHGA VARAQA — bir bosishda ════════════════════
+//
+// ⚠️ NEGA KERAK: varaqani har guruh uchun alohida yaratish
+//    kerak edi va o'n beshta guruhi bor markazda bittasini
+//    unutish — vaqt masalasi. Unutilgan guruhdan esa o'sha oy
+//    pul umuman so'ralmaydi va buni hech narsa aytmaydi.
+//    `GET /teacher/health` muammoni KO'RSATADI, bu esa uni
+//    umuman bo'lmaydigan qiladi.
+//
+// ⚠️ Ikki marta bosish xavfsiz: mavjud varaqalar qayta
+//    yaratilmaydi.
+const createMonthlyPaymentsAll = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "managePayments");
+
+    const month = Number(req.body.month);
+    const year = Number(req.body.year);
+    if (!month || !year || month < 1 || month > 12 || year < 2020) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Oy va yil noto'g'ri" });
+    }
+
+    const query = { teacher: ctx.directorId, archivedAt: null };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+    const classes = await Class.find(query).select("name defaultAmount branch");
+
+    const result = await billing.ensureBillsForClasses({
+      classes,
+      teacherId: ctx.directorId,
+      month,
+      year,
+    });
+
+    return res.json({
+      success: true,
+      message: `${result.created} ta to'lov yaratildi`,
+      ...result,
+    });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
   }
 };
 
@@ -2822,6 +2845,7 @@ module.exports = {
   importStudents,
 
   createMonthlyPayments,
+  createMonthlyPaymentsAll,
   getMonthlyPayments,
   getClassPayments,
   updatePaymentStatus,
