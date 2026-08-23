@@ -68,7 +68,94 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Yozilgan-u ulanmagan kod" auditi
+### Oxirgi tugagan ish — "O'chirish yagona yo'l bo'lmasin"
+
+Uch joyda bir xil naqsh topildi: **ma'lumotni yo'qotish —
+oddiy ishning yagona yo'li**.
+
+| Nima qilmoqchi | Yagona yo'l edi | Nima yo'qolardi |
+|---|---|---|
+| Telefonni tuzatish | o'quvchini o'chirib qayta yaratish | butun to'lov tarixi |
+| Ketgan o'quvchi | o'chirish | to'lov tarixi |
+| O'quv yilini yopish | sinfni o'chirish | o'quvchilar, to'lovlar, xarajatlar |
+
+Endi uchalasi ham bor: **tahrirlash**, **o'quvchi arxivi**,
+**guruh/sinf arxivi**. O'chirish tugmasi qoldi — adashib
+qo'shilgan yozuv uchun kerak.
+
+⚠️ **Yo'lda ma'lum bo'ldi: arxivlash hech qachon ishlamagan.**
+`updateClass` da `cls.isActive = isActive` turgandi, `Class`
+sxemasida esa bunday maydon YO'Q — Mongoose uni jimgina tashlab
+yuborardi. Endi `archivedAt` (sana): hisobotda "qachon yopilgan"
+darhol so'raladi va bulean bunga javob bermaydi.
+
+⚠️ **Filtr `archivedAt: null`** — Mongo'da u maydoni umuman
+yo'q hujjatlarni ham topadi, ya'ni mavjud sinflar avtomatik
+faol bo'lib qoladi. `$exists: false` yoki `false` bilan
+solishtirsak, butun ro'yxat yo'qolardi (sxemadagi standart
+qiymat mavjud hujjatlarga tushmaydi).
+
+⚠️ **Arxivdagi guruh tarif chegarasini band qilmaydi.** O'tgan
+yilni yopgan direktor yangi guruh ocholmay qolmasin — aks holda
+arxivning ma'nosi qolmasdi.
+
+### Undan oldingi ish — `check:dead` guardrail'i
+
+Bugun "yozilgan-u ulanmagan" xato **besh marta** topildi
+(`canAddStaff`, `updateStudent`, `updateClass`,
+`sendFreezeNotification`, `cancelBooking`) — ilgari ikki marta
+bo'lgani ustiga. Hech biri xato bermaydi: funksiya shunchaki
+**yo'q** bo'lib turadi.
+
+`npm run check:dead` ikki narsani qaraydi: controller eksporti
+route'ga ulanganmi va servis funksiyasi umuman chaqiriladimi.
+
+⚠️ **Heuristika ikki marta o'tkirlashtirildi va ikkalasi ham
+o'z sinovidan yiqilgandan keyin:**
+
+1. Birinchi variant **44 ta** nom qaytardi (konstantalar, test
+   uchun eksport qilingan cron funksiyalari). Bunday ro'yxatga
+   hech kim qaramaydi — guardrail o'zi shovqinga aylanardi.
+2. Ikkinchi variantda **eksport qatorining o'zi** "ishlatilgan"
+   deb sanalardi: ataylab qo'shilgan o'lik funksiya
+   "ishlatilyapti" bo'lib chiqdi (ta'rif + `module.exports` = 2 ta).
+   Lekin eksport blokidagi **qiymat** sanalishi kerak
+   (`requireSchoolMode: requireMode("school")`).
+
+Ataylab qoldirilganlar `ALLOW` ro'yxatida, har biri izohli.
+⚠️ `getStudents` u yerda alohida ogohlantirish bilan: u ham
+`updateStudent` bilan bir xil kasal edi
+(`Student.find({ teacher })` — bunday maydon yo'q), route'ga
+ulansa doim bo'sh ro'yxat qaytaradi.
+
+### Undan oldingi ish — tezlik va platforma egasining paneli
+
+**N+1 uch joyda** topildi va uchalasi ham eng ko'p ochiladigan
+sahifalarda edi: admin paneli, Fond dashboard'i va Sinflar
+ro'yxati. Har birida halqa ichida `MonthlyPayment.find(...)`
+turardi — u sinfning (yoki markazning) **butun tarixini**
+xotiraga yuklab, keyin JS'da yig'ardi. Uch yillik markazda bu
+o'n minglab hujjat, yuzta markazli admin panelida esa 400 dan
+ortiq so'rov. Render'ning bepul tarifida bunday sahifa avval
+sekinlashadi, keyin umuman ochilmay qoladi.
+
+Endi hammasi `aggregate` bilan — pul bazada yig'iladi.
+
+**Admin paneliga "e'tibor talab qiladi" bo'limi** qo'shildi:
+obunasi 7 kun ichida tugaydiganlar, yaqinda tugaganlar va 14
+kundan beri kirmagan markazlar. Har birida telefon raqami
+bosiladigan qilib turadi.
+
+⚠️ Lumo direktorlarga "qaysi o'quvchi ketish arafasida" deb
+aytadi; platforma egasiga esa aynan shu savol bir qavat
+yuqorida turadi. `Teacher.lastLoginAt` shu uchun qo'shildi va
+kirishda `await` siz yoziladi.
+
+⚠️ **`lastLoginAt` yo'q eski hisoblar "kirmagan" ro'yxatiga
+tushmaydi** — ularni "2 yil kirmagan" deb ko'rsatish yolg'on
+bo'lardi.
+
+### Undan oldingi ish — "Yozilgan-u ulanmagan kod" auditi
 
 Sidirg'a qidiruv: `module.exports` dagi har bir nom boshqa
 fayllarda ishlatiladimi? Bu loyihada shu turdagi xato allaqachon
@@ -887,9 +974,9 @@ O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test              →  453/453
+backend :  npm test              →  484/484
 backend :  npm run check:messages →  tarjimasiz matn 0 ta (endi XATO beradi)
-backend :  npm run check          →  test + check:messages (yangi qisqartma)
+backend :  npm run check          →  test + check:messages + check:dead
 frontend:  npm run build         →  ✓
 frontend:  npm run check         →  verify, check:api, check:perms, check:css, check:i18n — 0 xato
 ```

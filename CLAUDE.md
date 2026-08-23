@@ -329,6 +329,13 @@ Barcha modellarda indeks bor (jami 35 ta). Eng muhimlari:
 Yangi so'rov naqshi qo'shsangiz mos indeks borligini tekshiring —
 `Attendance`, `Grade`, `HomeworkResult` tez o'sadigan kolleksiyalar.
 
+⚠️ **Ro'yxat ustida halqa yurgizib, har bir element uchun so'rov
+yubormang.** Bu loyihada uch joyda shunday edi (admin paneli,
+Fond dashboard'i, Sinflar ro'yxati) va har birida
+`MonthlyPayment.find(...)` sinfning butun tarixini xotiraga
+tortardi. `aggregate` bilan bazada yig'ing; o'quvchilar uchun
+`buildGroupStudentMap` bor (`utils/enrollment.js`).
+
 ## Guruh/sinf ajratish (reja 1.2) — tayyorgarlik
 
 LC guruhlari hali `Class` da saqlanadi. Ajratish uchun **tayyorlangan,
@@ -749,6 +756,55 @@ bilishi kerak.
 ⚠️ **Fonda yuboriladi** (`inBackground`) va har 20 tadan keyin
 tanaffus — 200 ta xabar admin so'rovini kutdirmasin va Telegram
 chegarasiga urilmasin.
+
+## Arxiv — o'chirishning o'rniga
+
+Uch joyda bir xil naqsh bor edi: **ma'lumotni yo'qotish oddiy
+ishning yagona yo'li**. Telefonni tuzatish uchun o'quvchini
+o'chirib qayta yaratish, o'quv yilini yopish uchun sinfni
+o'chirish (u esa barcha o'quvchi, to'lov va xarajatni ham
+o'chiradi).
+
+| Model | Maydon | Ma'nosi |
+|---|---|---|
+| `Student` | `isActive: false` | arxivda |
+| `Class` / `Group` | `archivedAt: Date` | qachon yopilgani |
+
+⚠️ **`Class` da `isActive` YO'Q EDI** va `updateClass` unga
+yozardi — Mongoose jimgina tashlab yuborardi. Arxivlash hech
+qachon ishlamagan.
+
+⚠️ **Filtr `archivedAt: null`** — Mongo'da u maydoni umuman
+yo'q hujjatlarni ham topadi. `$exists: false` yoki `false`
+bilan solishtirsangiz mavjud sinflar ro'yxatdan yo'qoladi
+(sxemadagi standart qiymat mavjud hujjatlarga tushmaydi).
+
+⚠️ **Arxivdagi guruh tarif chegarasini band qilmaydi**
+(`createClass` → `archivedAt: null` bilan sanaydi). Aks holda
+o'tgan yilni yopgan direktor yangi guruh ocholmasdi.
+
+⚠️ Ro'yxatlar arxivdagilarni ko'rsatmaydi; `?includeArchived=1`
+ularni qaytaradi (`getMyClasses`, `getClassesForStaff`,
+`getGroups`, `getClassStudents` → `?includeInactive=1`).
+
+## `npm run check:dead` — yozilgan-u ulanmagan kod
+
+Bu loyihada shu xato **yetti marta** takrorlandi va hech biri
+xato bermaydi: funksiya shunchaki yo'q bo'lib turadi. Skript
+ikki narsani qaraydi: controller eksporti route'ga ulanganmi va
+servis funksiyasi umuman chaqiriladimi.
+
+⚠️ **Konstantalar tekshirilmaydi.** Birinchi variant 44 ta nom
+qaytardi va bunday ro'yxatga hech kim qaramaydi — guardrail
+o'zi shovqinga aylanardi.
+
+⚠️ **Eksport qatorining o'zi "ishlatilgan" deb sanalmaydi**,
+lekin eksport blokidagi QIYMAT sanaladi
+(`requireSchoolMode: requireMode("school")`).
+
+⚠️ Ataylab qoldirilganlar `ALLOW` da — izoh bilan. `getStudents`
+u yerda ogohlantirish bilan: u buzuq (`Student.find({ teacher })`
+— bunday maydon yo'q), route'ga ulansa bo'sh ro'yxat qaytaradi.
 
 ## Hisobni o'chirish — 30 kunlik muhlat
 
