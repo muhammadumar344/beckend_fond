@@ -141,6 +141,20 @@ const teacherSchema = new mongoose.Schema({
     },
   },
 
+  // ── Oxirgi kirish ──────────────────────────────────────────
+  //
+  // ⚠️ NEGA KERAK: platforma egasi uchun eng muhim savol —
+  //    "qaysi markaz tizimni tashlab ketyapti?". Bu Lumo'ning
+  //    o'z mijozlariga beradigan javobining aynan o'zi
+  //    (`services/churnRisk.js`), faqat bir qavat yuqorida:
+  //    ikki hafta kirmagan direktor — ketish arafasida, va
+  //    bitta qo'ng'iroq uni qaytarishi mumkin.
+  //
+  // ⚠️ ESKI HISOBLARDA BO'SH bo'ladi va bu normal: maydon
+  //    paydo bo'lgunga qadar kirganlar yozilmagan. Hisobotda
+  //    "noma'lum" deb ko'rsatiladi, "2 yil kirmagan" deb emas.
+  lastLoginAt: { type: Date, default: null },
+
   // ── Haftalik "ketish arafasida" xabari ─────────────────────
   //
   // Ketish belgilari CRM'da hisoblanadi (`/lc/at-risk`), lekin
