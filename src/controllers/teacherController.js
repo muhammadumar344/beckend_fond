@@ -18,6 +18,7 @@ const Lead = require("../models/Lead");
 const cloudinary = require("../services/cloudinary");
 const platform = require("../config/platform");
 const studentImport = require("../services/studentImport");
+const centerHealth = require("../services/centerHealth");
 const cloudinaryCfg = require("../config/cloudinary");
 const XLSX = require("xlsx");
 const {
@@ -46,6 +47,7 @@ const { sendPaymentConfirmation } = require("../services/telegramService");
 const {
   resolveContext,
   requirePermission,
+  requireAnyPermission,
 } = require("../utils/resolveContext");
 const { audit, diff } = require("../services/audit");
 
@@ -2646,6 +2648,47 @@ const exportPayments = async (req, res) => {
   }
 };
 
+// ══ MARKAZ SALOMATLIGI ═════════════════════════════════════
+//
+// ⚠️ Tizimdagi eng qimmat xatolar xato bermaydi — ular
+//    shunchaki SODIR BO'LMAYDI. To'lov varaqasi qo'lda
+//    yaratiladi va bitta guruh unutilsa, o'sha oy o'sha
+//    guruhdan pul umuman so'ralmaydi. Hech qanday xabar yo'q,
+//    oy oxirida esa "nega tushum kam?" degan savol qoladi.
+const getCenterHealth = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    // Moliyaviy ma'lumot bor (qaysi guruhdan pul so'ralmagan)
+    requireAnyPermission(ctx, ["viewPayments", "managePayments"]);
+
+    const now = new Date();
+    const month = Number(req.query.month) || now.getMonth() + 1;
+    const year = Number(req.query.year) || now.getFullYear();
+
+    const teacher = await Teacher.findById(ctx.directorId).select(
+      "institutionType",
+    );
+
+    const data = await centerHealth.collect({
+      directorId: ctx.directorId,
+      branchId: ctx.branchFilter || null,
+      month,
+      year,
+      isLC: teacher?.institutionType === "learning_center",
+    });
+
+    return res.json({
+      success: true,
+      period: { month, year },
+      ...centerHealth.buildHealth(data),
+    });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
+  }
+};
+
 // ============================================================
 //  SUBSCRIPTION
 // ============================================================
@@ -2760,6 +2803,7 @@ module.exports = {
 
   getDashboard,
   getSubscriptionInfo,
+  getCenterHealth,
 
   getClassesForStaff,
   getMyClasses,

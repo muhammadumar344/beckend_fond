@@ -37,6 +37,10 @@ router.post("/account/delete", onlyTeacher, accountCtrl.requestDeletion);
 
 router.get("/dashboard", onlyTeacher, ctrl.getDashboard);
 router.get("/subscription", onlyTeacher, ctrl.getSubscriptionInfo);
+// Markaz salomatligi — jimgina yo'qotilayotgan narsalar
+// (to'lov varaqasi yaratilmagan guruh, telefonsiz o'quvchi…).
+// ⚠️ Xodim ham ko'radi: ruxsat controller ichida tekshiriladi.
+router.get("/health", allowTeacherOrStaff, ctrl.getCenterHealth);
 router.put("/onboarding", onlyTeacher, ctrl.completeOnboarding);
 
 // ══ REJIM — xato tanlaganlar uchun chiqish yo'li ═════════════
