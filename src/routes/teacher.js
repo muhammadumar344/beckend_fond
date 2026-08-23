@@ -106,6 +106,12 @@ router.put(
   onlyTeacher,
   ctrl.updateInitialBalance,
 );
+// ⚠️ Nomni o'zgartirish 2026-08-21 gacha UMUMAN YO'Q edi:
+//    `updateClass` yozilgan, lekin route'ga ulanmagan. Ya'ni
+//    sinf nomida xato bo'lsa (yoki yangi o'quv yili boshlansa)
+//    uni o'chirib qayta yaratishdan boshqa yo'l yo'q edi — u esa
+//    o'quvchilarni ham, to'lov tarixini ham olib ketardi.
+router.put("/classes/:classId", allowTeacherOrStaff, ctrl.updateClass);
 router.delete("/classes/:classId", allowTeacherOrStaff, ctrl.deleteClass);
 
 // ══ STUDENTS — Director VA Staff (manageStudents huquqi bilan) ══

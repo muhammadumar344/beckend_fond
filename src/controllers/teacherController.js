@@ -685,6 +685,7 @@ const updateClass = async (req, res) => {
     if (!cls)
       return res.status(404).json({ success: false, error: "Guruh topilmadi" });
 
+    const before = { name: cls.name };
     const { name, monthlyFee, defaultAmount, description, isActive, branch } =
       req.body;
     if (name !== undefined) cls.name = name;
@@ -693,6 +694,19 @@ const updateClass = async (req, res) => {
     if (description !== undefined) cls.description = description;
     if (isActive !== undefined) cls.isActive = isActive;
     if (branch !== undefined && ctx.isDirector) cls.branch = branch;
+
+    // ⚠️ Nom o'zgarishi jurnalga tushadi: hisobotda "7-A" nima
+    //    uchun "8-A" bo'lib qolganini keyin tushuntirish kerak
+    //    bo'lishi mumkin.
+    if (name !== undefined && name !== before.name) {
+      audit(req, ctx, {
+        action: "class.updated",
+        entity: "Class",
+        entityId: cls._id,
+        entityLabel: cls.name,
+        changes: [{ field: "nom", from: before.name, to: cls.name }],
+      });
+    }
 
     await cls.save();
     res.json({ success: true, class: cls });
