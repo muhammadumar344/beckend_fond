@@ -344,8 +344,14 @@ lekin ishga tushirilmagan**:
 
 - `models/Group.js` — yangi model (hech qayerda import qilinmagan)
 - `src/scripts/analyzeGroupSplit.js` — **faqat o'qiydi**, hisobot beradi
-- `src/scripts/migrateGroups.js` — sukut bo'yicha quruq yurish;
-  yozish uchun `--apply`, orqaga qaytarish uchun `--rollback --apply`
+- `src/scripts/migrateGroups.js` — ⛔ **HOZIR O'ZINI TO'XTATADI**
+  va bu ataylab. U **B varianti** uchun yozilgan (`Group` alohida
+  kolleksiyada), loyihada esa **A varianti** deploy qilingan:
+  `Group` aynan `classes` ga bog'langan. Shu holatda `--apply`
+  o'sha `_id` bilan o'sha kolleksiyaga yozadi, `--rollback` esa
+  **jonli `classes` dan o'chirishga urinadi**. Skript
+  ulanishdan oldin kolleksiya nomlarini solishtirib chiqib
+  ketadi; `test/groupMigration.test.js` buni qulflaydi.
 - `docs/GROUP_MIGRATION.md` — uch xil yondashuv, tavsiya va tartib
 
 Asosiy g'oya: `Group` yozuvlari **aynan o'sha `_id`** bilan yaratiladi,
@@ -354,6 +360,13 @@ kerak emas. Asosiy qiyinchilik — 13 joydagi `populate("class")`;
 batafsili hujjatda.
 
 ⚠️ Skriptlarni ishga tushirishdan oldin bazadan nusxa oling.
+
+⚠️ **`migratedFromClass` `Group` sxemasida YO'Q.** Skript uni
+yozadi va keyin o'sha maydon bo'yicha o'chiradi — Mongoose esa
+uni jimgina tashlab yuboradi. Ya'ni "allaqachon ko'chirilgan"
+ro'yxati doim bo'sh bo'lardi. Maydonni qo'shishdan oldin
+yuqoridagi to'xtatuvchini o'qing: u bo'lmasa `deleteMany`
+markazlarning HAMMA guruhini o'chirib yuborardi.
 
 ## Group va Class — bitta kolleksiya, ikkita model
 

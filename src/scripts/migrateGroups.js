@@ -150,7 +150,61 @@ async function migrate() {
   console.log("  Orqaga qaytarish: node src/scripts/migrateGroups.js --rollback --apply\n");
 }
 
+// ⚠️ ENG MUHIM TEKSHIRUV — ULANISHDAN OLDIN.
+//
+// Bu skript B VARIANTI uchun yozilgan: `Group` ALOHIDA
+// kolleksiyada bo'lishi kerak edi. Lekin loyihada **A varianti**
+// tanlangan va deploy qilingan: `models/Group.js` aynan
+// `classes` kolleksiyasiga bog'langan
+// (`mongoose.model("Group", groupSchema, "classes")`), ya'ni
+// `Group` va `Class` — BITTA kolleksiyaning ikki ko'rinishi.
+//
+// Shu holatda skript ikki xil zarar keltiradi:
+//
+//   · `--apply`    → `insertMany` AYNAN o'sha `_id` bilan o'sha
+//                    kolleksiyaga yozadi → duplicate key, yoki
+//                    yomonrog'i — ishlab turgan hujjatlar bilan
+//                    to'qnashuv.
+//   · `--rollback` → `deleteMany` JONLI `classes` kolleksiyasiga
+//                    tushadi. Bugun `migratedFromClass` maydoni
+//                    sxemada yo'q (Mongoose uni jimgina tashlab
+//                    yuboradi), shuning uchun filtr hech narsani
+//                    topmaydi — lekin kimdir o'sha maydonni
+//                    qo'shsa, buyruq markazlarning HAMMA guruhini
+//                    o'chirib yuborardi.
+//
+// Shuning uchun skript o'zini to'xtatadi. Hujjat:
+// `docs/GROUP_MIGRATION.md`.
+const guardSameCollection = () => {
+  const g = Group.collection.name;
+  const c = Class.collection.name;
+  if (g !== c) return;
+
+  line("═");
+  console.log("  ⛔ SKRIPT TO'XTATILDI — ishga tushirilmadi");
+  line();
+  console.log(`  \`Group\` va \`Class\` bitta kolleksiyada: "${g}"`);
+  console.log("");
+  console.log("  Loyihada A VARIANTI tanlangan: ma'lumot ko'chirilmaydi,");
+  console.log("  `Group` o'sha `classes` hujjatlarini boshqa nom bilan");
+  console.log("  o'qiydi. Ya'ni KO'CHIRADIGAN NARSANING O'ZI YO'Q.");
+  console.log("");
+  console.log("  Bu skript B varianti (alohida kolleksiya) uchun yozilgan");
+  console.log("  va shu holatda ISHLATIB BO'LMAYDI:");
+  console.log("    · --apply    → o'sha _id bilan o'sha kolleksiyaga yozadi");
+  console.log("    · --rollback → jonli `classes` dan o'chirishga urinadi");
+  console.log("");
+  console.log("  Avval `docs/GROUP_MIGRATION.md` ni o'qing va `Group` ni");
+  console.log("  alohida kolleksiyaga bog'lang — keyin bu skript ma'noga");
+  console.log("  ega bo'ladi.\n");
+  process.exit(1);
+};
+
 const run = async () => {
+  // ⚠️ Bazaga ULANISHDAN OLDIN — noto'g'ri holatda umuman
+  //    ulanmaganimiz ma'qul.
+  guardSameCollection();
+
   await mongoose.connect(
     process.env.MONGODB_URI || "mongodb://localhost:27017/fond-school",
   );
