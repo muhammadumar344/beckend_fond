@@ -68,7 +68,108 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Jimgina yo'qotilayotgan pul"
+### Oxirgi tugagan ish — "Ishlayapti deb ko'ringan, lekin ishlamagan"
+
+Bu safar topilganlarning hammasi bitta turdagi: **kod bor,
+tugma bor, xato yo'q — natija esa yo'q**. Hech biri log'da
+ko'rinmaydi.
+
+#### 1. Telegram xabarlari yangi ota-onalarga BORMASDI 🔴
+
+Bog'lanishning ikkita manbai bor: eski `TelegramParent` va
+yangi `StudentLink` (Mini App orqali, raqamini tasdiqlab).
+**Yangi ota-onalar faqat ikkinchisiga tushadi.**
+
+`utils/notifyTargets.js` aynan shu ikkalasini birlashtirish
+uchun yozilgan edi — lekin unga faqat `reminderCron` o'tgan.
+Qolgan to'rt joy eski modelni bevosita o'qiyverdi:
+
+| Joy | Nima yo'qolardi |
+|---|---|
+| CRM "Ulangan ota-onalar" | "80 tadan 3 tasi" — direktor botni ishlamayapti deb o'ylardi |
+| "Tanlanganlarga yuborish" | jimgina `failed` bo'lardi |
+| Uy vazifasi reytingi | `skipped` |
+| To'lov tasdiqlash | **pulini to'lagan ota-ona hech qanday tasdiq olmasdi** |
+| Admin paneli | platforma bo'yicha bot ishlatilishi nol ko'rinardi |
+
+⚠️ **Bitta bolada bir nechta qabul qiluvchi bo'lishi mumkin**
+(ota, ona, o'quvchining o'zi). Eski `byStudent[id] = p` naqshi
+bittasini ustiga yozib yuborardi. `groupByStudent` massiv
+qaytaradi.
+
+⚠️ **Guardrail:** `test/notifyTargets.test.js` — xabar
+yuboradigan fayl `TelegramParent.find` yozsa test yiqiladi.
+Bu xato loyihada besh marta takrorlangan.
+
+#### 2. "Tanlanganlarga eslatma" HECH QACHON ishlamagan 🔴
+
+`GET /teacher/reminder` javobida `studentId` UMUMAN yo'q edi.
+Interfeys uning o'rniga qator RAQAMINI ishlatardi
+(`st.studentId || idx`) — ya'ni so'rov backend'ga `[0, 1, 2]`
+yuborardi.
+
+`hasTelegram` ham yo'q edi: har bir qator "Ulanmagan" belgisi
+bilan chiqardi va "Hammasini tanlash" tugmasi hech kimni
+tanlamasdi.
+
+Pro/Premium tarifda sotilayotgan oqim shu holatda turgan.
+
+⚠️ `|| idx` naqshi bug'ni YASHIRIB turardi — backend maydonni
+qaytarmasa ham kod jimgina qator raqamini ishlatardi.
+
+#### 3. "SMS eslatma" sotiladi, lekin xizmat yo'q 🔴
+
+`smsService` umuman ulanmagan edi va har bir o'quvchi uchun
+jimgina `status: 'failed'` qaytarardi; endpoint esa buni
+`success: true` bilan yuborardi. Premium sotib olgan direktor
+"0 yuborildi, 25 muvaffaqiyatsiz" ni ko'rardi.
+
+Endi Payme/Click va platforma kartasi bilan bir xil qoida:
+kalit yo'q → **503 va halol xabar**. Obuna sahifasida SMS
+qatori "tez orada" belgisi bilan — **sotib olishdan oldin**.
+
+#### 4. Ro'yxatdan o'tishda LC'ga Fond narxi ko'rsatilardi 🔴
+
+Tavsiya bloki faqat o'quv markaziga chiqadi, ichida esa
+"oyiga 29 000 so'm" qotirib yozilgan edi — bu Fond raqami,
+LC Pro esa 199 000. `Subscription.vue` da bu bir marta
+tuzatilgan, `Onboarding.vue` o'sha holicha qolgandi.
+
+`usePlanLimits` ga `plans`, `priceOf()` va `can()` qo'shildi —
+narx ham, xususiyat ham endi bitta manbadan.
+
+#### 5. Tarif bayroqlarining yettitasi tekshirilmasdi
+
+`PLAN_FEATURES` dagi `import`, `branches`, `homework`,
+`salaries`, `roles`, `branch_stats`, `reports`, `white_label`
+hech qayerda `hasFeature(...)` bilan tekshirilmasdi.
+
+`import` yopildi (yangi xususiyat, hech kim ishlatmayapti).
+Qolganlari `test/planFeatures.test.js` dagi `UNGATED`
+ro'yxatida izoh bilan — **ularni yopish mahsulot qarori**,
+§4.2 ga qarang.
+
+#### 6. Yangi guardrail — `npm run check:shape`
+
+`check:api` faqat MANZILni tekshiradi. Eng ko'p takrorlangan
+xato esa boshqa: manzil to'g'ri, javob keladi, frontend YO'Q
+maydonni o'qiydi.
+
+Birinchi yurishdayoq admin panelidan haqiqiy bug topdi:
+`POST /admin/freeze/activate` `frozenCount` qaytaradi, sahifa
+`affectedTeachers` ni o'qirdi — admin butun platformani
+muzlatib, "**undefined** ta ustoz ta'sirlandi" ni ko'rardi.
+
+O'sha sahifadagi "Ha, taklif qil" tugmasi ham hech narsa
+qilmasdi: hech qanday so'rov yubormay, "yuborildi" deb
+yozardi. Olib tashlandi.
+
+⚠️ Skript **ataylab qo'rqoq**: o'qib bo'lmaydigan handler
+(yuqori darajada `...spread`, javob o'zgaruvchidan yasalgan)
+umuman tekshirilmaydi — 204 tadan 53 tasi. Soxta xato
+beradigan guardrail'ga hech kim qaramaydi.
+
+### Undan oldingi ish — "Jimgina yo'qotilayotgan pul"
 
 Tizimdagi eng qimmat xatolar xato bermaydi — ular shunchaki
 **sodir bo'lmaydi**. Uchtasi topildi va uchalasi ham pulga
@@ -1099,6 +1200,40 @@ brauzer ochiladi va token qaytadan saqlanadi.
 
   Kalit qo'yilishi bilan ishlaydi, deploy dan boshqa hech narsa
   kerak emas.
+
+- 🟡 **SMS provayderi — "SMS eslatma" Premium'da sotiladi, lekin
+  xizmat umuman ulanmagan.** Ilgari u soxta muvaffaqiyat
+  qaytarardi; endi kalit yo'q bo'lsa **503** va sahifada "tez
+  orada" belgisi turadi. Eskiz yoki Play Mobile merchant
+  olingach:
+
+  ```
+  SMS_PROVIDER=eskiz
+  SMS_EMAIL=...
+  SMS_PASSWORD=...
+  SMS_SENDER=4546
+  ```
+
+  ⚠️ To'rttasi ham to'ldirilishi shart — yarmi to'ldirilgan
+  sozlama provayderga ulanishga urinib, har bir SMS uchun xato
+  qaytarardi. `services/smsService.js` ichida `TODO(provayder)`
+  belgisi bor, chaqiruvchi kod o'zgarmaydi.
+
+- 🟡 **MAHSULOT QARORI: oltita tarif bayrog'i ochiq turibdi.**
+  `homework`, `salaries`, `roles`, `branch_stats`, `reports`,
+  `white_label` — `planHelper` jadvalida Free uchun `false`,
+  lekin **hech qayerda tekshirilmaydi**, ya'ni Free hisob
+  hammasidan foydalanmoqda.
+
+  Yopish — sizning qaroringiz: bugun ulardan foydalanayotgan
+  markazlar bor va yopish ulardan imkoniyatni tortib olish
+  demakdir (filial chegarasini pasaytirish bilan bir xil
+  qoida). Yopmoqchi bo'lsangiz, `test/planFeatures.test.js`
+  dagi `UNGATED` ro'yxatidan olib tashlang va controllerga
+  `hasFeature(...)` qo'shing — test yo'lni ko'rsatadi.
+
+  Bayroqni butunlay olib tashlash ham to'g'ri yechim: u holda
+  jadval yolg'on va'da bermay qo'yadi.
 
 - **Render → Environment:** `TELEGRAM_BOT_TOKEN` (almashtirilgan — eskisi
   ochiq qolgan edi), `NODE_ENV=production`, Cloudinary kalitlari.

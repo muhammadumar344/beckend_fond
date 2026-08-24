@@ -864,6 +864,68 @@ lekin eksport blokidagi QIYMAT sanaladi
 u yerda ogohlantirish bilan: u buzuq (`Student.find({ teacher })`
 — bunday maydon yo'q), route'ga ulansa bo'sh ro'yxat qaytaradi.
 
+## Xabar kimga boradi — `utils/notifyTargets.js`
+
+Bog'lanishning **ikkita** manbai bor va ular aralashmaydi:
+
+| Manba | Kim |
+|---|---|
+| `TelegramParent` | eski bot ro'yxati, **isbotsiz** |
+| `StudentLink` | yangi — raqam tasdiqlangan yoki kod bilan |
+
+⚠️ **Yangi ota-onalar FAQAT ikkinchisiga tushadi.** Shuning
+uchun xabar yuboradigan har qanday kod ro'yxatni shu yerdan
+oladi, modelga bevosita bormaydi:
+
+```js
+const targets = await collectTargets({ directorId, studentIds });
+const byStudent = groupByStudent(targets);   // Map<id, Target[]>
+await markNotified(target);                  // to'g'ri jadvalga yozadi
+```
+
+⚠️ **Bitta bolada bir nechta qabul qiluvchi bo'lishi mumkin**
+(ota, ona, o'quvchining o'zi). Eski `byStudent[id] = p` naqshi
+bittasini ustiga yozib yuborardi — `groupByStudent` MASSIV
+qaytaradi.
+
+⚠️ Bu xato besh joyda takrorlangan (eslatma cron'i, CRM
+ro'yxati, tanlanganlarga yuborish, uy vazifasi reytingi, to'lov
+tasdiqlash). Hech biri xato bermaydi — xabar shunchaki
+bormaydi. `test/notifyTargets.test.js` endi kodning o'zini
+tekshiradi: xabar yuboradigan faylda `TelegramParent.find`
+paydo bo'lsa test yiqiladi.
+
+## SMS — provayder ulanmagan
+
+`config/sms.js` → `SMS_PROVIDER`, `SMS_EMAIL`, `SMS_PASSWORD`,
+`SMS_SENDER`. To'rttasi ham bo'lmasa `configured: false`.
+
+⚠️ **Eski `smsService` SOXTA MUVAFFAQIYAT qaytarardi**: har bir
+o'quvchi uchun jimgina `status: 'failed'`, endpoint esa
+`success: true`. "SMS eslatma" Premium tarifda sotiladi — ya'ni
+pul to'lagan direktor "0 yuborildi" ni ko'rib, sababini
+bilmasdi.
+
+Endi Payme/Click bilan bir xil qoida: kalit yo'q → **503**.
+`GET /teacher/subscription` → `channels.sms.configured`, sahifa
+buni **sotib olishdan oldin** ko'rsatadi.
+
+## Tarif bayroqlari — YO tekshiriladi, YO ro'yxatda
+
+`PLAN_FEATURES` dagi bayroqning o'zi hech narsani to'xtatmaydi.
+`hasFeature(...)` yozilmasa, tarifda "yo'q" deb turgan
+xususiyat ochiq qolaveradi va **hech qanday xato chiqmaydi**
+(`canAddStaff` / `canOpenBranch` bilan bir xil naqsh).
+
+`test/planFeatures.test.js` shuni qulflaydi: har bir bayroq yo
+tekshirilishi kerak, yo `UNGATED` ro'yxatida **izoh bilan**
+turishi kerak.
+
+⚠️ Hozir `UNGATED` da oltita bor (`homework`, `salaries`,
+`roles`, `branch_stats`, `reports`, `white_label`) — ular Free
+hisobda ochiq. Yopish **mahsulot qarori**: bugun ishlatayotgan
+markazlardan imkoniyatni tortib olish demakdir.
+
 ## Hisobni o'chirish — 30 kunlik muhlat
 
 Direktor `POST /teacher/account/delete` (parol + `O'CHIRISH` so'zi)
