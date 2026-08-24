@@ -1235,6 +1235,44 @@ brauzer ochiladi va token qaytadan saqlanadi.
   Bayroqni butunlay olib tashlash ham to'g'ri yechim: u holda
   jadval yolg'on va'da bermay qo'yadi.
 
+- 🟡 **GitHub Actions ishlamayapti — CI qo'shib bo'lmadi.**
+  Ikkala repoga `.github/workflows/check.yml` qo'shib ko'rildi
+  (har push'da `npm run check`). Ish **3 soniyada** yiqildi:
+  runner umuman berilmadi va log yozilmadi. Repo **public**,
+  ya'ni daqiqa cheklovi sabab emas.
+
+  Ehtimoliy sabab (ikkalasi ham hisob sozlamasi):
+
+  - GitHub hisobida Actions o'chirilgan yoki cheklangan
+  - **Settings → Actions → General → Allowed actions** "Local
+    actions only" ga qo'yilgan — u holda `actions/checkout`
+    bloklanadi va ish darhol yiqiladi
+
+  PR'da doimiy qizil belgi qolmasin deb workflow fayllari
+  **olib tashlandi**. Sozlamani tuzatganingizdan keyin qaytadan
+  qo'shsa bo'ladi — mazmuni oddiy:
+
+  ```yaml
+  name: check
+  on: [push, pull_request]
+  jobs:
+    check:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-node@v4
+          with: { node-version: "20", cache: npm }
+        - run: npm ci
+        - run: npm run check          # frontendda: npm run check:solo && npm run build
+  ```
+
+  ⚠️ Frontendda `npm run check` EMAS, `check:solo`: to'liq
+  tekshiruv backend repozitoriyasini o'qiydi, CI'da esa
+  ikkinchi repo yo'q.
+
+  ⚠️ Bazaga ulanmaydi va sir (secret) kerak emas — testlar sof
+  mantiqni sinaydi.
+
 - **Render → Environment:** `TELEGRAM_BOT_TOKEN` (almashtirilgan — eskisi
   ochiq qolgan edi), `NODE_ENV=production`, Cloudinary kalitlari.
 - **MongoDB Atlas → `teachers`:** `notgmail@mail.ru` test yozuvini o'chirish.
