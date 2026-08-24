@@ -1116,6 +1116,20 @@ const importStudents = async (req, res) => {
     const { classId } = req.params;
     const { file, apply = false } = req.body;
 
+    // ⚠️ TARIF TEKSHIRUVI. `import` bayrog'i `planHelper` da
+    //    bor edi, lekin hech qayerda tekshirilmasdi — `export`
+    //    besh joyda tekshiriladi, juftligi esa umuman ochiq
+    //    turardi. (`canAddStaff` / `canOpenBranch` bilan bir xil
+    //    naqsh: yozilgan-u ulanmagan.)
+    const director = await Teacher.findById(ctx.directorId);
+    if (!hasFeature(director, "import")) {
+      return res.status(403).json({
+        success: false,
+        error: "Import faqat yuqori tarifda",
+        requiresUpgrade: true,
+      });
+    }
+
     const classQuery = { _id: classId, teacher: ctx.directorId };
     if (ctx.branchFilter) classQuery.branch = ctx.branchFilter;
     const cls = await Class.findOne(classQuery);
@@ -1150,7 +1164,7 @@ const importStudents = async (req, res) => {
     }
 
     // ── Tarif chegarasi ──
-    const director = await Teacher.findById(ctx.directorId);
+    // (`director` yuqorida, `import` tekshiruvida olingan)
     const current = existing.length;
     const limit = limitsFor(effectivePlan(cls.plan, director), director);
     const fits = Math.max(0, (limit.students || 0) - current);
@@ -2021,6 +2035,9 @@ const getDashboard = async (req, res) => {
         features: {
           monthly_reminder: hasFeature(teacher, "monthly_reminder"),
           export: hasFeature(teacher, "export"),
+          // ⚠️ Interfeys tugmani SHUNGA qarab yashiradi — odam
+          //    bosib 403 olmasin (chegara bilan bir xil qoida).
+          import: hasFeature(teacher, "import"),
           multi_lang: hasFeature(teacher, "multi_lang"),
           sms_reminder: hasFeature(teacher, "sms_reminder"),
         },
@@ -2867,6 +2884,7 @@ const getSubscriptionInfo = async (req, res) => {
       features: {
         monthly_reminder: hasFeature(teacher, "monthly_reminder"),
         export: hasFeature(teacher, "export"),
+        import: hasFeature(teacher, "import"),
         multi_lang: hasFeature(teacher, "multi_lang"),
         sms_reminder: hasFeature(teacher, "sms_reminder"),
       },

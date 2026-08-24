@@ -258,6 +258,10 @@ const MESSAGES = {
   "So'rov rad etildi.": { ru: "Заявка отклонена.", en: "Request rejected." },
   "Bu so'rov allaqachon ko'rib chiqilgan": { ru: "Эта заявка уже рассмотрена", en: "This request has already been reviewed" },
   "Export faqat Premium uchun": { ru: "Экспорт только для Premium", en: "Export is Premium only" },
+  "Import faqat yuqori tarifda": {
+    ru: "Импорт доступен на более высоком тарифе",
+    en: "Import is available on a higher plan",
+  },
   "Bu funksiya Pro va Premium tarifda": { ru: "Эта функция доступна в тарифах Pro и Premium", en: "This feature is available on the Pro and Premium plans" },
   "SMS reminder faqat Premium uchun": { ru: "SMS-напоминание только для Premium", en: "SMS reminders are Premium only" },
 
