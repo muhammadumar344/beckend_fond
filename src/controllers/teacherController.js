@@ -2099,12 +2099,37 @@ const getMonthlyReminder = async (req, res) => {
         };
       }
       grouped[cid].unpaidStudents.push({
+        // ⚠️ `studentId` YO'Q EDI va interfeys uning o'rniga qator
+        //    RAQAMINI ishlatardi (`st.studentId || idx`). Ya'ni
+        //    "tanlanganlarga yuborish" tugmasi backend'ga
+        //    `[0, 1, 2]` yuborardi — Pro tarifda sotilayotgan
+        //    xususiyat hech qachon ishlamagan.
+        studentId: String(p.student._id),
         rollNumber: p.student.rollNumber,
         name: p.student.name,
         parentPhone: p.student.parentPhone,
         amount: p.amount,
       });
       grouped[cid].totalUnpaid += p.amount;
+    }
+
+    // ⚠️ `hasTelegram` ham YO'Q EDI: har bir qator "ulanmagan"
+    //    belgisi bilan chiqardi va "Hammasini tanlash" tugmasi
+    //    (`if (st.hasTelegram)`) hech kimni tanlamasdi.
+    //
+    // ⚠️ Ro'yxat IKKALA manbadan — `utils/notifyTargets.js`.
+    const connected = new Set(
+      (
+        await collectTargets({
+          directorId: teacherId,
+          studentIds: unpaidPayments.map((p) => String(p.student._id)),
+        })
+      ).map((t) => t.studentId),
+    );
+    for (const g of Object.values(grouped)) {
+      for (const st of g.unpaidStudents) {
+        st.hasTelegram = connected.has(st.studentId);
+      }
     }
 
     let extraData = {};
@@ -2134,6 +2159,8 @@ const getMonthlyReminder = async (req, res) => {
       month: m,
       year: y,
       totalUnpaidStudents: unpaidPayments.length,
+      // Nechtasiga xabar yetib boradi — "0 yuborildi" ni tushunish uchun
+      telegramReady: connected.size,
       classes: Object.values(grouped),
       ...extraData,
     });
