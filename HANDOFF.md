@@ -1271,10 +1271,28 @@ xabarni esa topmaydi.
 
 ### B. Guruh/sinf ajratish (reja 1.2)  ⭐ katta ish
 
-LC guruhlari hali `Class` da yashaydi. Skript va hujjat **tayyor**,
-ishga tushirilmagan: `src/scripts/migrateGroups.js`,
+LC guruhlari hali `Class` da yashaydi. Hujjat tayyor:
 `docs/GROUP_MIGRATION.md`. Asosiy qiyinchilik — 13 joydagi
 `populate("class")`.
+
+🚨 **`src/scripts/migrateGroups.js` NI ISHLATMANG** — u endi
+o'zini to'xtatadi va bu ataylab. Skript **B varianti** uchun
+yozilgan (`Group` alohida kolleksiyada), loyihada esa **A
+varianti** deploy qilingan: `models/Group.js` aynan `classes`
+ga bog'langan. Shu holatda:
+
+- `--apply` → o'sha `_id` bilan **o'sha** kolleksiyaga yozadi
+- `--rollback --apply` → `deleteMany` **jonli `classes`** ga
+  tushadi, ya'ni markazlarning hamma guruhini (va ular orqali
+  o'quvchi, to'lov, davomat tarixini) o'chirib yuborishi mumkin
+
+Bugun ikkinchisi tasodifan xavfsiz: `migratedFromClass` maydoni
+sxemada yo'q, Mongoose uni jimgina tashlab yuboradi. Kimdir uni
+qo'shsa — zarar haqiqiy bo'ladi.
+
+Ajratishni rostdan boshlamoqchi bo'lsangiz: avval `Group` ni
+alohida kolleksiyaga bog'lang, keyin skriptni qayta ko'rib
+chiqing. `test/groupMigration.test.js` shu shartni qulflaydi.
 
 ⚠️ Bazadan nusxa olmasdan tegmang.
 
