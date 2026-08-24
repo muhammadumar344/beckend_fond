@@ -66,3 +66,44 @@ test("`migratedFromClass` sxemada yo'q — marker yozilmaydi", () => {
       "skriptni avval alohida kolleksiyaga o'tkazing",
   );
 });
+
+// ── Boshqa migratsiya skriptlari ────────────────────────────
+//
+// ⚠️ BAZAGA YOZADIGAN SKRIPT QURUQ YURISHSIZ BO'LMASIN.
+//    Bu loyihada uchtasi shunday edi va ikkitasi jonli
+//    bazada zarar keltirardi. Skript bir marta ishlatiladi,
+//    odatda shoshib va Render Shell'da — u yerda "orqaga"
+//    tugmasi yo'q.
+const WRITERS = [
+  "src/scripts/migrateExistingTeachers.js",
+  "src/scripts/fixRolePermissions.js",
+  "src/scripts/migrateGroups.js",
+];
+
+test("bazaga yozadigan har bir skriptda `--apply` bor", () => {
+  const bad = [];
+  for (const rel of WRITERS) {
+    const src = fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
+    if (!/--apply/.test(src)) bad.push(rel);
+  }
+  assert.deepEqual(bad, [], "quruq yurishsiz skript: " + bad.join(", "));
+});
+
+test("teacher migratsiyasi tanlangan rejimga TEGMAYDI", () => {
+  // ⚠️ `institutionType` ro'yxatdan o'tishda tanlanadi va keyin
+  //    o'zgartirilmaydi. Skript uni majburan `school` qilardi —
+  //    ya'ni onboarding'ni tugatmagan LC direktori jimgina
+  //    Fond'ga aylanardi va butun LC menyusini yo'qotardi.
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "src/scripts/migrateExistingTeachers.js"),
+    "utf8",
+  );
+  assert.ok(
+    /institutionType: \{ \$exists: false \}/.test(src),
+    "filtr faqat rejimi tanlanmagan hisoblarni olishi kerak",
+  );
+  assert.ok(
+    !/institutionName: ''/.test(src),
+    "`institutionName` bo'shatilmasin — to'ldirgan odam ma'lumotini yo'qotardi",
+  );
+});
