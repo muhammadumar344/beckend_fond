@@ -1,10 +1,18 @@
 // src/controllers/telegramController.js
-const TelegramParent = require('../models/TelegramParent')
 const MonthlyPayment = require('../models/MonthlyPayment')
 const Student = require('../models/Student')
+const Class = require('../models/Class')
 const { getBot } = require('../bot/bot')
 const { sendMonthlyReminders } = require('../cron/reminderCron')
 const { sendPaymentReminder } = require('../services/telegramService')
+// ⚠️ IKKALA manba shu yerdan olinadi — utils/notifyTargets.js.
+//    Bu fayl ilgari faqat eski `TelegramParent` ni o'qirdi va
+//    natijada Mini App orqali (raqamini tasdiqlab) bog'langan
+//    ota-onalar CRM'da UMUMAN ko'rinmasdi. Direktor "80 tadan
+//    3 tasi ulangan" degan sonni ko'rib, botni ishlamayapti deb
+//    o'ylardi; "tanlanganlarga yuborish" esa o'sha odamlarni
+//    jimgina `failed` deb sanardi.
+const { collectTargets, groupByStudent, markNotified } = require('../utils/notifyTargets')
 
 // Bot havolasi
 exports.getBotLink = async (req, res) => {
@@ -19,25 +27,53 @@ exports.getBotLink = async (req, res) => {
 }
 
 // Barcha ulangan ota-onalar
+//
+// ⚠️ O'quvchi va sinf nomlari BIR MARTA olinadi — ilgari har bir
+//    yozuv uchun ikkita `populate` ishlardi.
 exports.getParents = async (req, res) => {
   try {
-    const parents = await TelegramParent.find({ teacherId: req.user.id, isActive: true })
-      .populate('studentId', 'name rollNumber parentPhone')
-      .populate('classId', 'name')
-      .sort({ registeredAt: -1 })
+    const targets = await collectTargets({ directorId: req.user.id })
 
-    res.json({
-      success: true,
-      total: parents.length,
-      parents: parents.map(p => ({
-        id: p._id,
-        telegramUsername: p.telegramUsername || null,
-        student: p.studentId,
-        class: p.classId,
-        registeredAt: p.registeredAt,
-        lastNotifiedAt: p.lastNotifiedAt,
-      })),
+    const students = await Student.find({
+      _id: { $in: [...new Set(targets.map((t) => t.studentId))] },
     })
+      .select('name rollNumber parentPhone class')
+      .lean()
+    const studentById = new Map(students.map((s) => [String(s._id), s]))
+
+    const classes = await Class.find({
+      _id: { $in: students.map((s) => s.class).filter(Boolean) },
+    })
+      .select('name')
+      .lean()
+    const classById = new Map(classes.map((c) => [String(c._id), c]))
+
+    const parents = targets
+      .filter((t) => studentById.has(t.studentId))
+      .map((t) => {
+        const st = studentById.get(t.studentId)
+        const cls = st.class ? classById.get(String(st.class)) : null
+        return {
+          id: t.linkId,
+          telegramUsername: t.username || null,
+          student: {
+            _id: st._id,
+            name: st.name,
+            rollNumber: st.rollNumber,
+            parentPhone: st.parentPhone,
+          },
+          class: cls ? { _id: cls._id, name: cls.name } : null,
+          registeredAt: t.linkedAt,
+          lastNotifiedAt: t.lastNotifiedAt,
+          // Direktor "bu kim?" deb so'ramasin: raqamini tasdiqlaganmi,
+          // kod bilan kirganmi yoki eski isbotsiz yozuvmi
+          verifiedVia: t.verifiedVia,
+          kind: t.kind,
+        }
+      })
+      .sort((a, b) => new Date(b.registeredAt || 0) - new Date(a.registeredAt || 0))
+
+    res.json({ success: true, total: parents.length, parents })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })
   }
@@ -46,11 +82,28 @@ exports.getParents = async (req, res) => {
 // Sinf bo'yicha ota-onalar
 exports.getParentsByClass = async (req, res) => {
   try {
-    const parents = await TelegramParent.find({
-      teacherId: req.user.id,
-      classId: req.params.classId,
-      isActive: true,
-    }).populate('studentId', 'name rollNumber')
+    // ⚠️ Sinf bo'yicha filtr O'QUVCHI orqali: `StudentLink` da
+    //    sinf yozilmaydi (o'quvchi guruhini almashtirsa yozuv
+    //    eskirib qolardi).
+    const students = await Student.find({ class: req.params.classId })
+      .select('name rollNumber')
+      .lean()
+    const studentById = new Map(students.map((s) => [String(s._id), s]))
+
+    const targets = await collectTargets({
+      directorId: req.user.id,
+      studentIds: students.map((s) => String(s._id)),
+    })
+
+    const parents = targets.map((t) => ({
+      id: t.linkId,
+      telegramUsername: t.username || null,
+      studentId: studentById.get(t.studentId) || null,
+      registeredAt: t.linkedAt,
+      lastNotifiedAt: t.lastNotifiedAt,
+      verifiedVia: t.verifiedVia,
+    }))
+
     res.json({ success: true, total: parents.length, parents })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })
@@ -67,7 +120,17 @@ exports.sendRemindersNow = async (req, res) => {
   }
 }
 
-// ✅ YANGI: Tanlangan o'quvchilar ota-onalariga yuborish
+// Tanlangan o'quvchilar ota-onalariga yuborish
+//
+// ⚠️ ILGARI HALQA ICHIDA SO'ROV YUBORILARDI: har bir o'quvchi
+//    uchun bitta `findOne` + ikkita `populate` + bitta
+//    `MonthlyPayment.find`. 50 ta o'quvchida 200 dan ortiq
+//    so'rov va bir necha soniya kutish.
+//
+// ⚠️ VA ENG MUHIMI: ro'yxat faqat eski `TelegramParent` dan
+//    olinardi. Mini App orqali bog'langan ota-ona `failed`
+//    bo'lib sanalardi — direktor "yuborilmadi" ni ko'rib,
+//    sababini hech qachon bilmasdi.
 exports.sendToStudents = async (req, res) => {
   try {
     const { studentIds, month, year } = req.body
@@ -77,50 +140,79 @@ exports.sendToStudents = async (req, res) => {
       return res.status(400).json({ success: false, error: 'studentIds bo\'sh' })
     }
 
+    const ids = studentIds.map(String)
+
+    const targets = await collectTargets({ directorId: teacherId, studentIds: ids })
+    const byStudent = groupByStudent(targets)
+
+    const students = await Student.find({ _id: { $in: ids } })
+      .select('name class')
+      .lean()
+    const studentById = new Map(students.map((s) => [String(s._id), s]))
+
+    const classes = await Class.find({
+      _id: { $in: students.map((s) => s.class).filter(Boolean) },
+    })
+      .select('name')
+      .lean()
+    const classNameById = new Map(classes.map((c) => [String(c._id), c.name]))
+
+    // To'lanmagan oylar ham BITTA so'rovda
+    const query = { student: { $in: ids }, teacher: teacherId, status: 'not_paid' }
+    if (month) query.month = Number(month)
+    if (year) query.year = Number(year)
+
+    const unpaidAll = await MonthlyPayment.find(query)
+      .sort({ year: 1, month: 1 })
+      .select('student month year amount')
+      .lean()
+
+    const unpaidByStudent = new Map()
+    for (const p of unpaidAll) {
+      const k = String(p.student)
+      if (!unpaidByStudent.has(k)) unpaidByStudent.set(k, [])
+      unpaidByStudent.get(k).push(p)
+    }
+
     let sentCount = 0
     let failedCount = 0
+    // ⚠️ "Nega yuborilmadi" AJRATILADI. "5 ta yuborilmadi" degan
+    //    son bilan direktor hech narsa qila olmaydi: ulanmagan
+    //    ota-onaga havola yuborish kerak, qarzi yo'q bolaga esa
+    //    umuman hech narsa kerak emas.
+    let notLinked = 0
+    let noDebt = 0
 
-    for (const studentId of studentIds) {
-      try {
-        // Bu student uchun Telegram parent topish
-        const parent = await TelegramParent.findOne({
-          studentId,
-          teacherId,
-          isActive: true,
-        }).populate('studentId', 'name').populate('classId', 'name')
+    for (const id of ids) {
+      const student = studentById.get(id)
+      if (!student) { failedCount++; continue }
 
-        if (!parent) { failedCount++; continue }
+      const unpaid = unpaidByStudent.get(id)
+      if (!unpaid?.length) { noDebt++; continue }
 
-        // To'lanmagan oylarni topish
-        const query = {
-          student: studentId,
-          teacher: teacherId,
-          status: 'not_paid',
-        }
-        if (month) query.month = Number(month)
-        if (year)  query.year  = Number(year)
+      const receivers = byStudent.get(id)
+      if (!receivers?.length) { notLinked++; continue }
 
-        const unpaidPayments = await MonthlyPayment.find(query).sort({ year: 1, month: 1 })
-
-        if (!unpaidPayments.length) { failedCount++; continue }
-
-        const sent = await sendPaymentReminder(
-          parent.telegramChatId,
-          parent.studentId.name,
-          parent.classId.name,
-          unpaidPayments.map(p => ({ month: p.month, year: p.year, amount: p.amount }))
-        )
-
-        if (sent) {
-          parent.lastNotifiedAt = new Date()
-          await parent.save()
-          sentCount++
-        } else {
+      // ⚠️ HAMMA qabul qiluvchiga — otasi ham, onasi ham ulangan
+      //    bo'lsa ikkalasi ham oladi. Eski kod bittasini tanlardi.
+      for (const t of receivers) {
+        try {
+          const sent = await sendPaymentReminder(
+            t.chatId,
+            student.name,
+            classNameById.get(String(student.class)) || '',
+            unpaid.map((p) => ({ month: p.month, year: p.year, amount: p.amount })),
+          )
+          if (sent) {
+            await markNotified(t)
+            sentCount++
+          } else {
+            failedCount++
+          }
+        } catch (e) {
+          console.error(`Student ${id} uchun xato:`, e.message)
           failedCount++
         }
-      } catch (e) {
-        console.error(`Student ${studentId} uchun xato:`, e.message)
-        failedCount++
       }
     }
 
@@ -128,6 +220,8 @@ exports.sendToStudents = async (req, res) => {
       success: true,
       sent: sentCount,
       failed: failedCount,
+      notLinked,
+      noDebt,
       message: `${sentCount} ta ota-onaga yuborildi`,
     })
   } catch (e) {

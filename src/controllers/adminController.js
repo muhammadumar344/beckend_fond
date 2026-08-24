@@ -4,7 +4,7 @@ const Class = require('../models/Class')
 const Student = require('../models/Student')
 const Admin = require('../models/Admin')
 const MonthlyPayment = require('../models/MonthlyPayment')
-const TelegramParent = require('../models/TelegramParent')
+const StudentLink = require('../models/StudentLink')
 const {
   SCHOOL,
   LC,
@@ -51,9 +51,58 @@ const buildCounts = async () => {
         },
       },
     ]),
-    TelegramParent.aggregate([
+    // Markaz → Telegram'ga ulangan qabul qiluvchilar.
+    //
+    // ⚠️ IKKALA MANBA. Bu yer faqat eski `TelegramParent` ni
+    //    sanardi va yangi markazlarda son deyarli har doim NOL
+    //    bo'lib chiqardi — Mini App orqali bog'langan ota-onalar
+    //    `StudentLink` da yotadi. Platforma egasi shu songa
+    //    qarab "botni hech kim ishlatmayapti" degan xulosa
+    //    chiqarardi.
+    //
+    // ⚠️ `$unionWith` + ikki bosqichli `$group` — bir odam
+    //    ikkala jadvalda ham bo'lishi mumkin (eski ro'yxatda
+    //    edi, keyin raqamini tasdiqladi). Oddiy qo'shish uni
+    //    ikki marta sanardi.
+    StudentLink.aggregate([
       { $match: { isActive: true } },
-      { $group: { _id: "$teacherId", n: { $sum: 1 } } },
+      {
+        $project: {
+          director: 1,
+          student: 1,
+          // Eski yozuvlarda `telegramChatId` bo'sh matn bo'lishi
+          // mumkin; Telegram'da shaxsiy chat id foydalanuvchi
+          // id siga teng
+          chat: {
+            $cond: [
+              { $in: ["$telegramChatId", [null, ""]] },
+              "$telegramUserId",
+              "$telegramChatId",
+            ],
+          },
+        },
+      },
+      {
+        $unionWith: {
+          coll: "telegramparents",
+          pipeline: [
+            { $match: { isActive: true } },
+            {
+              $project: {
+                director: "$teacherId",
+                student: "$studentId",
+                chat: "$telegramChatId",
+              },
+            },
+          ],
+        },
+      },
+      {
+        $group: {
+          _id: { d: "$director", c: "$chat", s: "$student" },
+        },
+      },
+      { $group: { _id: "$_id.d", n: { $sum: 1 } } },
     ]),
     // Yig'ilgan pul — bazada yig'iladi, xotiraga tortilmaydi
     MonthlyPayment.aggregate([
@@ -83,15 +132,21 @@ const IDLE_DAYS = 14;
 
 exports.getDashboard = async (req, res) => {
   try {
-    const [totalTeachers, totalClasses, totalStudents, totalTelegramParents, teachers, counts] =
+    const [totalTeachers, totalClasses, totalStudents, teachers, counts] =
       await Promise.all([
         Teacher.countDocuments(),
         Class.countDocuments(),
         Student.countDocuments(),
-        TelegramParent.countDocuments({ isActive: true }),
         Teacher.find().select("-password").sort({ createdAt: -1 }),
         buildCounts(),
       ]);
+
+    // ⚠️ Umumiy son ALOHIDA so'rov emas — markazlar bo'yicha
+    //    sanoq allaqachon takrorlardan tozalangan. Ikkinchi
+    //    so'rov boshqa qoida bilan sanab, ikkita raqam bir-biriga
+    //    to'g'ri kelmay qolardi.
+    let totalTelegramParents = 0;
+    for (const n of counts.telegram.values()) totalTelegramParents += n;
 
     const teachersWithStats = teachers.map((t) => {
       const id = String(t._id);

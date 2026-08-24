@@ -10,7 +10,7 @@ const {
   countUniqueStudents,
   buildGroupStudentMap,
 } = require("../utils/enrollment");
-const TelegramParent = require("../models/TelegramParent");
+const { collectTargets, markNotified } = require("../utils/notifyTargets");
 const Staff = require("../models/Staff");
 const Branch = require("../models/Branch");
 // Tarif katalogidagi "ochiq lidlar" hisobi uchun
@@ -1583,30 +1583,38 @@ const updatePaymentStatus = async (req, res) => {
 
     if (status === "paid") {
       try {
-        const tgParent = await TelegramParent.findOne({
-          studentId: payment.student._id,
-          isActive: true,
+        // ⚠️ Ro'yxat IKKALA manbadan (`utils/notifyTargets.js`).
+        //    Bu yer faqat eski `TelegramParent` ni o'qirdi, ya'ni
+        //    Mini App orqali bog'langan ota-ona pulini to'lab,
+        //    HECH QANDAY tasdiq olmasdi — u esa qayta so'rar va
+        //    "to'ladimmi, yo'qmi" degan savol markazga qaytardi.
+        const targets = await collectTargets({
+          studentIds: [String(payment.student._id)],
         });
-        if (tgParent) {
+
+        if (targets.length) {
           const remainingPayments = await MonthlyPayment.find({
             student: payment.student._id,
             status: "not_paid",
           }).sort({ year: 1, month: 1 });
 
-          await sendPaymentConfirmation(
-            tgParent.telegramChatId,
-            payment.student.name,
-            payment.class.name,
-            [{ month: payment.month, year: payment.year }],
-            remainingPayments.map((p) => ({
-              month: p.month,
-              year: p.year,
-              amount: p.amount,
-            })),
-          );
+          const remaining = remainingPayments.map((p) => ({
+            month: p.month,
+            year: p.year,
+            amount: p.amount,
+          }));
 
-          tgParent.lastNotifiedAt = new Date();
-          await tgParent.save();
+          // Otasi ham, onasi ham ulangan bo'lsa — ikkalasiga ham
+          for (const t of targets) {
+            await sendPaymentConfirmation(
+              t.chatId,
+              payment.student.name,
+              payment.class.name,
+              [{ month: payment.month, year: payment.year }],
+              remaining,
+            );
+            await markNotified(t);
+          }
         }
       } catch (tgErr) {
         console.error(
