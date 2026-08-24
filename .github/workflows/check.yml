@@ -1,0 +1,44 @@
+# .github/workflows/check.yml
+# ════════════════════════════════════════════════════════════
+# Har push va PR'da `npm run check` ishlaydi.
+#
+# ⚠️ NEGA KERAK: bu loyihadagi eng qimmat xatolar build'ni
+#    TO'XTATMAYDI. Tarjimasiz xabar, ulanmagan funksiya,
+#    javobda yo'q maydon — hammasi jimgina o'tib ketadi va
+#    faqat foydalanuvchi sezadi. `npm run check` aynan shu
+#    turdagi xatolarni topadi, lekin uni QO'LDA ishlatish
+#    kerak edi — ya'ni unutilsa hech kim bilmasdi.
+#
+# ⚠️ BAZAGA ULANMAYDI. `npm test` — Node'ning o'rnatilgan
+#    yugurtgichi, faqat sof mantiqni sinaydi. Shuning uchun
+#    hech qanday sir (secret) kerak emas va CI ishlab turgan
+#    bazaga umuman tegmaydi.
+#
+# ⚠️ `src/server.js` bu yerda ishga TUSHIRILMAYDI. U import
+#    paytining o'zida `app.listen()`, `mongoose.connect()` va
+#    `initBot()` ni chaqiradi — CI'da bu production bot'ni
+#    buzardi (bir marta shunday bo'lgan: Telegram 409
+#    Conflict). `npm run check` faqat sof modullarni yuklaydi.
+# ════════════════════════════════════════════════════════════
+name: check
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      # npm test + check:messages + check:dead
+      - run: npm run check
