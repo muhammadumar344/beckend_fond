@@ -2191,6 +2191,22 @@ const sendSmsReminders = async (req, res) => {
       });
     }
 
+    // ⚠️ PROVAYDER TEKSHIRUVI TARIFDAN KEYIN, LEKIN ISHDAN OLDIN.
+    //    Ilgari bu yer yo'q edi: `smsService` har bir o'quvchi
+    //    uchun jimgina `failed` qaytarardi va javob `success:
+    //    true` bo'lardi. Premium sotib olgan direktor "0
+    //    yuborildi" ni ko'rib, sababini bilmasdi.
+    //
+    //    Payme/Click bilan bir xil qoida: kalit yo'q → 503 va
+    //    halol xabar.
+    if (!smsService.isConfigured()) {
+      return res.status(503).json({
+        success: false,
+        error: "SMS xizmati sozlanmagan",
+        smsConfigured: false,
+      });
+    }
+
     const cls = await Class.findOne({ _id: classId, teacher: teacherId });
     if (!cls)
       return res.status(404).json({ success: false, error: "Sinf topilmadi" });
@@ -2832,6 +2848,14 @@ const getSubscriptionInfo = async (req, res) => {
         card: platform.card,
         cardPlain: platform.cardPlain,
         holder: platform.holder,
+      },
+      // ⚠️ TARIFDA BOR ≠ ISHLAYDI. "SMS eslatma" Premium qatorida
+      //    turadi, lekin provayder ulanmagan bo'lsa hech qanday
+      //    SMS ketmaydi. Sahifa buni oldindan aytishi kerak —
+      //    aks holda direktor pulini to'lab, tugmani bosib,
+      //    503 ni ko'radi. `payTo.configured` bilan bir xil qoida.
+      channels: {
+        sms: { configured: smsService.isConfigured() },
       },
       usage: await collectUsage(teacher),
       limits: limitsFor(activePlanOf(teacher), teacher),

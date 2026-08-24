@@ -53,6 +53,10 @@ const MESSAGES = {
   "Maosh yozuvi topilmadi": { ru: "Запись о зарплате не найдена", en: "Salary record not found" },
   "Jadval topilmadi": { ru: "Расписание не найдено", en: "Schedule not found" },
   "To'lov topilmadi": { ru: "Платёж не найден", en: "Payment not found" },
+  "SMS xizmati sozlanmagan": {
+    ru: "SMS-сервис не настроен",
+    en: "SMS service is not configured",
+  },
   "Baho topilmadi": { ru: "Оценка не найдена", en: "Grade not found" },
   "Aktiv freeze topilmadi": { ru: "Активная заморозка не найдена", en: "No active freeze found" },
   "Referral kod topilmadi": { ru: "Реферальный код не найден", en: "Referral code not found" },
