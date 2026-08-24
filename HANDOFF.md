@@ -1334,13 +1334,21 @@ chiqing. `test/groupMigration.test.js` shu shartni qulflaydi.
 
 ⚠️ Bazadan nusxa olmasdan tegmang.
 
-### Ataylab keyinga qoldirilgan (mayda ish deb hisoblangan)
+### Tarjima qarzi — ✅ TUGADI (2026-08-24)
 
-`Reports.vue` (10), `Leads.vue` (7), `StaffManagement.vue` (20) da
-tarjima qilinmagan matnlar. `Schedule.vue` dagi `validate()` ichida ham
-uchta qattiq yozilgan matn bor. `npm run check:i18n` ularni ogohlantirish
-sifatida ko'rsatadi, build'ni to'xtatmaydi. Katta funksiya orasida
-o'z-o'zidan tuzatilsa — yaxshi; alohida ish sifatida qilinmasin.
+Qolgan hamma joy yopildi:
+
+- `check:i18n` teshigidan chiqqan **54 ta** matn (ko'p qatorli va
+  `{{ }}` bilan aralash yozilganlari)
+- `StaffManagement.vue` ichidagi **92 ta** matn — 24 ta huquq nomi
+  va izohi, 13 ta bo'lim, 8 ta rol shabloni. Ular `<script>` da
+  yozilgan edi va tekshiruv `<script>` ichini qaramaydi
+- `Schedule.vue` dagi uchta validatsiya xabari
+
+⚠️ **`<script>` ichidagi matn hamon tekshirilmaydi.** Yangi
+sahifada matnni obyekt ichiga yozib qo'ysangiz, tekshiruv yashil
+turaveradi. Naqsh: obyektda faqat ikonka/rang, matn esa i18n
+kalitida (`PERM_META` ga qarang).
 
 ---
 
