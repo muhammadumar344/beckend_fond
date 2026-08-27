@@ -1320,4 +1320,8 @@ qo'shsangiz `server.js` dagi shu blokka qo'shishni unutmang.
   `module.exports` dagi nomni boshqa fayllarda qidirib ko'ring.
 - ~~`StaffManagement.vue` taklif qiladigan ruxsatlar backend bilan mos
   emas~~ — **2026-08-20 da yopildi**, pastdagi bo'limga qarang.
-- README.md eskirgan (loyihaning eng birinchi versiyasini tasvirlaydi).
+- ~~README.md eskirgan~~ — **2026-08-27 da yangilandi.** Endi u faqat
+  kirish beradi va `HANDOFF.md` / `CLAUDE.md` ga yo'naltiradi.
+  ⚠️ Unda endpoint ro'yxati **ataylab yo'q**: eski README aynan
+  o'sha ro'yxatni takrorlagani uchun eskirib qolgan edi (hamma
+  manzil noto'g'ri bo'lib ketgandi).
