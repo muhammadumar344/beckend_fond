@@ -1,76 +1,104 @@
-# School Fond Management System - Backend
+# Lumo — Backend
 
-Maktabning fond hisob-kitob tizimi uchun Backend API.
+O'quv markazlari va maktab sinf fondlari uchun CRM. Node.js /
+Express / MongoDB (Mongoose 7).
 
-## O'rnatish
+Frontend alohida repoda: **`Fond_front`**.
+
+> 📖 **Ishlashdan oldin ikkita faylni o'qing:**
+> - **`HANDOFF.md`** — hozirgi holat: nima tugadi, nima to'xtab
+>   turibdi, keyin nima qilinadi
+> - **`CLAUDE.md`** — doimiy qoidalar: arxitektura, tuzoqlar,
+>   uslub. Bu yerdagi har bir ⚠️ belgisi haqiqiy xatodan keyin
+>   yozilgan
+>
+> Quyidagi matn faqat kirish uchun — batafsili o'sha ikkitasida.
+
+## Ishga tushirish
 
 ```bash
 npm install
+npm run dev      # nodemon
+npm start        # production
+npm run check    # test + tarjima + ulanmagan kod
 ```
 
-## .env fayl sozlamasi
+`.env`: `MONGODB_URI`, `PORT`, `JWT_SECRET`, `TELEGRAM_BOT_TOKEN`,
+`FRONTEND_URL`. To'liq ro'yxat va ixtiyoriy kalitlar (Cloudinary,
+SMS, Payme/Click, platforma kartasi) — `HANDOFF.md` §4.
+
+> 🚨 **`src/server.js` ni tekshiruv uchun `require()` QILMANG.**
+> U import paytining o'zida `app.listen()`, `mongoose.connect()`
+> va `initBot()` ni chaqiradi — ya'ni ishlab turgan bazaga
+> ulanadi va Telegram botning ikkinchi nusxasini polling'ga
+> qo'shadi. Bu bir marta production botni buzgan.
+> Sintaksis uchun `node --check <fayl>` yetadi.
+
+## Ikki rejim
+
+Hisob ro'yxatdan o'tishda birini tanlaydi va keyin
+o'zgartirilmaydi (`Teacher.institutionType`):
+
+| Rejim | Kim uchun | Nima bor |
+|---|---|---|
+| `school` (**Fond**) | maktab sinfi | sinf, o'quvchi, oylik to'lov, xarajat |
+| `learning_center` (**LC**) | o'quv markazi | guruh, davomat, baho, jadval, xodim, maosh, filial |
+
+## Rollar
+
+| Rol | Kim |
+|---|---|
+| `teacher` | **Direktor** — muassasa egasi, hammasiga ruxsati bor |
+| `staff` | Xodim — ruxsatlari `Role.permissions` massivida |
+| `admin` | Platforma administratori (`/api/admin/*`) |
+
+## Tuzilma
 
 ```
-MONGODB_URI=mongodb://localhost:27017/school_fond
-PORT=5000
-NODE_ENV=development
-JWT_SECRET=your_jwt_secret_key_change_this
+src/
+  server.js       kirish nuqtasi (cron'lar shu yerda ulanadi)
+  routes/         auth · teacher · lc · tma · admin · payments
+  controllers/    16 ta
+  models/         Mongoose sxemalar
+  services/       sof mantiq (kassa, hisobot, xabar, import)
+  utils/          resolveContext · planHelper · enrollment · notifyTargets
+  middleware/     auth · roles · mode · lang · rateLimit · security
+  cron/           eslatma · kassa xabari · churn · tozalash · support
+  bot/            Telegram bot
+  scripts/        bir martalik migratsiyalar va guardrail'lar
+test/             node:test — bazaga ULANMAYDI
+docs/             PAYMENTS · CLOUDINARY · GROUP_MIGRATION
 ```
 
-## Server ishga tushirish
+## Manzillar
+
+| Prefiks | Nima |
+|---|---|
+| `/api/auth/*` | kirish, ro'yxatdan o'tish, parol tiklash |
+| `/api/teacher/*` | Fond **va** LC uchun umumiy asos |
+| `/api/lc/*` | faqat LC (rol, xodim, maosh, kassa, jadval…) |
+| `/api/tma/*` | Telegram Mini App (ota-ona / o'quvchi) |
+| `/api/admin/*` | platforma administratori |
+| `/api/payments/*` | Payme / Click (kalit yo'q → 503) |
+
+⚠️ Aniq ro'yxat **kodda** — `src/routes/`. Bu jadval faqat
+yo'nalish beradi; endpoint'larni bu yerda takrorlash eskirgan
+hujjatga olib keladi (aynan shunday bo'lgan).
+
+## Tekshiruvlar
 
 ```bash
-# Development mode
-npm run dev
-
-# Production mode
-npm start
+npm test              # 533 ta test, bazaga ulanmaydi
+npm run check:messages  # tarjimasiz qolgan xabarlar
+npm run check:dead      # yozilgan-u ulanmagan kod
+npm run check           # uchalasi birga
 ```
 
-## API Endpoints
+⚠️ **Build yoki server ko'tarilishi hech narsani kafolatlamaydi.**
+Bu loyihadagi eng qimmat xatolar xato bermaydi — funksiya
+shunchaki chaqirilmaydi, xabar shunchaki bormaydi. Guardrail'lar
+aynan shuning uchun bor.
 
-### Teacher (O'qituvchi)
-- `POST /api/teachers/register` - Ro'yxatdan o'tish
-- `POST /api/teachers/login` - Login
-
-### Classes (Sinflar)
-- `GET /api/classes` - Hamma sinflarni chiqarish
-- `POST /api/classes` - Yangi sinf yaratish
-- `GET /api/classes/:classId/report` - Sinf uchun oylik to'lovlar jadvalini chiqarish
-
-### Students (Talabalar)
-- `GET /api/students` - Hamma talabalarni chiqarish
-- `POST /api/students` - Yangi talaba qo'shish
-- `GET /api/students/class/:classId` - Sinf uchun talabalarni chiqarish
-
-### Monthly Payments (Oylik To'lovlar)
-- `POST /api/payments/create-monthly` - Yangi oy uchun to'lovlarni yaratish (hamma not_paid)
-- `PUT /api/payments/:paymentId/status` - To'lov statusini o'zgartirish (paid/not_paid)
-- `GET /api/payments/unpaid/:classId` - Tolangan bo'lmagan talabalarni chiqarish
-
-### Expenses (Xarajatlar)
-- `POST /api/expenses` - Xarajat qo'shish
-- `GET /api/expenses/:classId/:month/:year` - Oy uchun barcha xarajatlarni chiqarish
-
-## MongoDB kerakli sozlamalar
-
-MongoDB server ishga tushirish (Windows):
-
-```bash
-mongod --dbpath "C:\data\db"
-```
-
-Yoki MongoDB Atlas cloud service foydalanish:
-
-```
-mongodb+srv://<username>:<password>@cluster.mongodb.net/school_fond
-```
-
-## Keyingi qadamlar
-
-- [ ] Frontend ro'yxatdan o'tish va login tizimi
-- [ ] Frontend sinf va talaba boshqarishi
-- [ ] Frontend oylik to'lovlar jadvalini chiqarish
-- [ ] Email xabarnomalar (tolangan bo'lmaganlarga)
-- [ ] Authentication middleware
-
+Frontend repoda yana uchtasi bor va ular **ikkala reponi**
+o'qiydi: `check:api` (manzil bormi), `check:shape` (javobdagi
+maydon bormi), `check:perms` (menyu → route → ruxsat zanjiri).
