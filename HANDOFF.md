@@ -68,7 +68,68 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Ishlayapti deb ko'ringan, lekin ishlamagan"
+### Oxirgi tugagan ish — "Backend bor, tugma yo'q"
+
+`check:api` ning "backend'da bor, frontend chaqirmaydi"
+ro'yxati shu paytgacha **hisobot** deb qaralardi. Uni qatorma-qator
+tekshirib chiqilganda ikkitasi haqiqiy teshik bo'lib chiqdi.
+
+#### 1. Noto'g'ri ulangan hisobni uzib bo'lmasdi 🔴
+
+O'quvchi kartochkasidagi "Ulangan hisoblar" ro'yxati faqat
+KO'RSATARDI. Noto'g'ri odam ulanib qolsa — bazadagi telefon
+boshqa oilaniki bo'lsa yoki kod adashib berilgan bo'lsa — u
+bolaning **bahosini, davomatini va to'lovini abadiy** ko'rardi.
+
+`DELETE /teacher/links/:linkId` backendda bor edi, IDOR
+himoyasi bilan. Lekin `getStudentLinks` javobida `id`
+qaytmasdi — interfeys qatorni adreslay olmasdi, shuning uchun
+endpoint hech qayerdan chaqirilmagan.
+
+⚠️ Uzilganda yozuv **o'chirilmaydi**, `isActive: false` bo'ladi:
+"bu odam qayerdan ko'rdi?" degan savol keyin ham so'raladi.
+
+#### 2. Qo'shimcha mashg'ulotga qo'lda yozib bo'lmasdi
+
+`POST /lc/support/bookings` va `GET /lc/support/free` backendda
+tayyor, xodimga ochiq, va xodim yozganini `via: "crm"` deb
+belgilaydi — ya'ni CRM interfeysi ATAYLAB mo'ljallangan edi.
+Sahifasi esa yo'q edi.
+
+Natijada yozilishning yagona yo'li Mini App edi: Telegram'i
+yo'q ota-ona, yoki markazga shunchaki qo'ng'iroq qilgani,
+umuman yozila olmasdi.
+
+Endi "Yozuvlar" sarlavhasi yonida tugma bor: o'quvchini
+qidirib tanlash → ustoz → sana → bo'sh vaqtlar.
+
+#### 3. Yo'lda topilgan bug: "0 ta yuborildi"
+
+`sendMonthlyReminders` (cron funksiyasi) hech narsa
+qaytarmasdi, controller esa `result?.sent || 0` deb o'qirdi.
+"Hammaga eslatma yuborish" tugmasi xabarlar HAQIQATAN ketgan
+holda ham **doim nol** ko'rsatardi — direktor ishlamayapti deb
+o'ylab, qayta-qayta bosardi va ota-onalarga takror xabar
+ketardi.
+
+#### 4. Tozalash
+
+- **`src/tools/i18n/translations.js` o'chirildi** — 320
+  qatorlik o'lik nusxa, hech qayerdan import qilinmaydi.
+  Kalit qidirgan odam avval shuni topib tahrirlab qo'yishi
+  mumkin edi va hech narsa o'zgarmasdi.
+- **Interfeysdan emoji olib tashlandi** (19 ta Landing'da,
+  ustiga tugma va xabarlar). Emoji `color` ni qabul qilmaydi
+  va har platformada boshqacha chiziladi; `❄️` esa ba'zi
+  brauzerda ikkita belgi bo'lardi. Hammasi `Icon.vue` ga.
+- **`check:shape` va `check:api` Mini App'ni ham ko'radi.**
+  `/api/tma/*` ikkalasidan ham tushib qolgandi — ya'ni
+  ota-onalar har kuni ochadigan bo'lim tekshiruvsiz edi.
+  Mini App `fetch` ishlatadi va javobning O'ZINI qaytaradi
+  (`res.data.X` emas, `x.X`), shuning uchun ikkala naqsh ham
+  qo'shildi. Qamrov: 103 → 108 chaqiruv, 204 → 220 route.
+
+### Undan oldingi ish — "Ishlayapti deb ko'ringan, lekin ishlamagan"
 
 Bu safar topilganlarning hammasi bitta turdagi: **kod bor,
 tugma bor, xato yo'q — natija esa yo'q**. Hech biri log'da
