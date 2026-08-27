@@ -116,3 +116,29 @@ test("reminderCron `lastNotifiedAt` ni markNotified orqali yozadi", () => {
     "markNotified notifyTargets.js da bo'lishi kerak",
   );
 });
+
+test("sendMonthlyReminders NATIJA qaytaradi", () => {
+  // ⚠️ Funksiya cron'dan ham, CRM'dagi "Hammaga yuborish"
+  //    tugmasidan ham chaqiriladi. Ilgari u hech narsa
+  //    qaytarmasdi, controller esa `result?.sent || 0` deb
+  //    o'qirdi — ya'ni xabarlar HAQIQATAN ketgan holda ham
+  //    direktor "0 ta yuborildi" ni ko'rardi va xususiyat
+  //    ishlamayapti deb o'ylardi.
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "src/cron/reminderCron.js"),
+    "utf8",
+  );
+  const i = src.indexOf("const sendMonthlyReminders");
+  assert.ok(i > 0);
+  const body = src.slice(i, src.indexOf("\nconst startReminderCron", i));
+
+  assert.ok(
+    /return \{[^}]*sent:/.test(body),
+    "muvaffaqiyatli yo'lda `{ sent }` qaytishi kerak",
+  );
+  // Erta chiqish (ulangan ota-ona yo'q) ham son qaytarsin
+  assert.ok(
+    !/\n\s*return\s*$/m.test(body),
+    "bo'sh `return` qolmasin — chaqiruvchi `undefined` oladi",
+  );
+});

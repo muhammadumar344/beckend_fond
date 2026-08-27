@@ -111,10 +111,22 @@ exports.getParentsByClass = async (req, res) => {
 }
 
 // Hammaga eslatma yuborish
+// Hammaga eslatma — cron bilan BITTA funksiya
+//
+// ⚠️ `sendMonthlyReminders` ilgari hech narsa qaytarmasdi va
+//    bu yerdagi `result?.sent || 0` doim NOL berardi. Xabarlar
+//    haqiqatan ketardi, direktor esa "0 ta yuborildi" ni
+//    ko'rib, ishlamayapti deb o'ylardi.
 exports.sendRemindersNow = async (req, res) => {
   try {
     const result = await sendMonthlyReminders()
-    res.json({ success: true, message: 'Eslatmalar yuborildi', sent: result?.sent || 0 })
+    res.json({
+      success: true,
+      message: 'Eslatmalar yuborildi',
+      sent: result?.sent || 0,
+      // Qarzi yo'q yoki ulanmagan — "0 yuborildi" ni tushuntiradi
+      skipped: result?.skipped || 0,
+    })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })
   }
