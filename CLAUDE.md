@@ -1310,8 +1310,14 @@ qo'shsangiz `server.js` dagi shu blokka qo'shishni unutmang.
 
 ## Ma'lum texnik qarzlar
 
-- `markPayment` (teacherController) eksport qilingan, lekin hech qaysi route'ga
-  ulanmagan — o'lik kod.
+- `markPayment` (teacherController) eksport qilingan, lekin hech qaysi
+  route'ga ulanmagan. ⚠️ **O'chirishdan oldin o'ylang:** u
+  `updatePaymentStatus` ning kengroq varianti — SUMMANI ham
+  o'zgartira oladi va jurnalga yozadi. Hozir noto'g'ri yozilgan
+  summani tuzatishning boshqa yo'li yo'q (varaqa
+  `defaultAmount` dan keladi; chegirma, qisman to'lov,
+  aka-uka narxi — hech biri kiritilmaydi). Ya'ni bu "keraksiz"
+  emas, **qaror kutayotgan** kod — HANDOFF §4.2 ga qarang.
 - **"Yozilgan-u ulanmagan" kodni vaqti-vaqti bilan qidiring.** Bu loyihada
   besh marta takrorlandi: `startReminderCron`, `manageExpenses`,
   `canAddStaff`/`canOpenBranch`, `updateStudent`/`updateClass`,

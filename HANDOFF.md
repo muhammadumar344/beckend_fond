@@ -1280,6 +1280,23 @@ brauzer ochiladi va token qaytadan saqlanadi.
   qaytarardi. `services/smsService.js` ichida `TODO(provayder)`
   belgisi bor, chaqiruvchi kod o'zgarmaydi.
 
+- 🟡 **MAHSULOT QARORI: to'lov summasini tuzatib bo'lmaydi.**
+  Varaqa guruhning `defaultAmount` idan keladi va keyin
+  o'zgarmaydi. Ya'ni **chegirma, qisman to'lov va aka-uka uchun
+  boshqa narx** — hech biri kiritilmaydi, noto'g'ri yozilgan
+  summani ham tuzatib bo'lmaydi. Yagona yo'l — varaqani
+  o'chirib qayta yaratish.
+
+  Kod tayyor turibdi: `teacherController.markPayment` summani
+  ham, izohni ham o'zgartira oladi va jurnalga yozadi. Lekin u
+  hech qaysi route'ga ulanmagan.
+
+  ⚠️ Ulash — **pul maydonini tahrirlashga ruxsat berish** demak.
+  Shuning uchun uni o'zim ulamadim: bu sizning qaroringiz. Ulash
+  oson (bitta `router.put` qatori + `check:dead` dagi `ALLOW`
+  dan olib tashlash), lekin oldin o'ylang: kim tahrirlay oladi
+  (`managePayments` — administrator ham), va jurnal yetarlimi.
+
 - 🟡 **MAHSULOT QARORI: oltita tarif bayrog'i ochiq turibdi.**
   `homework`, `salaries`, `roles`, `branch_stats`, `reports`,
   `white_label` — `planHelper` jadvalida Free uchun `false`,
