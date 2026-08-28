@@ -91,6 +91,16 @@ router.post("/cleanup-previous-year", onlyTeacher, cleanupPreviousYear);
 
 // ══ CLASSES ══════════════════════════════════════════════════
 // ✅ /classes/list AVVAL yozilishi shart — /classes/:id bilan conflict bo'lmasin
+// ⚠️ TEZKOR QIDIRUV IKKALA REJIMDA HAM ISHLAYDI.
+//    Ilgari u faqat `/api/lc/search` da edi va butun `/api/lc/*`
+//    `requireLCMode` bilan qulflangan — ya'ni Fond direktori
+//    Ctrl+K ni bosib, har safar bo'sh ro'yxat ko'rardi. Xato
+//    ham chiqmasdi: qidiruv jimgina 403 olardi.
+//    Controller rejimga bog'liq emas — o'quvchi va sinfni
+//    `ctx.directorId` bo'yicha qidiradi.
+const cardCtrlShared = require("../controllers/studentCardController");
+router.get("/search", allowTeacherOrStaff, cardCtrlShared.search);
+
 router.get("/classes/list", allowTeacherOrStaff, ctrl.getClassesForStaff);
 
 // ✅ TUZATILDI — Director VA Staff (manageGroups huquqi bilan, ichkarida

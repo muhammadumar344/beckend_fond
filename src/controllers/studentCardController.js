@@ -262,6 +262,10 @@ exports.search = async (req, res) => {
       students: students.map((s) => ({
         id: s._id,
         name: s.name,
+        // ⚠️ `classId` SHART. Fond rejimida o'quvchi kartochkasi
+        //    yo'q — u yerda natijaga bosilganda sinf sahifasi
+        //    ochiladi va buning uchun sinf id si kerak.
+        classId: s.class ? String(s.class) : "",
         className: groupName.get(String(s.class)) || "",
         parentPhone: s.parentPhone || "",
       })),
