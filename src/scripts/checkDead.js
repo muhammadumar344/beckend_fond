@@ -37,18 +37,6 @@ const TEST = path.join(__dirname, "../../test");
 
 // Ataylab ulanmagan — har biri izohli
 const ALLOW = new Set([
-  // ⚠️ `markPayment` — o'lik, LEKIN o'chirishdan oldin o'qing.
-  //    Bu `updatePaymentStatus` ning kengroq varianti: u SUMMANI
-  //    ham, izohni ham o'zgartira oladi va jurnalga yozadi.
-  //    Hozir tizimda noto'g'ri yozilgan summani tuzatishning
-  //    boshqa yo'li YO'Q — varaqa guruhning `defaultAmount`
-  //    idan keladi va o'zgarmaydi (chegirma, qisman to'lov,
-  //    aka-uka uchun narx — hech biri kiritilmaydi).
-  //
-  //    Ya'ni bu kod "keraksiz" emas, "qaror kutayotgan":
-  //    route'ga ulash — pul maydonini tahrirlashga ruxsat
-  //    berish demak. Qaror HANDOFF §4.2 da.
-  "markPayment",
   // Guruh/sinf ajratishga tayyorgarlik (reja 1.2) — hali ishga
   // tushirilmagan, ataylab import qilinmagan
   "Group",

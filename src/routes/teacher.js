@@ -198,6 +198,21 @@ router.put(
   allowTeacherOrStaff,
   ctrl.updatePaymentStatus,
 );
+// ⚠️ SUMMANI TAHRIRLASH. Ilgari varaqa guruhning `defaultAmount`
+//    idan kelar va keyin HECH QACHON o'zgarmasdi — ya'ni
+//    chegirma, qisman to'lov va aka-uka uchun boshqa narx
+//    kiritilmasdi, noto'g'ri yozilgan summani ham tuzatib
+//    bo'lmasdi. Yagona yo'l varaqani o'chirib qayta yaratish edi
+//    va u bilan birga to'lov tarixi ham yo'qolardi.
+//
+//    Ya'ni bu ochilish xavf QO'SHMAYDI: bir xil huquqli odam
+//    allaqachon o'chirib qayta yarata olardi. Endi esa
+//    o'zgarish jurnalga tushadi (`payment.amount_changed`) —
+//    kim, qachon, nimadan nimaga.
+//
+// ⚠️ Ruxsat controller ichida: `managePayments`. Filial
+//    cheklovi ham o'sha yerda tekshiriladi.
+router.put("/payments/:paymentId", allowTeacherOrStaff, ctrl.markPayment);
 
 // ══ REMINDER / SMS / EXPORT — faqat Director ════════════════
 router.get("/reminder", onlyTeacher, ctrl.getMonthlyReminder);

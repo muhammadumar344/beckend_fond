@@ -1653,13 +1653,39 @@ const markPayment = async (req, res) => {
     const payment = await MonthlyPayment.findOne({
       _id: req.params.paymentId || req.params.id,
       teacher: ctx.directorId,
-    });
+    }).populate("class", "branch");
     if (!payment)
       return res
         .status(404)
         .json({ success: false, error: "To'lov topilmadi" });
 
+    // ⚠️ FILIAL CHEKLOVI. `updatePaymentStatus` da bu bor edi,
+    //    bu yerda esa YO'Q edi — ya'ni bitta filialga biriktirilgan
+    //    administrator boshqa filialning to'lov summasini
+    //    o'zgartira olardi. Bu funksiya route'ga ulanmagani uchun
+    //    teshik ochilmagan; ulashdan oldin yopildi.
+    if (
+      ctx.branchFilter &&
+      payment.class?.branch &&
+      String(payment.class.branch) !== ctx.branchFilter
+    ) {
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+    }
+
     const { isPaid, status, amount, paidDate, note, paymentMethod } = req.body;
+
+    // ⚠️ SUMMA TEKSHIRILADI. Ilgari `payment.amount = amount` deb
+    //    to'g'ridan-to'g'ri yozilardi: manfiy son ham, matn ham
+    //    bazaga tushardi va hisobotlar jimgina buzilardi.
+    if (amount !== undefined) {
+      const n = Number(amount);
+      if (!Number.isFinite(n) || n < 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Summa 0 dan kichik bo'lmasligi kerak",
+        });
+      }
+    }
 
     // ⚠️ Bu funksiya SUMMANI ham o'zgartira oladi. Aynan shu
     //    sabab jurnal eng avval shu yerga kerak edi: 300 000 ni
@@ -1680,11 +1706,18 @@ const markPayment = async (req, res) => {
           : new Date()
         : null;
     } else if (status !== undefined) {
+      // Noma'lum status sxemani buzadi — enum bo'yicha cheklaymiz
+      if (!["paid", "not_paid"].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          error: "Status 'paid' yoki 'not_paid' bo'lishi kerak",
+        });
+      }
       payment.status = status;
       payment.paidDate = status === "paid" ? new Date() : null;
     }
 
-    if (amount !== undefined) payment.amount = amount;
+    if (amount !== undefined) payment.amount = Number(amount);
     if (note !== undefined) payment.note = note;
 
     applyReceiver(ctx, payment, paymentMethod);
