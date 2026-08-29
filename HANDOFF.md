@@ -5,7 +5,8 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-21** (ketish arafasidagi o'quvchilar
+> Oxirgi yangilanish: **2026-08-29** (barcha sahifalar brauzerda
+> tekshirildi; Intl tuzog'i yopildi; ketish arafasidagi o'quvchilar
 > Telegram'ga chiqdi, backend xabarlari tarjimasi tugadi, tarif
 > chegaralari haqiqatan ishlay boshladi)
 >
@@ -68,7 +69,261 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Backend bor, tugma yo'q"
+### Oxirgi tugagan ish — "Qolgan sahifalarni brauzerda tekshirish" (2026-08-29)
+
+Muhammadumar: *"qolgan sahifalarni brauzerda ochib tekshir"*.
+
+Barcha 60 dan ortiq marshrut **haqiqiy brauzerda** (headless
+Chromium) to'rt rol ostida ochildi — Fond direktori, LC
+direktori, xodim, admin — ish stoli (1440px) va telefon (430px)
+kengligida. Soxta API bilan, production bazaga tegmasdan.
+
+⚠️ **`npm run check` yashil bo'lsa ham topilmaydigan xatolar
+chiqdi.** Hammasi bir turdan: kod to'g'ri, brauzer boshqacha
+o'ylaydi.
+
+**Eng kattasi — `Intl` va o'zbek tili**
+
+Chromium'da `uz-UZ` lug'ati **umuman yo'q** (o'lchandi). Intl
+bunday holatda xato bermaydi, jimgina `en-US` ga tushadi:
+
+| Kod | Kutilgan | Haqiqatda chiqqan |
+|---|---|---|
+| `Intl.NumberFormat('uz-UZ')` | `1 200 000` | `1,200,000` |
+| `{ style:'currency', currency:'UZS' }` | `1 200 000 so'm` | `UZS 1,200,000` |
+| `toLocaleDateString('uz-UZ')` | `29.08.2026` | `2026-08-29` |
+
+Ya'ni direktor o'z pulini xorijiy valyuta kabi ko'rardi. 24 ta
+joyda shunday edi. Endi yagona manba: `utils/money.js` →
+`groupDigits()` (Intl'siz, sof funksiya) va `i18n/months.js` →
+`formatShortDate` / `formatDateTime`.
+
+⚠️ CLAUDE.md da sana bo'limida "raqamli format xavfsiz" deb
+yozilgan edi — **noto'g'ri**, tuzatildi.
+
+**Boshqa topilganlar**
+
+| Sahifa | Nima edi |
+|---|---|
+| `/lc` | `undefined%` — `=== null` `undefined` ni ushlamaydi |
+| `/staff` | `NaN yanvar` — `formatDayMonth` to'liq ISO vaqtda buzilardi |
+| `/lc/leads` | Kanban butun sahifani gorizontal siljitardi (1508 > 1440) |
+| `/teacher/payments`, `/teacher/expenses` | Sarlavha ostida "Xush kelibsiz" turardi |
+| `/staff/team` | "{filial} xodimlari" — tarjimasiz qolgan |
+| `/teacher/reports` | 430px da kartochka matni kesilardi |
+| Menyu | "Qo'shimcha mashg'ulot" sidebar'ga sig'masdi |
+
+**Bosiladigan nishonlar** — 21×21 dan 18×18 gacha bo'lgan
+tugmalar 32px ga kengaytirildi (ko'rinishi o'zgarmadi, faqat
+bosiladigan maydon): lid kartochkasi, uy vazifasi, jadval,
+to'lov tuzatish qalami, parolni ko'rsatish ko'zi, auth
+sahifalaridagi matn havolalari, landing menyusi va futeri.
+
+**Yangi guardrail**
+
+| Buyruq | Nimani ushlaydi |
+|---|---|
+| `verify` §14 | `Intl`/`toLocale*` ga til kodi berilgan har qanday joy |
+
+Buzib sinaldi: `.vue` va `.js` faylga bittadan qo'yildi —
+ikkalasi ham ushlandi, qaytarilgach yashil.
+
+⚠️ **Landing'dagi `@fondschool_uz`, `demo@fondschool.uz` va
+`@SchoolfondsBot` ATAYLAB tegilmadi** — bular jonli
+Telegram/Instagram hisoblari va ishlayotgan bot. Nomini
+o'zgartirish havolalarni buzadi. Yangi hisoblar ochilsa
+alohida qaror bilan almashtiriladi.
+
+---
+
+### Undan oldingi ish — "To'lov summasini tuzatish" (2026-08-29)
+
+Muhammadumar: *"o'zing qaror qabul qilaver sayt yaxshi chiqsa
+boldi"* — shu sababli HANDOFF §4.2 da turgan qaror bajarildi.
+
+**Muammo**: varaqa guruhning `defaultAmount` idan kelar va keyin
+HECH QACHON o'zgarmasdi. Ya'ni **chegirma, qisman to'lov va
+aka-uka uchun boshqa narx** — hech biri kiritilmasdi, noto'g'ri
+yozilgan summani ham tuzatib bo'lmasdi. Yagona yo'l varaqani
+o'chirib qayta yaratish edi va u bilan birga **to'lov tarixi ham
+yo'qolardi**.
+
+**Nega ochish xavf qo'shmaydi**: bir xil huquqli odam
+(`managePayments`) allaqachon o'chirib qayta yarata olardi.
+Farqi shundaki, endi o'zgarish jurnalga tushadi
+(`payment.amount_changed`) — kim, qachon, nimadan nimaga.
+
+⚠️ **Ulashdan oldin ikkita teshik yopildi.** `markPayment`
+uzoq vaqt route'ga ulanmay turgani uchun ular ko'rinmasdi:
+
+1. **Filial cheklovi yo'q edi** — bitta filialga biriktirilgan
+   administrator boshqa filial to'lovini o'zgartira olardi
+   (`updatePaymentStatus` da bu tekshiruv bor edi).
+2. **Summa tekshirilmasdi** — manfiy son ham, matn ham bazaga
+   tushardi va hisobotlar jimgina buzilardi.
+
+`test/markPayment.test.js` — sakkizta test. Uchtasi ataylab
+buzib sinaldi: har birida test yiqildi, qaytarilgach o'tdi.
+
+⚠️ Birinchi urinishda test **soxta yashil** bo'lgan edi: u
+`ctx.branchFilter` so'zini qidirardi, u esa tanada ikki marta
+uchraydi (shart va solishtirish). Endi butun himoya shakli
+tekshiriladi.
+
+**Uchta yangi guardrail**
+
+| Buyruq | Nimani ushlaydi |
+|---|---|
+| `verify` §11 | Noma'lum slot nomi — Vue uni jimgina tashlab yuboradi va tugmalar chizilmaydi |
+| `verify` §12 | Bitta faylda aralash qator oxiri (12 ta fayl topildi va tuzatildi) |
+| `check:api` §3 | Jurnal amali tarjimasiz qolgan bo'lsa |
+
+**Yo'lda topilgan ikkita jim xato**
+
+- Men modalda `<template #footer>` deb yozdim, `AppModal` da esa
+  slot `actions` deb ataladi. **Vue noma'lum slotni jimgina
+  tashlab yuboradi**: oyna ochiladi, "Saqlash" va "Bekor"
+  tugmalari esa umuman chizilmaydi. Xato yo'q, konsol toza.
+  → `verify` §11.
+- Jurnalda uchta amal tarjimasiz edi (`class.updated`,
+  `student.updated`, `student.imported`) — direktor inglizcha
+  kod so'zini ko'rardi. → `check:api` §3.
+
+⚠️ **Ikkalasi ham "buzilmagan, shunchaki noto'g'ri" turdagi
+xato** — aynan shu sababli oylab turishi mumkin edi.
+
+---
+
+### Undan oldingi ish — "Ertalab boshqacha ko'rinsin" (2026-08-29)
+
+Muhammadumar: *"landing page dan tortib 404gacha… sayt iloji
+boricha tshunarli va qulay bolsin… ertalab turganimda men
+boshqacha dizaynda korishim kerak"*.
+
+**Ko'rinishda nima o'zgardi**
+
+| Ilgari | Endi |
+|---|---|
+| Faol menyu havolasi shaffof ko'k tus — hover'dan farq qilmasdi | To'ldirilgan gradient + oq matn. 14 ta o'xshash qatordan qaysi biri ochiq ekani bir qarashda ko'rinadi |
+| Yon menyu kontentdan OCHROQ (ko'z avval unga tushardi) | Yon menyu to'qroq, asosiy maydon ochroq |
+| Bitta sahifada ikkita "asosiy" tugma ikki xil rangda (`.btn-primary` to'q ko'k gradient, `AppButton` ochiq ko'k) | Bittasi — ochiq ko'k + qorong'i matn |
+| Sahifalarning yarmida `max-width` bor, `margin: auto` yo'q → keng monitorda kontent chap chetga siqilgan | Kenglik va markazlash `App.vue` da, bitta joyda |
+| 246 ta qattiq yozilgan HEX rang (Material palitrasi ham bor edi) | Tokenlar |
+| 395 ta qo'lda yozilgan burchak radiusi, bir ekranda 11 xil yumaloqlik | `--r-*` tokenlari |
+| Xodim panelida 8 ta rang, yarmi bir-biridan farq qilmasdi | 4 ta, ma'no bo'yicha |
+| `.stat-card` QATOR edi — beshta sahifaning hech biri qator shaklida yozilmagan | Ustun (`:has(.sc-ico)` bo'lsa qator) |
+| 404 — to'q sariq (ilovada "diqqat" rangi) | Ko'k, va qaysi manzil topilmagani yozilgan |
+
+**Muhammadumar aytgan aniq xatolar — hammasi tuzatildi**
+
+- Davomatda belgilangani bilinmasdi → to'ldirilgan tugma
+- O'tib ketgan darslar panelda turardi → yo'qoladi
+- Ctrl+K qidiruv Fond rejimida umuman ishlamasdi (`/lc/search`
+  → 403) → `/teacher/search`
+- "Mening maoshim" chap tarafga siqilib qolgan → 7 ta sahifa
+  markazlashtirildi, keyin qoida `App.vue` ga ko'chirildi
+- Sahifaga qaytganda bazaga qayta so'rov ketardi → 60 soniyalik
+  GET keshi (`services/api.js`), `npm run check:cache` qulflaydi
+
+**Yo'lda topilgan jim xatolar**
+
+1. **Oy nomlari 20 ta faylda o'zbekcha qotirilgan edi.** Ruscha
+   interfeysdagi direktor to'lovlar, maoshlar, davomat va
+   hisobotlarda baribir "Yanvar 2026" ni ko'rardi.
+   → `src/i18n/months.js`, uch tilda.
+2. **`views/teacher/Reports.vue` yozilgan-u ulanmagan edi** —
+   to'liq ishlaydigan sahifa, lekin hech qaysi route unga olib
+   bormasdi. Ya'ni Fond direktorida hisobot sahifasi umuman
+   yo'q edi.
+3. **Onboarding'da eski brend nomi** — ro'yxatdan o'tgan direktor
+   ko'radigan BIRINCHI ekranda hamon `FondSchool` turardi
+   (`set-brand` so'zbelgi naqshini `Lu<strong>mo</strong>` deb
+   qidiradi, u yerda bo'linish boshqa joyda edi).
+4. **Xarajatlar sahifasida yillar qo'lda yozilgan:**
+   `[2024, 2025, 2026, 2027]` — 2028-yilda joriy yil ro'yxatda
+   bo'lmasdi.
+5. **162 ta tarjimasiz matn** — 54 tasi shablonda (bitta so'zli:
+   "Saqlash", "Bekor", "Kirish", "Maoshlar"), 108 tasi
+   `<script>` ichida (xato xabarlari, brauzer yorlig'i
+   sarlavhasi, lid holatlari, pul birligi).
+6. **Xodim panelida sana modul yuklanganda bir marta olinardi** —
+   kechqurun ochilgan sahifa ertalab kechagi kunni ko'rsatardi.
+7. **Yon menyudagi rol yozuvi tarjimasiz** — Fond direktori o'z
+   ismi ostida inglizcha `teacher` so'zini ko'rardi.
+
+**🔴 Eng jiddiy topilma — brauzerda tekshirganda chiqdi**
+
+`Landing.vue` va `Onboarding.vue` scoped uslubida shunday
+yozilgandi:
+
+```css
+@import url('https://fonts.googleapis.com/css2?family=Sora…')
+```
+
+Vite uni marshrut CSS faylining BOSHIGA chiqaradi, brauzer esa
+o'sha `<link rel="stylesheet">` yuklanmaguncha marshrutni
+**umuman ko'rsatmaydi**. Ya'ni `fonts.googleapis.com` sekin
+bo'lsa yoki bloklansa — sotuv sahifasi ham, ro'yxatdan o'tgandan
+keyingi BIRINCHI ekran ham **oq** chiqadi. Xato yo'q, konsol
+toza.
+
+Bu ehtimol emas: sinovda aynan shunday bo'ldi
+(`<div id="app"><!----></div>`). Endi shrift sahifa
+chiqqandan keyin yuklanadi (`src/utils/loadFont.js`).
+
+⚠️ **Xulosa:** `@import url(https://…)` ni sahifa uslubiga
+hech qachon yozmang. Har qanday tashqi CSS shu tarzda butun
+sahifani bo'g'ib qo'yadi.
+
+**Brauzerda ko'rib tekshirilganda chiqqanlari**
+
+Bu safar sahifalar haqiqiy brauzerda ochib ko'rildi (build →
+preview → surat). Faqat shu yo'l bilan topiladigan uchta narsa:
+
+1. **Server javob bermaganda sahifa BO'SH qolardi.** Xato
+   ingichka qizil chiziq bilan ko'rsatilar, qolgan joy bo'sh
+   edi. Render bepul tarifda uxlab qoladi — ertalab birinchi
+   kirgan direktor deyarli har kuni shu holatga tushadi.
+   → `ui/AppError.vue`: "Qayta urinish" tugmasi va halol izoh.
+
+2. **LC panelida `Promise.allSettled` hamma xatoni yutardi** —
+   server javob bermasa "0 o'quvchi, 0 guruh, 0 so'm" chiqardi
+   va direktor ma'lumoti yo'qolgan deb o'ylardi. Xatodan ham
+   yomon.
+
+3. **LC panelida sana buzuq edi: "M08 29, Sat".**
+   `toLocaleDateString('uz-UZ', { month: 'long' })` brauzerda
+   uz-UZ lug'ati bo'lmasa aynan shunday qaytaradi. Yetti joyda
+   shu naqsh bor edi.
+
+⚠️ **Xulosa: `npm run build` va `npm run check` yashil bo'lishi
+   sahifa ochilishini KAFOLATLAMAYDI.** Katta o'zgarishdan
+   keyin `npx vite preview` bilan bir marta ochib ko'ring.
+
+**Landing raqamlari — qaror qabul qilindi**
+
+"500+ o'qituvchi · 10K+ o'quvchi · 99% mamnun" olib tashlandi.
+Tekshirib bo'lmaydigan da'vo bir marta ushlansa, qolgan hamma
+gap shubha ostida qoladi. O'rniga tekshirib bo'ladigan uchtasi:
+2 rejim, 3 til, Telegram xabarnoma.
+
+⚠️ Bu yerga SON yozmang. Haqiqiy sanoq kerak bo'lsa — bazadan.
+
+**Yangi guardrail'lar**
+
+| Buyruq | Nimani ushlaydi |
+|---|---|
+| `npm run check:cache` | Kesh ishlayaptimi va ORTIQCHA ishlamayaptimi (QR keshlansa o'quvchi eski kod bilan "keldim" qilib qo'yardi) |
+| `npm run check:uztext` | `<script>` ichidagi tarjimasiz o'zbekcha matn |
+| `verify` §10 | Eski brend nomi (`FondSchool`, `Daftar`) |
+| `check:i18n` uchinchi o'tishi | Istalgan tegdagi bitta so'zli tarjimasiz matn |
+
+⚠️ Uchalasi ham `check:solo` da — CI ishga tushsa avtomatik
+ishlaydi.
+
+---
+
+### Undan oldingi ish — "Backend bor, tugma yo'q"
 
 `check:api` ning "backend'da bor, frontend chaqirmaydi"
 ro'yxati shu paytgacha **hisobot** deb qaralardi. Uni qatorma-qator
@@ -1279,23 +1534,6 @@ brauzer ochiladi va token qaytadan saqlanadi.
   sozlama provayderga ulanishga urinib, har bir SMS uchun xato
   qaytarardi. `services/smsService.js` ichida `TODO(provayder)`
   belgisi bor, chaqiruvchi kod o'zgarmaydi.
-
-- 🟡 **MAHSULOT QARORI: to'lov summasini tuzatib bo'lmaydi.**
-  Varaqa guruhning `defaultAmount` idan keladi va keyin
-  o'zgarmaydi. Ya'ni **chegirma, qisman to'lov va aka-uka uchun
-  boshqa narx** — hech biri kiritilmaydi, noto'g'ri yozilgan
-  summani ham tuzatib bo'lmaydi. Yagona yo'l — varaqani
-  o'chirib qayta yaratish.
-
-  Kod tayyor turibdi: `teacherController.markPayment` summani
-  ham, izohni ham o'zgartira oladi va jurnalga yozadi. Lekin u
-  hech qaysi route'ga ulanmagan.
-
-  ⚠️ Ulash — **pul maydonini tahrirlashga ruxsat berish** demak.
-  Shuning uchun uni o'zim ulamadim: bu sizning qaroringiz. Ulash
-  oson (bitta `router.put` qatori + `check:dead` dagi `ALLOW`
-  dan olib tashlash), lekin oldin o'ylang: kim tahrirlay oladi
-  (`managePayments` — administrator ham), va jurnal yetarlimi.
 
 - 🟡 **MAHSULOT QARORI: oltita tarif bayrog'i ochiq turibdi.**
   `homework`, `salaries`, `roles`, `branch_stats`, `reports`,
