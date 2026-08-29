@@ -256,6 +256,11 @@ router.put(
   onlyTeacher,
   tgCtrl.setChurnDigestMode,
 );
+router.put(
+  "/telegram/director/billing-mode",
+  onlyTeacher,
+  tgCtrl.setBillingAlertMode,
+);
 // "Xabar qanday keladi?" — bugungi haqiqiy ma'lumot bilan
 router.post(
   "/telegram/director/preview",

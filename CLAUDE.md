@@ -512,6 +512,41 @@ bilan bir xil qoida: xabar kelsa — ish bor.
 ⚠️ Ro'yxat **8 tagacha**, qolgani "va yana N ta". Yigirmata ismli
 xabar ro'yxat emas, devor bo'lib qoladi.
 
+## Oy boshidagi "varaqa yaratilmagan" xabari
+
+`cron/billingAlertCron.js` — **oyning 2-sanasi 09:00 Toshkent**.
+Matn `services/billingAlert.js` dagi **sof** `buildAlert()` da,
+`test/billingAlert.test.js` uni qulflaydi.
+
+⚠️ **2-SANA, 1-sana EMAS.** 1-sanada hali hech bir guruhda
+varaqa yo'q — bu unutish emas, tabiiy hol, va xabar butun
+ro'yxatni sanab shovqinga aylanardi. 1-sana — varaqa
+yaratiladigan kun (o'sha kuni 09:00 da `reminderCron`
+ota-onalarga eslatma yuboradi va administratorni turtadi).
+
+⚠️ **IKKALA REJIM UCHUN HAM** — `institutionType` bo'yicha
+filtr yo'q. Ketish xabari faqat LC'da ma'noli edi, varaqani
+unutish esa Fond'da ham xuddi shunday ko'rinmas.
+
+⚠️ **SANOQ AYNAN `services/billing.js` DAGIDEK**
+(`Student.find({ class, isActive: { $ne: false } })`). Tugma
+nima yaratsa, xabar aynan shuni va'da qilishi kerak. Ya'ni
+`Enrollment` orqali qo'shimcha guruhda o'qiydigan bola ikkala
+joyda ham sanalmaydi — bu ochiq savol (HANDOFF §5), lekin uni
+faqat xabarda "tuzatish" ikkalasini bir-biridan ajratardi.
+
+⚠️ **SUMMA CHEGARADAN OSHGANLARNI HAM QO'SHADI.** Ro'yxat 8 ta
+guruh bilan cheklangan, pul esa cheklanmaydi — aks holda xabar
+yo'qotishni kamaytirib ko'rsatardi. Test buni qulflaydi.
+
+⚠️ **Havola rejimga qarab boshqa sahifaga boradi**
+(`/lc/payments` yoki `/teacher/payments`) — bitta manzil yozsak
+yarim foydalanuvchi "sahifa topilmadi" olardi.
+
+⚠️ **Bo'sh ro'yxat — xabar yo'q.** Sozlama frontendda
+`teacher/Payments.vue` da (kassa xabari Kassa'da, ketish xabari
+"Ketish arafasida"da turgani bilan bir xil qoida).
+
 ## `POST /teacher/telegram/director/preview`
 
 "Xabar qanday keladi?" — ulanishni tekshirishning yagona halol
@@ -1302,6 +1337,7 @@ qildi — foydalanuvchi qaytadan so'rasa bo'ldi.
 | `cron/supportCron.js` | har 5 daqiqa | Kelmagan o'quvchini belgilash + 3 kun blok |
 | `cron/cashReportCron.js` | har kuni 21:00 | Kunlik kassa xabari direktorga |
 | `cron/churnDigestCron.js` | dushanba 09:00 | Ketish arafasidagi o'quvchilar direktorga |
+| `cron/billingAlertCron.js` | 2-sana 09:00 | Varaqa yaratilmagan guruhlar direktorga |
 
 ⚠️ `startReminderCron` yozilgan edi, lekin **hech qayerdan
 chaqirilmagan** — ya'ni Pro/Premium da sotilayotgan "oylik eslatma"

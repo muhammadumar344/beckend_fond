@@ -401,6 +401,7 @@ const MESSAGES = {
   "Oy formati: YYYY-MM": { ru: "Формат месяца: YYYY-MM", en: "Month format: YYYY-MM" },
   "Foiz 0–100 oralig'ida": { ru: "Процент — от 0 до 100", en: "The percentage must be between 0 and 100" },
   "Summa manfiy bo'lmasin": { ru: "Сумма не может быть отрицательной", en: "The amount cannot be negative" },
+  "Summa 0 dan kichik bo'lmasligi kerak": { ru: "Сумма не может быть меньше 0", en: "The amount cannot be less than 0" },
   "Bu sozlamani direktor yoki filial boshqaruvchisi o'zgartiradi": { ru: "Эту настройку меняет директор или руководитель филиала", en: "Only the director or a branch manager can change this setting" },
   "Kechikish chegarasi 0–60 daqiqa oralig'ida": { ru: "Порог опоздания — от 0 до 60 минут", en: "The lateness threshold must be between 0 and 60 minutes" },
   "Sana noto'g'ri": { ru: "Неверная дата", en: "Invalid date" },

@@ -5,7 +5,8 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-29** (barcha sahifalar brauzerda
+> Oxirgi yangilanish: **2026-08-29** (uchinchi Telegram xabari;
+> barcha sahifalar brauzerda
 > tekshirildi; Intl tuzog'i yopildi; ketish arafasidagi o'quvchilar
 > Telegram'ga chiqdi, backend xabarlari tarjimasi tugadi, tarif
 > chegaralari haqiqatan ishlay boshladi)
@@ -69,7 +70,67 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Qolgan sahifalarni brauzerda tekshirish" (2026-08-29)
+### Oxirgi tugagan ish — "Uchinchi Telegram xabari" (2026-08-29)
+
+§5 da "uchinchisi uchun tayyor o'rin bor" deb yozilgan edi.
+To'ldirildi: **oy boshidagi "varaqa yaratilmagan" xabari**.
+
+**Nega aynan bu.** Rollar bo'yicha o'ylaganda eng qimmat
+ko'rinmas yo'qotish shu: oylik to'lov varaqasi QO'LDA
+yaratiladi va administrator bitta guruhni unutsa — o'sha oy
+o'sha guruhdan pul **umuman so'ralmaydi**. Ota-onaga eslatma
+ham ketmaydi, chunki `reminderCron` faqat MAVJUD varaqa
+bo'yicha yuboradi. Na xato, na belgi; oy oxirida faqat "nega
+tushum kam?" qoladi.
+
+`GET /teacher/health` buni allaqachon ko'rsatardi — lekin u
+SAHIFADA yotibdi va direktor har kuni saytga kirmaydi. Ketish
+arafasidagi o'quvchilar bilan aynan bir xil muammo, aynan
+o'sha yechim.
+
+| | |
+|---|---|
+| Cron | `cron/billingAlertCron.js` — 2-sana 09:00 Toshkent |
+| Matn | `services/billingAlert.js` → sof `buildAlert()` |
+| Test | `test/billingAlert.test.js` — 16 ta |
+| Sozlama | `teacher/Payments.vue` (`/teacher/payments` va `/lc/payments`) |
+
+⚠️ **2-sana, 1-sana emas.** 1-sanada hali hech bir guruhda
+varaqa yo'q — xabar butun ro'yxatni sanab shovqinga aylanardi.
+1-sana varaqa yaratiladigan kun; 2-sanada varaqasiz qolgan
+guruh — haqiqiy unutish, va oyning qolgan 28 kuni pulni
+yig'ishga yetadi.
+
+⚠️ **Ikkala rejim uchun ham.** Ketish xabari faqat LC'da
+ma'noli edi (sinf rahbari bolalarni har kuni ko'radi), varaqani
+unutish esa Fond'da ham xuddi shunday ko'rinmas.
+
+**Xabarda summa bor** — "3 ta guruh" ni o'qigan odam ertaga
+qilaman deydi, "7 500 000 so'm so'ralmayapti" ni o'qigan odam
+hozir qiladi.
+
+**To'rtta buzib sinash o'tkazildi** va bittasi SOXTA YASHIL
+chiqdi: `startBillingAlertCron()` ni izohga olganda test
+o'tib ketaverdi — naqsh izohdagi qatorga ham tushardi. Endi
+test izohlarni oldindan olib tashlaydi (`markPayment` testidagi
+`bodyOf` bilan bir xil sabab).
+
+⚠️ **Yo'lda topilgan xato:** `check:messages` markPayment
+ishidan beri **qizil turgan edi** ("Summa 0 dan kichik
+bo'lmasligi kerak" tarjimasiz qolgan) va men uni "yashil" deb
+aytgandim — faqat `tail` ni ko'rgan ekanman. Tuzatildi.
+
+**Ochiq savol (yangi):** `billing.js` ham, bu xabar ham
+o'quvchini `Student.class` bo'yicha sanaydi, ya'ni `Enrollment`
+orqali qo'shimcha guruhda o'qiydigan bolaga **varaqa
+yaratilmaydi**. Ikkalasi bir xil bo'lgani uchun xabar rost
+gapiradi, lekin savol ochiq: qo'shimcha guruh uchun pul
+olinishi kerakmi? Bu **mahsulot qarori** — javob "ha" bo'lsa
+`services/billing.js` `utils/enrollment.js` ga o'tishi kerak.
+
+---
+
+### Undan oldingi ish — "Qolgan sahifalarni brauzerda tekshirish" (2026-08-29)
 
 Muhammadumar: *"qolgan sahifalarni brauzerda ochib tekshir"*.
 
@@ -1605,10 +1666,16 @@ brauzer ochiladi va token qaytadan saqlanadi.
 Rollar bo'yicha o'ylash davom etadi. Kassa zanjiri, lid→guruh oqimi,
 **butun frontend tarjimasi** va **backend xabarlari** tugadi.
 
-Direktorning Telegram kanali endi **ikkita** xabar tashiydi (kunlik
-kassa, haftalik ketish arafasida). Uchinchisi uchun tayyor o'rin bor:
-xabar matni sof funksiyada, cron esa bitta naqshdan nusxa
-(`cashReportCron` / `churnDigestCron` — ikkalasi bir xil).
+Direktorning Telegram kanali endi **uchta** xabar tashiydi: kunlik
+kassa (21:00), haftalik ketish arafasida (dushanba 09:00) va oy
+boshidagi "varaqa yaratilmagan" (2-sana 09:00). To'rtinchisi uchun
+ham o'rin tayyor: xabar matni sof funksiyada, cron esa bitta
+naqshdan nusxa (uchtasi ham bir xil).
+
+⚠️ **Yangi xabar qo'shishdan oldin o'ylang:** har bir qo'shimcha
+xabar oldingilarining o'qilishini kamaytiradi. Uchtasi ham
+"kelsa — ish bor" qoidasida (bo'sh bo'lsa yubormaydi) va aynan
+shu ularni o'qiladigan qiladi.
 
 ### A. Backend xabarlari tarjimasi — ✅ TUGADI (2026-08-21)
 

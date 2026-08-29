@@ -255,13 +255,14 @@ const Teacher = require('../models/Teacher')
 const dirTg = require('../services/directorTelegram')
 const cashReport = require('../services/cashReport')
 const churnDigest = require('../services/churnDigest')
+const billingAlert = require('../services/billingAlert')
 
 // GET /api/teacher/telegram/director — ulanish holati
 exports.getDirectorLink = async (req, res) => {
   try {
     const doc = await Teacher.findById(req.user.id)
       .select(
-        'telegram.chatId telegram.username telegram.linkedAt cashReport churnDigest',
+        'telegram.chatId telegram.username telegram.linkedAt cashReport churnDigest billingAlert',
       )
       .lean()
 
@@ -273,6 +274,11 @@ exports.getDirectorLink = async (req, res) => {
       mode: doc?.cashReport?.mode || 'problems',
       // Haftalik "ketish arafasida" xabari — ayni shu kanal
       churnMode: doc?.churnDigest?.mode || 'weekly',
+      // ⚠️ `|| 'monthly'` SHART: mavjud hisoblarda `billingAlert`
+      //    maydoni bazada umuman yo'q (sxemadagi standart qiymat
+      //    faqat `save()` da yoziladi), ya'ni bo'shini o'qib
+      //    interfeys "o'chiq" deb ko'rsatib qo'yardi.
+      billingMode: doc?.billingAlert?.mode || 'monthly',
     })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })
@@ -355,6 +361,26 @@ exports.setChurnDigestMode = async (req, res) => {
   }
 }
 
+// PUT /api/teacher/telegram/director/billing-mode   { mode }
+//
+// ⚠️ Uchinchi ALOHIDA sozlama. Uchalasi bitta kalitga yig'ilsa,
+//    kunlik shovqindan qochib kassa xabarini o'chirgan direktor
+//    oyiga bir marta keladigan "pul so'ralmayapti" xabaridan ham
+//    ayrilardi.
+exports.setBillingAlertMode = async (req, res) => {
+  try {
+    const mode = String(req.body.mode || '')
+    if (!['off', 'monthly'].includes(mode)) {
+      return res.status(400).json({ success: false, error: "Rejim noto'g'ri" })
+    }
+
+    await billingAlert.setMode(req.user.id, mode)
+    res.json({ success: true, mode })
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message })
+  }
+}
+
 // POST /api/teacher/telegram/director/preview   { type }
 //
 // "Xabar qanday keladi?" — ulanishni tekshirishning yagona
@@ -369,12 +395,14 @@ exports.setChurnDigestMode = async (req, res) => {
 exports.sendDirectorPreview = async (req, res) => {
   try {
     const type = String(req.body.type || 'cash')
-    if (!['cash', 'churn'].includes(type)) {
+    if (!['cash', 'churn', 'billing'].includes(type)) {
       return res.status(400).json({ success: false, error: "Xabar turi noto'g'ri" })
     }
 
+    // ⚠️ `institutionType` ham kerak: varaqa xabaridagi havola
+    //    rejimga qarab boshqa sahifaga boradi (/lc yoki /teacher).
     const doc = await Teacher.findById(req.user.id)
-      .select('name telegram.chatId')
+      .select('name telegram.chatId institutionType')
       .lean()
     if (!doc?.telegram?.chatId) {
       return res
@@ -390,9 +418,15 @@ exports.sendDirectorPreview = async (req, res) => {
     if (type === 'cash') {
       const data = await cashReport.collect(doc)
       text = cashReport.buildReport(data).text
-    } else {
+    } else if (type === 'churn') {
       const data = await churnDigest.collect(doc, churnDigest.crmLink())
       text = churnDigest.buildDigest(data).text
+    } else {
+      const isLC = doc.institutionType === 'learning_center'
+      const data = await billingAlert.collect(doc, {
+        link: billingAlert.crmLink(isLC),
+      })
+      text = billingAlert.buildAlert(data).text
     }
 
     try {

@@ -223,6 +223,8 @@ mongoose.connect(MONGODB_URI)
       startCashReportCron();
       const { startChurnDigestCron } = require('./cron/churnDigestCron');
       startChurnDigestCron();
+      const { startBillingAlertCron } = require('./cron/billingAlertCron');
+      startBillingAlertCron();
     } catch (e) {
       console.error('⚠️  cron ishga tushmadi:', e.message || e);
     }

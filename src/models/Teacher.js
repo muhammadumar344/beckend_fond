@@ -173,6 +173,23 @@ const teacherSchema = new mongoose.Schema({
     },
   },
 
+  // ── Oy boshidagi "varaqa yaratilmagan" xabari ──────────────
+  //
+  // ⚠️ ALOHIDA sozlama. Kunlik kassa va haftalik ketish xabari
+  //    bilan bitta kalitga yig'sak, shovqindan qochib birini
+  //    o'chirgan direktor pul yo'qotishi haqidagi xabardan ham
+  //    ayrilardi — va buni bilmasdi ham.
+  //
+  // ⚠️ Standart YOQIQ. Bu — kunlik shovqin emas, oyiga bir
+  //    marta va faqat rostdan unutilgan guruh bo'lsa keladi.
+  billingAlert: {
+    mode: {
+      type: String,
+      enum: ["off", "monthly"],
+      default: "monthly",
+    },
+  },
+
   // ── Xodim davomati ─────────────────────────────────────────
   // Ustoz ishga o'z vaqtida keldimi — filial boshqaruvchisi
   // kuzatadi, maosh hisobiga ta'sir qiladi.
