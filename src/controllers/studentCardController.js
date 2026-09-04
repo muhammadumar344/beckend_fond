@@ -30,6 +30,7 @@ const PaymentClaim = require("../models/PaymentClaim");
 const { resolveContext, requirePermission } = require("../utils/resolveContext");
 const { getStudentGroupIds } = require("../utils/enrollment");
 const { todayInTashkent } = require("../utils/supportWindow");
+const { phoneSearchRegex } = require("../utils/phone");
 
 // ── GET /api/lc/student/:studentId/card ─────────────────────
 exports.card = async (req, res) => {
@@ -240,6 +241,7 @@ exports.search = async (req, res) => {
     //    yiqitardi (yoki og'ir qidiruv yasab qo'yardi).
     const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const rx = new RegExp(safe, "i");
+    const phoneRx = phoneSearchRegex(q);
 
     const groupQuery = { teacher: ctx.directorId };
     if (ctx.branchFilter) groupQuery.branch = ctx.branchFilter;
@@ -250,8 +252,12 @@ exports.search = async (req, res) => {
     const students = await Student.find({
       class: { $in: groupIds },
       isActive: { $ne: false },
-      // Ism yoki ota-ona raqami bo'yicha
-      $or: [{ name: rx }, { parentPhone: rx }],
+      // ⚠️ Ism uchun oddiy naqsh, TELEFON uchun alohida:
+      //    bazada raqam `+998 90 123 45 67` bo'lib yotadi,
+      //    direktor esa `901234567` deb yozadi — oddiy naqsh
+      //    probellar sabab MOS KELMAYDI va qidiruv jimgina
+      //    "topilmadi" deb turadi (`utils/phone.js` ga qarang).
+      $or: [{ name: rx }, { parentPhone: phoneRx || rx }],
     })
       .select("name class parentPhone")
       .limit(12)
