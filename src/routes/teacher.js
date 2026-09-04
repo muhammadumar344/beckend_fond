@@ -398,4 +398,22 @@ router.delete(
   gradeCtrl.deleteGrade,
 );
 
+// ─── "TO'LADIM" — OTA-ONA YUBORADI, XODIM TASDIQLAYDI ───────────────────────
+//
+// ⚠️ `/api/lc/*` DA EMAS, SHU YERDA — va bu ataylab. U yerda butun
+//    router `requireLCMode` bilan qulflangan, Fond direktori esa
+//    403 olardi. Fondda bu oqim LC'dagidan ham keragiroq: sinf
+//    rahbari 30 ta to'lovni qo'lda belgilaydi.
+//
+// ⚠️ PUL BIZDAN O'TMAYDI. Ota-ona to'g'ridan-to'g'ri kartaga
+//    o'tkazadi; bu yerda faqat "to'ladim" so'rovi tasdiqlanadi.
+//    Boshqa odamlarning pulini ushlab turish alohida litsenziya
+//    talab qiladi.
+const claimCtrl = require("../controllers/paymentClaimController");
+
+router.get("/payment-claims", allowTeacherOrStaff, claimCtrl.list);
+router.put("/payment-claims/:claimId", allowTeacherOrStaff, claimCtrl.review);
+router.get("/payment-details", allowTeacherOrStaff, claimCtrl.getDetails);
+router.put("/payment-details", allowTeacherOrStaff, claimCtrl.updateDetails);
+
 module.exports = router;

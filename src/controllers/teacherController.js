@@ -15,6 +15,7 @@ const Staff = require("../models/Staff");
 const Branch = require("../models/Branch");
 // Tarif katalogidagi "ochiq lidlar" hisobi uchun
 const Lead = require("../models/Lead");
+const PaymentClaim = require("../models/PaymentClaim");
 const cloudinary = require("../services/cloudinary");
 const platform = require("../config/platform");
 const studentImport = require("../services/studentImport");
@@ -500,6 +501,27 @@ const getBranding = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Teacher topilmadi" });
     }
+    // ⚠️ KUTAYOTGAN "TO'LADIM" SONI SHU YERDA — alohida so'rov EMAS.
+    //    Belgi yon menyuda, ya'ni HAR BIR sahifada kerak. Buning
+    //    uchun alohida endpoint qo'ysak, har sahifa ochilishida
+    //    ortiqcha so'rov ketardi; ro'yxatning o'zini so'rasak esa
+    //    bitta raqam uchun 100 tagacha yozuv tortilardi.
+    //    Bu chaqiruv sidebar uchun allaqachon ketyapti va
+    //    `countDocuments` indeksdan o'qiydi (director+status).
+    //
+    //    Xato bo'lsa 0 qaytadi: logotip belgi tufayli
+    //    ko'rinmay qolmasin.
+    let pendingClaims = 0;
+    try {
+      pendingClaims = await PaymentClaim.countDocuments({
+        director: ctx.directorId,
+        status: "pending",
+        ...(ctx.branchFilter ? { branch: ctx.branchFilter } : {}),
+      });
+    } catch (e) {
+      console.error("getBranding pendingClaims:", e.message);
+    }
+
     return res.json({
       success: true,
       branding: {
@@ -508,6 +530,7 @@ const getBranding = async (req, res) => {
         institutionName: director.institutionName || "",
         institutionType: director.institutionType || null,
       },
+      pendingClaims,
       // Interfeys cheklovni O'ZI o'ylab topmasligi uchun shu yerdan
       // aytiladi: CDN yoqilgan bo'lsa 3MB, bo'lmasa 300KB.
       logoMaxBytes: cloudinary.enabled()

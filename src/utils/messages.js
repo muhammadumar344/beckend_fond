@@ -397,7 +397,7 @@ const MESSAGES = {
   "Bu oy uchun to'lov varaqasi yaratilmagan. Markazga murojaat qiling.": { ru: "Счёт за этот месяц ещё не выставлен. Обратитесь в центр.", en: "No bill has been issued for this month. Please contact the centre." },
   "Bu oy allaqachon to'langan": { ru: "Этот месяц уже оплачен", en: "This month is already paid" },
   "Bu oy uchun to'lovingiz allaqachon tekshirilmoqda": { ru: "Ваш платёж за этот месяц уже проверяется", en: "Your payment for this month is already being reviewed" },
-  "Yuborildi. Markaz tasdiqlagach qarz yopiladi.": { ru: "Отправлено. Долг закроется после подтверждения центром.", en: "Sent. The balance clears once the centre confirms." },
+  "Yuborildi. Tasdiqlangach qarz yopiladi.": { ru: "Отправлено. Долг закроется после подтверждения.", en: "Sent. The balance clears once it is confirmed." },
   "Oy formati: YYYY-MM": { ru: "Формат месяца: YYYY-MM", en: "Month format: YYYY-MM" },
   "Foiz 0–100 oralig'ida": { ru: "Процент — от 0 до 100", en: "The percentage must be between 0 and 100" },
   "Summa manfiy bo'lmasin": { ru: "Сумма не может быть отрицательной", en: "The amount cannot be negative" },

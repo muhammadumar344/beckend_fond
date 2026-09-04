@@ -694,7 +694,9 @@ exports.claimPayment = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Yuborildi. Markaz tasdiqlagach qarz yopiladi.",
+      // ⚠️ "Markaz" so'zi YO'Q: bu oqim Fondda ham ishlaydi va
+      //    u yerda markaz emas, sinf rahbari tasdiqlaydi.
+      message: "Yuborildi. Tasdiqlangach qarz yopiladi.",
       claim: { month: r.claim.month, year: r.claim.year, status: r.claim.status },
     });
   } catch (err) {
