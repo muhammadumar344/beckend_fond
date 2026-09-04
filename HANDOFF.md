@@ -5,11 +5,9 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-29** (uchinchi Telegram xabari;
-> barcha sahifalar brauzerda
-> tekshirildi; Intl tuzog'i yopildi; ketish arafasidagi o'quvchilar
-> Telegram'ga chiqdi, backend xabarlari tarjimasi tugadi, tarif
-> chegaralari haqiqatan ishlay boshladi)
+> Oxirgi yangilanish: **2026-09-04** (ikkala PR `main` ga qo'shildi va
+> jonli saytga chiqdi; Fond rejimi tozalandi: jadval ustunlari, pul
+> bo'linishi, to'lov usullari va qidiruv)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
 > `HANDOFF.md` — **shu paytdagi holat**: nima tugadi, nima to'xtab turibdi,
@@ -70,7 +68,77 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Uchinchi Telegram xabari" (2026-08-29)
+### Oxirgi tugagan ish — "Fond rejimi tozalandi + DEPLOY" (2026-09-04)
+
+**Ikkala PR `main` ga qo'shildi** (frontend #1, backend #1) — ya'ni
+72 ta commit jonli saytga chiqdi: Netlify `schoolfonds.uz` ni,
+Render `beckend-fond.onrender.com` ni qayta yig'di. Ilgari
+faqat ikkita mayda tuzatish qo'lda ko'chirilgandi.
+
+Shu roundda qilingan to'rt ish:
+
+**1. Fond rejimida jadval buglari.** Muhammadumar aytdi:
+"table lar malumotlarni toliq chiqazmayabti". Brauzerda 1440px
+va 430px da surat olib qaraldi va uch xil xato topildi:
+
+- **Pul ikkiga bo'linardi.** "1 200 000 so'm" tor kartochkada
+  "1 200" / "000 so'm" bo'lib ketardi, Hisobotlar sahifasida
+  esa TO'RTGA: "1"/"200"/"000"/"so'm". `grid` ustunni qat'iy
+  teng bo'lib beradi va ichidagi raqamga qaramaydi. Endi
+  `flex` + `min-width: min(100%, max-content)` — kartochka
+  raqam qanchalik uzun bo'lsa shunchalik joy oladi — va
+  summada `white-space: nowrap`. Kenglikni oshirish yechim
+  emas edi: maktabda 12 000 000 ham bo'ladi.
+  Sahifalar: `teacher/Dashboard.vue`, `teacher/Reports.vue`.
+- **Jadval ustunlari mos kelmasdi.** Har sinf uchun ALOHIDA
+  jadval chiziladi va brauzer har birining ustunini o'z
+  ichidagi matnga qarab o'lchardi — ikkita jadval ustma-ust
+  turib "Sana" biriga chapda, ikkinchisida o'rtada tushardi.
+  `table-layout: fixed` + **foizli** kenglik (px emas: kichik
+  ekranda shrift kichrayadi, qat'iy px esa o'sha-o'sha qolib
+  ismga joy qoldirmasdi).
+- Yo'l-yo'lakay: sana "02.09.202"/"6" bo'lib, "AMALLAR"
+  sarlavhasi "AMA"/"LLAR" bo'lib, "Berildi" tugmasi qalamdan
+  pastga tushib ketardi; Dashboard'da uzun sinf nomi
+  "6 ta o'quvchi" belgisini kartochkadan surib chiqarardi.
+
+**2. Fond rejimidan to'lov usullari olib tashlandi.**
+"fond qanday tarzda tolanganini ahamiyati yoq". Naqd/karta/
+o'tkazma tanlagichi endi faqat LC'da. Sabab kodda ham bor:
+Fondda `CashShift` yo'q, ya'ni javob hech qayerda
+ishlatilmasdi — har bir to'lovda ortiqcha qadam edi.
+
+**3. Fond rejimida qidiruv ishlaydi** (ism / familiya / telefon).
+Telefon uchun alohida naqsh kerak bo'ldi: bazada raqam
+`+998 90 123 45 67`, direktor esa `901234567` deb yozadi —
+oddiy naqsh probellar sabab MOS KELMASDI va qidiruv jimgina
+"topilmadi" deb turardi. `utils/phone.js` → `phoneSearchRegex()`
+oxirgi 9 raqamni olib, orasiga ixtiyoriy belgiga ruxsat beradi.
+`test/phone.test.js` — 10 ta test, biri controller haqiqatan
+chaqirayotganini tekshiradi.
+
+**4. LC atamalari Fond rejimidan chiqarildi.** "Hamma
+**guruh**ga yaratish", "**Markaz** xarajatlarini", Sinflar
+sahifasi ostidagi "Xush kelibsiz" (bu umuman sarlavha osti
+emas edi). Endi rejimga qarab: sinf / markaz. Yangi kalitlar
+uchala tilda.
+
+#### ⚠️ Audit qurolidagi jim teshik — 500px
+
+Headless Chrome oynani **500px dan torroq QILMAYDI**. Ya'ni
+`--window-size=430` bergan barcha oldingi "mobil" auditlar
+aslida 500px da o'lchagan va **480px hamda 360px media
+so'rovlari umuman sinalmagan**. Surat 430px chiqadi (kesilgan
+ko'rinish), shuning uchun buni sezish qiyin.
+
+Endi tekshiruv `dist/_mob.html` orqali: sahifa kerakli
+kenglikdagi `iframe` ichida ochiladi va media so'rovlar
+to'g'ri ishlaydi. Keyingi safar mobil ko'rinishni shu bilan
+qarang.
+
+---
+
+### Undan oldingi ish — "Uchinchi Telegram xabari" (2026-08-29)
 
 §5 da "uchinchisi uchun tayyor o'rin bor" deb yozilgan edi.
 To'ldirildi: **oy boshidagi "varaqa yaratilmagan" xabari**.
@@ -1521,7 +1589,7 @@ O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test              →  484/484
+backend :  npm test              →  567/567
 backend :  npm run check:messages →  tarjimasiz matn 0 ta (endi XATO beradi)
 backend :  npm run check          →  test + check:messages + check:dead
 frontend:  npm run build         →  ✓
