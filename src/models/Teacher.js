@@ -141,6 +141,55 @@ const teacherSchema = new mongoose.Schema({
     },
   },
 
+  // ── Oxirgi kirish ──────────────────────────────────────────
+  //
+  // ⚠️ NEGA KERAK: platforma egasi uchun eng muhim savol —
+  //    "qaysi markaz tizimni tashlab ketyapti?". Bu Lumo'ning
+  //    o'z mijozlariga beradigan javobining aynan o'zi
+  //    (`services/churnRisk.js`), faqat bir qavat yuqorida:
+  //    ikki hafta kirmagan direktor — ketish arafasida, va
+  //    bitta qo'ng'iroq uni qaytarishi mumkin.
+  //
+  // ⚠️ ESKI HISOBLARDA BO'SH bo'ladi va bu normal: maydon
+  //    paydo bo'lgunga qadar kirganlar yozilmagan. Hisobotda
+  //    "noma'lum" deb ko'rsatiladi, "2 yil kirmagan" deb emas.
+  lastLoginAt: { type: Date, default: null },
+
+  // ── Haftalik "ketish arafasida" xabari ─────────────────────
+  //
+  // Ketish belgilari CRM'da hisoblanadi (`/lc/at-risk`), lekin
+  // sahifada yotgan ro'yxat hech kimni qutqarmaydi: direktor
+  // har kuni kirmaydi va bola ketib bo'lgach biladi.
+  //
+  // ⚠️ STANDART `weekly` — va bu kassa xabaridagi `problems`
+  //    bilan bir xil mantiq: xabar FAQAT ro'yxat bo'sh
+  //    bo'lmaganda ketadi, ya'ni "yoqilgan" holat o'z-o'zidan
+  //    shovqin yaratmaydi. Bo'sh haftada jimlik.
+  churnDigest: {
+    mode: {
+      type: String,
+      enum: ["off", "weekly"],
+      default: "weekly",
+    },
+  },
+
+  // ── Oy boshidagi "varaqa yaratilmagan" xabari ──────────────
+  //
+  // ⚠️ ALOHIDA sozlama. Kunlik kassa va haftalik ketish xabari
+  //    bilan bitta kalitga yig'sak, shovqindan qochib birini
+  //    o'chirgan direktor pul yo'qotishi haqidagi xabardan ham
+  //    ayrilardi — va buni bilmasdi ham.
+  //
+  // ⚠️ Standart YOQIQ. Bu — kunlik shovqin emas, oyiga bir
+  //    marta va faqat rostdan unutilgan guruh bo'lsa keladi.
+  billingAlert: {
+    mode: {
+      type: String,
+      enum: ["off", "monthly"],
+      default: "monthly",
+    },
+  },
+
   // ── Xodim davomati ─────────────────────────────────────────
   // Ustoz ishga o'z vaqtida keldimi — filial boshqaruvchisi
   // kuzatadi, maosh hisobiga ta'sir qiladi.

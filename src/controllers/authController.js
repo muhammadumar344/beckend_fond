@@ -240,6 +240,13 @@ exports.teacherLogin = async (req, res) => {
     }
 
     const token = generateToken(teacher._id, 'teacher')
+
+    // ⚠️ `await` QILINMAYDI: kirish tezligi bundan sekinlashmasin.
+    //    Yozilmay qolsa ham hech narsa buzilmaydi — bu hisobot
+    //    uchun belgi, ish oqimi uchun emas.
+    Teacher.updateOne({ _id: teacher._id }, { $set: { lastLoginAt: new Date() } })
+      .catch(() => {})
+
     res.json({
       token,
       user: {
@@ -376,6 +383,11 @@ exports.unifiedLogin = async (req, res) => {
       }
 
       const token = generateToken(teacher._id, 'teacher')
+
+      // Hisobot uchun belgi — kirishni sekinlashtirmaydi
+      Teacher.updateOne({ _id: teacher._id }, { $set: { lastLoginAt: new Date() } })
+        .catch(() => {})
+
       return res.json({
         token,
         user: {

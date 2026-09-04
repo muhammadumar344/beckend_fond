@@ -4,7 +4,7 @@ const Class = require('../models/Class')
 const Student = require('../models/Student')
 const Admin = require('../models/Admin')
 const MonthlyPayment = require('../models/MonthlyPayment')
-const TelegramParent = require('../models/TelegramParent')
+const StudentLink = require('../models/StudentLink')
 const {
   SCHOOL,
   LC,
@@ -26,51 +26,215 @@ const generateReferralCode = (name) => {
 // ✅ createAdmin bu yerda YO'Q — u authController.js da (POST /api/auth/setup)
 
 // Admin dashboard
+// ⚠️ ILGARI BU YERDA N+1 BOR EDI va u jimgina o'sib borardi:
+//    har bir markaz uchun to'rtta alohida so'rov yuborilardi
+//    (`Class.distinct`, `Student.count`, `TelegramParent.count`,
+//    `MonthlyPayment.find`). Yuzta markazda — 400 dan ortiq
+//    so'rov. Eng yomoni oxirgisi: u markazning BARCHA to'lov
+//    hujjatlarini xotiraga yuklab, keyin JS'da yig'ardi.
+//    Yillar o'tgan markazda bu o'n minglab hujjat degani —
+//    Render'ning bepul tarifida sahifa avval sekinlashadi,
+//    keyin umuman ochilmay qoladi.
+//
+//    Endi to'rtta `aggregate` butun ro'yxat uchun BIR MARTA
+//    ishlaydi va natija `Map` orqali biriktiriladi.
+const buildCounts = async () => {
+  const [classRows, telegramRows, fundRows] = await Promise.all([
+    // Markaz → guruhlar va ulardagi o'quvchilar
+    Class.aggregate([
+      { $lookup: { from: "students", localField: "_id", foreignField: "class", as: "st" } },
+      {
+        $group: {
+          _id: "$teacher",
+          classCount: { $sum: 1 },
+          studentCount: { $sum: { $size: "$st" } },
+        },
+      },
+    ]),
+    // Markaz → Telegram'ga ulangan qabul qiluvchilar.
+    //
+    // ⚠️ IKKALA MANBA. Bu yer faqat eski `TelegramParent` ni
+    //    sanardi va yangi markazlarda son deyarli har doim NOL
+    //    bo'lib chiqardi — Mini App orqali bog'langan ota-onalar
+    //    `StudentLink` da yotadi. Platforma egasi shu songa
+    //    qarab "botni hech kim ishlatmayapti" degan xulosa
+    //    chiqarardi.
+    //
+    // ⚠️ `$unionWith` + ikki bosqichli `$group` — bir odam
+    //    ikkala jadvalda ham bo'lishi mumkin (eski ro'yxatda
+    //    edi, keyin raqamini tasdiqladi). Oddiy qo'shish uni
+    //    ikki marta sanardi.
+    StudentLink.aggregate([
+      { $match: { isActive: true } },
+      {
+        $project: {
+          director: 1,
+          student: 1,
+          // Eski yozuvlarda `telegramChatId` bo'sh matn bo'lishi
+          // mumkin; Telegram'da shaxsiy chat id foydalanuvchi
+          // id siga teng
+          chat: {
+            $cond: [
+              { $in: ["$telegramChatId", [null, ""]] },
+              "$telegramUserId",
+              "$telegramChatId",
+            ],
+          },
+        },
+      },
+      {
+        $unionWith: {
+          coll: "telegramparents",
+          pipeline: [
+            { $match: { isActive: true } },
+            {
+              $project: {
+                director: "$teacherId",
+                student: "$studentId",
+                chat: "$telegramChatId",
+              },
+            },
+          ],
+        },
+      },
+      {
+        $group: {
+          _id: { d: "$director", c: "$chat", s: "$student" },
+        },
+      },
+      { $group: { _id: "$_id.d", n: { $sum: 1 } } },
+    ]),
+    // Yig'ilgan pul — bazada yig'iladi, xotiraga tortilmaydi
+    MonthlyPayment.aggregate([
+      { $match: { status: "paid" } },
+      { $group: { _id: "$teacher", total: { $sum: "$amount" } } },
+    ]),
+  ]);
+
+  const byId = (rows, pick) => {
+    const m = new Map();
+    for (const r of rows) m.set(String(r._id), pick(r));
+    return m;
+  };
+
+  return {
+    classes: byId(classRows, (r) => r.classCount),
+    students: byId(classRows, (r) => r.studentCount),
+    telegram: byId(telegramRows, (r) => r.n),
+    fund: byId(fundRows, (r) => r.total),
+  };
+};
+
+// Obuna tugashiga shuncha kun qolganda "e'tibor talab qiladi"
+const EXPIRING_DAYS = 7;
+// Shuncha kun kirmagan markaz — ketish arafasida
+const IDLE_DAYS = 14;
+
 exports.getDashboard = async (req, res) => {
   try {
-    const totalTeachers = await Teacher.countDocuments()
-    const totalClasses = await Class.countDocuments()
-    const totalStudents = await Student.countDocuments()
-    const totalTelegramParents = await TelegramParent.countDocuments({ isActive: true })
+    const [totalTeachers, totalClasses, totalStudents, teachers, counts] =
+      await Promise.all([
+        Teacher.countDocuments(),
+        Class.countDocuments(),
+        Student.countDocuments(),
+        Teacher.find().select("-password").sort({ createdAt: -1 }),
+        buildCounts(),
+      ]);
 
-    const teachers = await Teacher.find().select('-password').sort({ createdAt: -1 })
+    // ⚠️ Umumiy son ALOHIDA so'rov emas — markazlar bo'yicha
+    //    sanoq allaqachon takrorlardan tozalangan. Ikkinchi
+    //    so'rov boshqa qoida bilan sanab, ikkita raqam bir-biriga
+    //    to'g'ri kelmay qolardi.
+    let totalTelegramParents = 0;
+    for (const n of counts.telegram.values()) totalTelegramParents += n;
 
-    const teachersWithStats = await Promise.all(
-      teachers.map(async (t) => {
-        const classIds = await Class.find({ teacher: t._id }).distinct('_id')
-        const classCount = classIds.length
-        const studentCount = await Student.countDocuments({ class: { $in: classIds } })
-        const telegramCount = await TelegramParent.countDocuments({
-          teacherId: t._id,
-          isActive: true,
-        })
+    const teachersWithStats = teachers.map((t) => {
+      const id = String(t._id);
+      return {
+        ...t.toObject(),
+        classCount: counts.classes.get(id) || 0,
+        studentCount: counts.students.get(id) || 0,
+        telegramCount: counts.telegram.get(id) || 0,
+        totalFund: counts.fund.get(id) || 0,
+        planActive: t.isPlanActive(),
+        daysLeft: t.daysLeft(),
+        activePlan: t.activePlan(),
+      };
+    });
 
-        const allPayments = await MonthlyPayment.find({ teacher: t._id })
-        const totalFund = allPayments
-          .filter((p) => p.status === 'paid')
-          .reduce((s, p) => s + p.amount, 0)
+    // ── E'TIBOR TALAB QILADI ──
+    //
+    // ⚠️ Lumo direktorlarga "qaysi o'quvchi ketish arafasida" deb
+    //    aytadi. Platforma egasiga esa aynan shu savol bir qavat
+    //    yuqorida turadi: qaysi MARKAZ ketyapti? Ikkalasi ham
+    //    bitta narsaga tayanadi — belgi ketishdan oldin
+    //    ko'rinadi va bitta qo'ng'iroq qarorni qaytarishi mumkin.
+    const now = Date.now();
+    const days = (d) => Math.ceil((new Date(d) - now) / 86400000);
 
-        return {
-          ...t.toObject(),
-          classCount,
-          studentCount,
-          telegramCount,
-          totalFund,
-          planActive: t.isPlanActive(),
-          daysLeft: t.daysLeft(),
-          activePlan: t.activePlan(),
-        }
-      })
-    )
+    const paying = teachersWithStats.filter(
+      (t) => t.plan !== "free" && t.isActive !== false && !t.deletionScheduledFor,
+    );
+
+    const expiringSoon = paying
+      .filter((t) => t.planActive && t.planExpiresAt && days(t.planExpiresAt) <= EXPIRING_DAYS)
+      .map((t) => ({
+        _id: t._id,
+        name: t.name,
+        phone: t.phone,
+        plan: t.plan,
+        daysLeft: Math.max(0, days(t.planExpiresAt)),
+      }))
+      .sort((a, b) => a.daysLeft - b.daysLeft);
+
+    const justExpired = paying
+      .filter((t) => !t.planActive)
+      .map((t) => ({
+        _id: t._id,
+        name: t.name,
+        phone: t.phone,
+        plan: t.plan,
+        expiredDaysAgo: t.planExpiresAt ? Math.abs(days(t.planExpiresAt)) : null,
+      }));
+
+    // ⚠️ `lastLoginAt` YO'Q bo'lgan hisob bu ro'yxatga TUSHMAYDI.
+    //    Maydon yaqinda qo'shildi; eski hisoblarda u bo'sh va
+    //    ularni "hech qachon kirmagan" deb ko'rsatish yolg'on
+    //    bo'lardi (sxemadagi standart qiymat mavjud hujjatlarga
+    //    tushmaydi — CLAUDE.md dagi tuzoq).
+    const idle = teachersWithStats
+      .filter(
+        (t) =>
+          t.isActive !== false &&
+          !t.deletionScheduledFor &&
+          t.lastLoginAt &&
+          Math.abs(days(t.lastLoginAt)) >= IDLE_DAYS,
+      )
+      .map((t) => ({
+        _id: t._id,
+        name: t.name,
+        phone: t.phone,
+        plan: t.plan,
+        idleDays: Math.abs(days(t.lastLoginAt)),
+        studentCount: t.studentCount,
+      }))
+      .sort((a, b) => b.idleDays - a.idleDays)
+      .slice(0, 20);
 
     res.json({
       summary: { totalTeachers, totalClasses, totalStudents, totalTelegramParents },
       teachers: teachersWithStats,
-    })
+      attention: {
+        expiringSoon,
+        justExpired,
+        idle,
+        rules: { expiringDays: EXPIRING_DAYS, idleDays: IDLE_DAYS },
+      },
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: err.message });
   }
-}
+};
 
 exports.createTeacher = async (req, res) => {
   try {

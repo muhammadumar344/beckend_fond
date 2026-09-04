@@ -32,7 +32,7 @@ const sendMonthlyReminders = async () => {
 
     if (!targets.length) {
       console.log('📭 Ulangan ota-ona yo\'q')
-      return
+      return { sent: 0, skipped: 0, notLinked: 0 }
     }
 
     // ⚠️ O'quvchi va sinf nomlari BIR MARTA olinadi. Ilgari har bir
@@ -100,8 +100,17 @@ const sendMonthlyReminders = async () => {
     }
 
     console.log(`✅ Telegram: ${sentCount} yuborildi, ${skippedCount} o'tkazildi`)
+
+    // ⚠️ NATIJA QAYTARILISHI SHART. Bu funksiya cron'dan ham,
+    //    CRM'dagi "Hammaga yuborish" tugmasidan ham chaqiriladi
+    //    (`telegramController.sendRemindersNow`). U yerda
+    //    `result?.sent || 0` yozilgan — funksiya hech narsa
+    //    qaytarmagani uchun direktor xabarlar HAQIQATAN ketgan
+    //    holda ham "0 ta yuborildi" ni ko'rardi.
+    return { sent: sentCount, skipped: skippedCount }
   } catch (err) {
     console.error('sendMonthlyReminders xatosi:', err)
+    return { sent: 0, skipped: 0, error: err.message }
   }
 }
 

@@ -10,6 +10,11 @@ const {
   requireAnyPermission,
 } = require('../utils/resolveContext');
 const { sendStaffWelcomeEmail, sendPasswordResetEmail } = require('../services/emailService');
+const {
+  canAddStaff,
+  limitsFor,
+  activePlanOf,
+} = require('../utils/planHelper');
 
 // ─── HELPER ───────────────────────────────────────────────────────────────────
 
@@ -58,6 +63,32 @@ const createStaff = async (req, res) => {
     const existing = await Staff.findOne({ email: email.toLowerCase() });
     if (existing) {
       return res.status(400).json({ message: "Bu email bilan xodim allaqachon mavjud" });
+    }
+
+    // ⚠️ TARIF CHEGARASI. `canAddStaff` yozilgan edi, lekin hech
+    //    qayerdan CHAQIRILMASDI — ya'ni Free hisob ham cheksiz
+    //    xodim qo'sha olardi va Pro sotib olishning ma'nosi
+    //    qolmasdi. (`startReminderCron` bilan bir xil turdagi
+    //    xato: kod bor, ulanish yo'q.)
+    //
+    // ⚠️ Faqat YANGI qo'shish to'xtatiladi. Chegaradan oshib
+    //    ketgan markazlar bor bo'lsa, ularning xodimlari
+    //    ishlayveradi — o'tmishni qayta yozmaymiz.
+    const director = await Teacher.findById(ctx.directorId);
+    const staffCount = await Staff.countDocuments({
+      director: ctx.directorId,
+      isActive: { $ne: false },
+    });
+    if (!canAddStaff(director, staffCount)) {
+      const max = limitsFor(activePlanOf(director), director).staff || 0;
+      return res.status(403).json({
+        // ⚠️ Raqam matnda emas, alohida maydonda: shablonli xabar
+        //    tarjima qilinmaydi va ruscha interfeysda o'zbekcha
+        //    chiqib qolardi.
+        message: "Tarif chegarasi: bu rejada ko'proq xodim qo'shib bo'lmaydi",
+        requiresUpgrade: true,
+        limit: { max, current: staffCount, plan: activePlanOf(director) },
+      });
     }
 
     const tempPassword      = generateTempPassword();

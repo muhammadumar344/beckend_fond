@@ -7,11 +7,20 @@ const Teacher = require("../models/Teacher");
 const {
   getGroupStudents,
   countGroupStudents,
+  countUniqueStudents,
+  buildGroupStudentMap,
 } = require("../utils/enrollment");
-const TelegramParent = require("../models/TelegramParent");
+const { collectTargets, markNotified } = require("../utils/notifyTargets");
 const Staff = require("../models/Staff");
 const Branch = require("../models/Branch");
+// Tarif katalogidagi "ochiq lidlar" hisobi uchun
+const Lead = require("../models/Lead");
 const cloudinary = require("../services/cloudinary");
+const platform = require("../config/platform");
+const studentImport = require("../services/studentImport");
+const centerHealth = require("../services/centerHealth");
+const { purgeStudent } = require("../utils/studentPurge");
+const billing = require("../services/billing");
 const cloudinaryCfg = require("../config/cloudinary");
 const XLSX = require("xlsx");
 const {
@@ -40,6 +49,7 @@ const { sendPaymentConfirmation } = require("../services/telegramService");
 const {
   resolveContext,
   requirePermission,
+  requireAnyPermission,
 } = require("../utils/resolveContext");
 const { audit, diff } = require("../services/audit");
 
@@ -550,8 +560,11 @@ const createClass = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Teacher topilmadi" });
 
+    // ⚠️ Arxivdagi guruh chegarani band qilmaydi: o'tgan yilni
+    //    yopgan direktor yangi guruh ocholmay qolmasin.
     const currentClassCount = await Class.countDocuments({
       teacher: teacherId,
+      archivedAt: null,
     });
     if (!canOpenNewClass(teacher, currentClassCount)) {
       const activePlan = teacher.isPlanActive() ? teacher.plan : "free";
@@ -599,33 +612,70 @@ const getMyClasses = async (req, res) => {
     const teacherId = ctx.directorId;
     const query = { teacher: teacherId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
+    // ⚠️ Arxivdagilar odatda ko'rinmaydi, lekin yo'qolmaydi.
+    //    `{ archivedAt: null }` maydoni umuman yo'q eski
+    //    sinflarni ham topadi.
+    if (req.query.includeArchived !== "1") query.archivedAt = null;
     const classes = await Class.find(query).sort({
       createdAt: -1,
     });
 
-    const classesWithStats = await Promise.all(
-      classes.map(async (cls) => {
-        const studentCount = await countGroupStudents(cls._id);
-        const payments = await MonthlyPayment.find({ class: cls._id });
-        const paidPayments = payments.filter((p) => p.status === "paid");
-        const paidCount = paidPayments.length;
-        const collectedOnSite = paidPayments.reduce((s, p) => s + p.amount, 0);
-        const totalCollected = (cls.initialBalance || 0) + collectedOnSite;
-        const expenses = await Expense.find({ class: cls._id });
-        const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+    // ⚠️ ILGARI BU YERDA N+1 BOR EDI: har bir sinf uchun alohida
+    //    `countGroupStudents`, `MonthlyPayment.find` va
+    //    `Expense.find`. Ikkinchisi va uchinchisi sinfning BUTUN
+    //    tarixini xotiraga yuklab, keyin JS'da yig'ardi — ya'ni
+    //    uch yillik markazda o'n minglab hujjat. Bu esa Fond
+    //    rejimidagi eng ko'p ochiladigan sahifa.
+    //
+    //    Endi hammasi uchta so'rovda: o'quvchilar
+    //    `buildGroupStudentMap` orqali (u aynan shu maqsad uchun
+    //    yozilgan), pul esa bazada yig'iladi.
+    const classIds = classes.map((c) => c._id);
+    const [studentMap, payRows, expRows] = await Promise.all([
+      buildGroupStudentMap(classIds),
+      MonthlyPayment.aggregate([
+        { $match: { class: { $in: classIds } } },
+        {
+          $group: {
+            _id: { class: "$class", status: "$status" },
+            sum: { $sum: "$amount" },
+            n: { $sum: 1 },
+          },
+        },
+      ]),
+      Expense.aggregate([
+        { $match: { class: { $in: classIds } } },
+        { $group: { _id: "$class", sum: { $sum: "$amount" } } },
+      ]),
+    ]);
 
-        return {
-          ...cls.toObject(),
-          studentCount,
-          paidCount,
-          unpaidCount: payments.length - paidCount,
-          collectedOnSite,
-          totalCollected,
-          totalExpenses,
-          realBalance: totalCollected - totalExpenses,
-        };
-      }),
-    );
+    const paid = new Map();   // classId → { sum, n }
+    const total = new Map();  // classId → jami yozuvlar soni
+    for (const r of payRows) {
+      const id = String(r._id.class);
+      total.set(id, (total.get(id) || 0) + r.n);
+      if (r._id.status === "paid") paid.set(id, { sum: r.sum, n: r.n });
+    }
+    const spent = new Map(expRows.map((r) => [String(r._id), r.sum]));
+
+    const classesWithStats = classes.map((cls) => {
+      const id = String(cls._id);
+      const p = paid.get(id) || { sum: 0, n: 0 };
+      const collectedOnSite = p.sum;
+      const totalCollected = (cls.initialBalance || 0) + collectedOnSite;
+      const totalExpenses = spent.get(id) || 0;
+
+      return {
+        ...cls.toObject(),
+        studentCount: studentMap.get(id)?.size || 0,
+        paidCount: p.n,
+        unpaidCount: (total.get(id) || 0) - p.n,
+        collectedOnSite,
+        totalCollected,
+        totalExpenses,
+        realBalance: totalCollected - totalExpenses,
+      };
+    });
 
     return res.json({ success: true, classes: classesWithStats });
   } catch (err) {
@@ -640,6 +690,10 @@ const getClassesForStaff = async (req, res) => {
     const ctx = await resolveContext(req);
     const query = { teacher: ctx.directorId };
     if (ctx.branchFilter) query.branch = ctx.branchFilter;
+    // ⚠️ Arxivdagi guruh xodim ro'yxatlarida ko'rinmaydi: davomat
+    //    va baho tanlagichida o'tgan yilning guruhlari turishi
+    //    faqat chalkashtiradi.
+    if (req.query.includeArchived !== "1") query.archivedAt = null;
 
     const classes = await Class.find(query)
       .select("name branch defaultAmount")
@@ -680,14 +734,32 @@ const updateClass = async (req, res) => {
     if (!cls)
       return res.status(404).json({ success: false, error: "Guruh topilmadi" });
 
-    const { name, monthlyFee, defaultAmount, description, isActive, branch } =
+    const before = { name: cls.name };
+    const { name, monthlyFee, defaultAmount, description, archived, branch } =
       req.body;
     if (name !== undefined) cls.name = name;
     if (monthlyFee !== undefined) cls.monthlyFee = monthlyFee;
     if (defaultAmount !== undefined) cls.defaultAmount = defaultAmount;
     if (description !== undefined) cls.description = description;
-    if (isActive !== undefined) cls.isActive = isActive;
+    // ⚠️ Ilgari bu yerda `cls.isActive = isActive` turgandi va
+    //    sxemada bunday maydon YO'Q edi — Mongoose uni jimgina
+    //    tashlab yuborardi. Ya'ni "arxivlash" hech qachon
+    //    ishlamagan.
+    if (archived !== undefined) cls.archivedAt = archived ? new Date() : null;
     if (branch !== undefined && ctx.isDirector) cls.branch = branch;
+
+    // ⚠️ Nom o'zgarishi jurnalga tushadi: hisobotda "7-A" nima
+    //    uchun "8-A" bo'lib qolganini keyin tushuntirish kerak
+    //    bo'lishi mumkin.
+    if (name !== undefined && name !== before.name) {
+      audit(req, ctx, {
+        action: "class.updated",
+        entity: "Class",
+        entityId: cls._id,
+        entityLabel: cls.name,
+        changes: [{ field: "nom", from: before.name, to: cls.name }],
+      });
+    }
 
     await cls.save();
     res.json({ success: true, class: cls });
@@ -863,7 +935,14 @@ const getClassStudents = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" });
 
-    const students = await getGroupStudents(classId);
+    // ⚠️ ARXIVDAGILAR ALOHIDA SO'RALADI. O'quvchi ketganda uni
+    //    o'chirish emas, arxivlash kerak (`isActive: false`) —
+    //    o'chirish uning butun to'lov tarixini ham olib ketadi.
+    //    Odatiy ro'yxatda arxivdagilar ko'rinmaydi, lekin ular
+    //    yo'qolmagan: `?includeInactive=1` ularni ham beradi.
+    const includeInactive =
+      req.query.includeInactive === "1" || req.query.includeInactive === "true";
+    const students = await getGroupStudents(classId, { includeInactive });
     return res.json({ success: true, students });
   } catch (err) {
     console.error("getClassStudents error:", err);
@@ -900,41 +979,269 @@ const getStudents = async (req, res) => {
   }
 };
 
+// ⚠️ BU FUNKSIYA YOZILGAN-U ULANMAGAN edi — va ustiga BUZUQ
+//    ham edi: `Student.findOne({ _id, teacher })` deb qidirardi,
+//    `Student` da esa `teacher` maydoni UMUMAN YO'Q (o'quvchi
+//    guruh orqali bog'lanadi). Ya'ni route'ga ulangan taqdirda
+//    ham har doim "O'quvchi topilmadi" qaytarardi.
+//
+//    Natijada tizimda o'quvchi ma'lumotini tahrirlashning
+//    umuman iloji yo'q edi: telefon o'zgarsa yoki ismda xato
+//    bo'lsa, yagona yo'l — o'chirib qayta yaratish. U esa
+//    o'quvchining BUTUN TO'LOV TARIXINI o'chiradi
+//    (`deleteStudent` ga qarang). Xato uchun ma'lumot
+//    yo'qotiladigan tizim — bu tizim emas.
 const updateStudent = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
     requirePermission(ctx, "manageStudents");
 
-    const student = await Student.findOne({
-      _id: req.params.studentId || req.params.id,
-      teacher: ctx.directorId,
-    });
+    const student = await Student.findById(
+      req.params.studentId || req.params.id,
+    );
     if (!student)
       return res
         .status(404)
         .json({ success: false, error: "O'quvchi topilmadi" });
 
-    const { name, parentPhone, classId, notes, isActive } = req.body;
-    if (name !== undefined) student.name = name;
-    if (parentPhone !== undefined) student.parentPhone = parentPhone;
-    if (notes !== undefined) student.notes = notes;
-    if (isActive !== undefined) student.isActive = isActive;
+    // Egalik guruh orqali tekshiriladi — `deleteStudent` bilan
+    // bir xil qolip. Xodimda filial cheklovi ham bor.
+    const ownQuery = { _id: student.class, teacher: ctx.directorId };
+    if (ctx.branchFilter) ownQuery.branch = ctx.branchFilter;
+    const cls = await Class.findOne(ownQuery);
+    if (!cls)
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
 
+    const { name, parentPhone, classId, rollNumber, isActive } = req.body;
+
+    // O'zgarishlar jurnal uchun yig'iladi: "kim telefonni
+    // almashtirdi?" degan savolga javob bo'lsin.
+    const changes = [];
+    const track = (field, from, to) => {
+      if (to !== undefined && String(from ?? "") !== String(to ?? "")) {
+        changes.push({ field, from: from ?? null, to: to ?? null });
+      }
+    };
+
+    if (name !== undefined) {
+      const trimmed = String(name).trim();
+      if (!trimmed) {
+        return res
+          .status(400)
+          .json({ success: false, error: "Ism bo'sh bo'lmasin" });
+      }
+      track("name", student.name, trimmed);
+      student.name = trimmed;
+    }
+    if (parentPhone !== undefined) {
+      const phone = String(parentPhone).trim();
+      track("parentPhone", student.parentPhone, phone);
+      student.parentPhone = phone;
+    }
+    if (rollNumber !== undefined && rollNumber !== null && rollNumber !== "") {
+      track("rollNumber", student.rollNumber, Number(rollNumber));
+      student.rollNumber = Number(rollNumber);
+    }
+    if (isActive !== undefined) {
+      track("isActive", student.isActive, Boolean(isActive));
+      student.isActive = Boolean(isActive);
+    }
+
+    // ── Boshqa guruhga ko'chirish ──
     if (classId && String(classId) !== String(student.class)) {
-      const classQuery = { _id: classId, teacher: ctx.directorId };
-      if (ctx.branchFilter) classQuery.branch = ctx.branchFilter;
-      const cls = await Class.findOne(classQuery);
-      if (!cls)
+      const targetQuery = { _id: classId, teacher: ctx.directorId };
+      if (ctx.branchFilter) targetQuery.branch = ctx.branchFilter;
+      const target = await Class.findOne(targetQuery);
+      if (!target)
         return res
           .status(404)
           .json({ success: false, error: "Yangi guruh topilmadi" });
-      student.class = classId;
+
+      // ⚠️ Ko'chirish ham tarif chegarasidan o'tadi. Aks holda
+      //    to'lgan guruhga "qo'shish" mumkin bo'lmasa ham,
+      //    "ko'chirish" bilan chetlab o'tish mumkin bo'lardi.
+      const director = await Teacher.findById(ctx.directorId);
+      const count = await countGroupStudents(target._id);
+      if (!canAddStudent(target.plan, count, director)) {
+        const limit = limitsFor(effectivePlan(target.plan, director), director);
+        return res.status(403).json({
+          success: false,
+          error: "Tarif chegarasi: bu guruhga ko'proq o'quvchi sig'maydi",
+          requiresUpgrade: true,
+          limit: { max: limit.students, current: count },
+        });
+      }
+
+      changes.push({ field: "guruh", from: cls.name, to: target.name });
+      student.class = target._id;
+    }
+
+    if (!changes.length) {
+      return res.json({ success: true, student, message: "O'zgarish yo'q" });
     }
 
     await student.save();
-    res.json({ success: true, student });
+
+    audit(req, ctx, {
+      action: "student.updated",
+      entity: "Student",
+      entityId: student._id,
+      entityLabel: `${student.name} — ${cls.name}`,
+      changes,
+    });
+
+    res.json({ success: true, student, message: "Saqlandi" });
   } catch (err) {
     res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
+// ══ EXCEL'DAN IMPORT ═══════════════════════════════════════
+//
+// ⚠️ AVVAL KO'RSATADI, KEYIN YOZADI. `apply: false` (standart)
+//    faqat tahlil qaytaradi: nechta qo'shiladi, qaysilari takror,
+//    qaysi qatorda xato. Yozish uchun ikkinchi so'rov kerak.
+//    Begona faylni ko'r-ko'rona bazaga to'kmaymiz
+//    (`/lc/rooms/import` bilan bir xil qoida).
+//
+// ⚠️ YARIM IMPORT YO'Q. Tarif chegarasidan oshsa hech narsa
+//    yozilmaydi: yarmi tushgan ro'yxatda direktor qaysi bola
+//    qolganini bilmaydi va butun faylni qo'lda solishtirib
+//    chiqishga majbur bo'ladi.
+const importStudents = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageStudents");
+
+    const { classId } = req.params;
+    const { file, apply = false } = req.body;
+
+    // ⚠️ TARIF TEKSHIRUVI. `import` bayrog'i `planHelper` da
+    //    bor edi, lekin hech qayerda tekshirilmasdi — `export`
+    //    besh joyda tekshiriladi, juftligi esa umuman ochiq
+    //    turardi. (`canAddStaff` / `canOpenBranch` bilan bir xil
+    //    naqsh: yozilgan-u ulanmagan.)
+    const director = await Teacher.findById(ctx.directorId);
+    if (!hasFeature(director, "import")) {
+      return res.status(403).json({
+        success: false,
+        error: "Import faqat yuqori tarifda",
+        requiresUpgrade: true,
+      });
+    }
+
+    const classQuery = { _id: classId, teacher: ctx.directorId };
+    if (ctx.branchFilter) classQuery.branch = ctx.branchFilter;
+    const cls = await Class.findOne(classQuery);
+    if (!cls)
+      return res
+        .status(404)
+        .json({ success: false, error: "Sinf topilmadi yoki ruxsat yo'q" });
+
+    let table;
+    try {
+      table = studentImport.readFile(file);
+    } catch (e) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Faylni o'qib bo'lmadi" });
+    }
+
+    // Takrorni topish uchun guruhdagi hozirgi ro'yxat
+    const existing = await getGroupStudents(classId);
+    const parsed = studentImport.parseTable(
+      table,
+      existing.map((s) => ({ name: s.name, parentPhone: s.parentPhone })),
+    );
+
+    if (!parsed.ok) {
+      return res.status(400).json({
+        success: false,
+        error: parsed.error,
+        // Fayldagi sarlavhalar — odam nimani tuzatishni bilsin
+        headers: parsed.headers,
+      });
+    }
+
+    // ── Tarif chegarasi ──
+    // (`director` yuqorida, `import` tekshiruvida olingan)
+    const current = existing.length;
+    const limit = limitsFor(effectivePlan(cls.plan, director), director);
+    const fits = Math.max(0, (limit.students || 0) - current);
+
+    const willAdd = parsed.rows.length;
+    const overLimit = willAdd > fits;
+
+    const summary = {
+      willAdd,
+      duplicates: parsed.duplicates.length,
+      invalid: parsed.invalid.length,
+      truncated: parsed.truncated || 0,
+      current,
+      max: limit.students,
+      fits,
+      overLimit,
+      hasPhoneColumn: parsed.hasPhoneColumn,
+    };
+
+    // ── Ko'rib chiqish ──
+    if (!apply) {
+      return res.json({
+        success: true,
+        preview: true,
+        summary,
+        rows: parsed.rows.slice(0, 100),
+        duplicates: parsed.duplicates.slice(0, 50),
+        invalid: parsed.invalid.slice(0, 50),
+      });
+    }
+
+    if (overLimit) {
+      return res.status(403).json({
+        success: false,
+        error: "Tarif chegarasi: bu guruhga ko'proq o'quvchi sig'maydi",
+        requiresUpgrade: true,
+        limit: { max: limit.students, current, fits },
+      });
+    }
+
+    if (!willAdd) {
+      return res.json({ success: true, added: 0, summary, message: "O'zgarish yo'q" });
+    }
+
+    // ⚠️ `rollNumber` ketma-ket davom etadi — ro'yxat aralashib
+    //    ketmasin. Bazadagi eng kattasidan boshlanadi, sanoqdan
+    //    emas: o'chirilgan o'quvchidan keyin raqam takrorlanardi.
+    const maxRoll = existing.reduce((m, s) => Math.max(m, s.rollNumber || 0), 0);
+    const docs = parsed.rows.map((r, i) => ({
+      name: r.name,
+      class: classId,
+      parentPhone: r.phone,
+      rollNumber: maxRoll + i + 1,
+    }));
+    await Student.insertMany(docs);
+
+    audit(req, ctx, {
+      action: "student.imported",
+      entity: "Class",
+      entityId: cls._id,
+      entityLabel: cls.name,
+      changes: [
+        { field: "qo'shildi", from: current, to: current + docs.length },
+        { field: "takror (o'tkazildi)", from: null, to: parsed.duplicates.length },
+      ],
+    });
+
+    return res.json({
+      success: true,
+      added: docs.length,
+      summary,
+      message: "Import tugadi",
+    });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
   }
 };
 
@@ -962,7 +1269,13 @@ const deleteStudent = async (req, res) => {
     //    to'lamagan" degan bahs chiqsa, javob shu yerda bo'ladi.
     const wiped = await MonthlyPayment.countDocuments({ student: studentId });
 
-    await MonthlyPayment.deleteMany({ student: studentId });
+    // ⚠️ FAQAT TO'LOVLAR EMAS. Ilgari shu yerda faqat
+    //    `MonthlyPayment` o'chirilardi va davomat, baholar,
+    //    uy vazifasi natijalari, qo'shimcha guruhlarga
+    //    yozilishi, Telegram bog'lanishi bazada EGASIZ qolib
+    //    ketardi — davomat foizi esa o'sha yozuvlarni sanashda
+    //    davom etardi.
+    const removed = await purgeStudent(studentId);
     await Student.findByIdAndDelete(studentId);
 
     audit(req, ctx, {
@@ -974,6 +1287,10 @@ const deleteStudent = async (req, res) => {
         { field: "name", from: student.name, to: null },
         { field: "parentPhone", from: student.parentPhone || null, to: null },
         { field: "o'chirilgan to'lovlar", from: wiped, to: 0 },
+        // Qaysi to'plamdan nechta yozuv ketgani ham jurnalda
+        // qolsin: keyin "davomat qayerga ketdi?" degan savol
+        // chiqsa, javob shu yerda.
+        { field: "o'chirilgan yozuvlar", from: JSON.stringify(removed), to: null },
       ],
     });
 
@@ -1017,55 +1334,77 @@ const createMonthlyPayments = async (req, res) => {
         .json({ success: false, error: "Bu sinf sizning filialingizga tegishli emas" });
     }
 
-    const students = await Student.find({ class: classId });
-    if (students.length === 0) {
+    // ⚠️ Mantiq `services/billing.js` da: "hammasiga yaratish"
+    //    tugmasi ham aynan shuni chaqiradi va qoida ikki joyda
+    //    bo'lib qolmasin.
+    const summary = await billing.ensureBillsForClass({
+      cls,
+      teacherId,
+      month: Number(month),
+      year: Number(year),
+    });
+
+    if (!summary.total) {
       return res
         .status(400)
         .json({ success: false, error: "Bu sinfda o'quvchi yo'q" });
     }
 
-    let createdCount = 0;
-    let alreadyExisted = 0;
-
-    for (const student of students) {
-      try {
-        const existing = await MonthlyPayment.findOne({
-          student: student._id,
-          class: classId,
-          month: Number(month),
-          year: Number(year),
-        });
-        if (!existing) {
-          await MonthlyPayment.create({
-            student: student._id,
-            class: classId,
-            teacher: teacherId,
-            amount: cls.defaultAmount,
-            month: Number(month),
-            year: Number(year),
-            status: "not_paid",
-          });
-          createdCount++;
-        } else {
-          alreadyExisted++;
-        }
-      } catch (e) {
-        console.error(`Error creating payment for student ${student._id}:`, e);
-      }
-    }
-
     return res.json({
       success: true,
-      message: `${createdCount} ta to'lov yaratildi`,
-      summary: {
-        created: createdCount,
-        alreadyExisted,
-        total: students.length,
-      },
+      message: `${summary.created} ta to'lov yaratildi`,
+      summary,
     });
   } catch (err) {
     console.error("createMonthlyPayments error:", err);
     return res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
+// ══ HAMMA GURUHGA VARAQA — bir bosishda ════════════════════
+//
+// ⚠️ NEGA KERAK: varaqani har guruh uchun alohida yaratish
+//    kerak edi va o'n beshta guruhi bor markazda bittasini
+//    unutish — vaqt masalasi. Unutilgan guruhdan esa o'sha oy
+//    pul umuman so'ralmaydi va buni hech narsa aytmaydi.
+//    `GET /teacher/health` muammoni KO'RSATADI, bu esa uni
+//    umuman bo'lmaydigan qiladi.
+//
+// ⚠️ Ikki marta bosish xavfsiz: mavjud varaqalar qayta
+//    yaratilmaydi.
+const createMonthlyPaymentsAll = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "managePayments");
+
+    const month = Number(req.body.month);
+    const year = Number(req.body.year);
+    if (!month || !year || month < 1 || month > 12 || year < 2020) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Oy va yil noto'g'ri" });
+    }
+
+    const query = { teacher: ctx.directorId, archivedAt: null };
+    if (ctx.branchFilter) query.branch = ctx.branchFilter;
+    const classes = await Class.find(query).select("name defaultAmount branch");
+
+    const result = await billing.ensureBillsForClasses({
+      classes,
+      teacherId: ctx.directorId,
+      month,
+      year,
+    });
+
+    return res.json({
+      success: true,
+      message: `${result.created} ta to'lov yaratildi`,
+      ...result,
+    });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
   }
 };
 
@@ -1258,30 +1597,38 @@ const updatePaymentStatus = async (req, res) => {
 
     if (status === "paid") {
       try {
-        const tgParent = await TelegramParent.findOne({
-          studentId: payment.student._id,
-          isActive: true,
+        // ⚠️ Ro'yxat IKKALA manbadan (`utils/notifyTargets.js`).
+        //    Bu yer faqat eski `TelegramParent` ni o'qirdi, ya'ni
+        //    Mini App orqali bog'langan ota-ona pulini to'lab,
+        //    HECH QANDAY tasdiq olmasdi — u esa qayta so'rar va
+        //    "to'ladimmi, yo'qmi" degan savol markazga qaytardi.
+        const targets = await collectTargets({
+          studentIds: [String(payment.student._id)],
         });
-        if (tgParent) {
+
+        if (targets.length) {
           const remainingPayments = await MonthlyPayment.find({
             student: payment.student._id,
             status: "not_paid",
           }).sort({ year: 1, month: 1 });
 
-          await sendPaymentConfirmation(
-            tgParent.telegramChatId,
-            payment.student.name,
-            payment.class.name,
-            [{ month: payment.month, year: payment.year }],
-            remainingPayments.map((p) => ({
-              month: p.month,
-              year: p.year,
-              amount: p.amount,
-            })),
-          );
+          const remaining = remainingPayments.map((p) => ({
+            month: p.month,
+            year: p.year,
+            amount: p.amount,
+          }));
 
-          tgParent.lastNotifiedAt = new Date();
-          await tgParent.save();
+          // Otasi ham, onasi ham ulangan bo'lsa — ikkalasiga ham
+          for (const t of targets) {
+            await sendPaymentConfirmation(
+              t.chatId,
+              payment.student.name,
+              payment.class.name,
+              [{ month: payment.month, year: payment.year }],
+              remaining,
+            );
+            await markNotified(t);
+          }
         }
       } catch (tgErr) {
         console.error(
@@ -1306,13 +1653,39 @@ const markPayment = async (req, res) => {
     const payment = await MonthlyPayment.findOne({
       _id: req.params.paymentId || req.params.id,
       teacher: ctx.directorId,
-    });
+    }).populate("class", "branch");
     if (!payment)
       return res
         .status(404)
         .json({ success: false, error: "To'lov topilmadi" });
 
+    // ⚠️ FILIAL CHEKLOVI. `updatePaymentStatus` da bu bor edi,
+    //    bu yerda esa YO'Q edi — ya'ni bitta filialga biriktirilgan
+    //    administrator boshqa filialning to'lov summasini
+    //    o'zgartira olardi. Bu funksiya route'ga ulanmagani uchun
+    //    teshik ochilmagan; ulashdan oldin yopildi.
+    if (
+      ctx.branchFilter &&
+      payment.class?.branch &&
+      String(payment.class.branch) !== ctx.branchFilter
+    ) {
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+    }
+
     const { isPaid, status, amount, paidDate, note, paymentMethod } = req.body;
+
+    // ⚠️ SUMMA TEKSHIRILADI. Ilgari `payment.amount = amount` deb
+    //    to'g'ridan-to'g'ri yozilardi: manfiy son ham, matn ham
+    //    bazaga tushardi va hisobotlar jimgina buzilardi.
+    if (amount !== undefined) {
+      const n = Number(amount);
+      if (!Number.isFinite(n) || n < 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Summa 0 dan kichik bo'lmasligi kerak",
+        });
+      }
+    }
 
     // ⚠️ Bu funksiya SUMMANI ham o'zgartira oladi. Aynan shu
     //    sabab jurnal eng avval shu yerga kerak edi: 300 000 ni
@@ -1333,11 +1706,18 @@ const markPayment = async (req, res) => {
           : new Date()
         : null;
     } else if (status !== undefined) {
+      // Noma'lum status sxemani buzadi — enum bo'yicha cheklaymiz
+      if (!["paid", "not_paid"].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          error: "Status 'paid' yoki 'not_paid' bo'lishi kerak",
+        });
+      }
       payment.status = status;
       payment.paidDate = status === "paid" ? new Date() : null;
     }
 
-    if (amount !== undefined) payment.amount = amount;
+    if (amount !== undefined) payment.amount = Number(amount);
     if (note !== undefined) payment.note = note;
 
     applyReceiver(ctx, payment, paymentMethod);
@@ -1627,55 +2007,53 @@ const getDashboard = async (req, res) => {
     const realTotalBalance =
       totalInitialBalance + allCollectedEver - allExpensesTotalEver;
 
-    const classDetails = await Promise.all(
-      classes.map(async (cls) => {
-        const classStudents = allStudents.filter(
-          (s) => s.class.toString() === cls._id.toString(),
-        );
-        const classPayments = monthlyPayments.filter(
-          (p) => p.class.toString() === cls._id.toString(),
-        );
-        const classPaid = classPayments.filter((p) => p.status === "paid");
-        const classCollectedThisMonth = classPaid.reduce(
-          (sum, p) => sum + p.amount,
-          0,
-        );
-        const classExpensesThisMonth = monthlyExpenses
-          .filter((e) => e.class?.toString() === cls._id.toString())
-          .reduce((sum, e) => sum + e.amount, 0);
+    // ⚠️ BU YERDA HAM N+1 BOR EDI: har bir sinf uchun alohida
+    //    `MonthlyPayment.find` va `Expense.find` — ikkalasi ham
+    //    sinfning BUTUN tarixini xotiraga yuklardi. Dashboard —
+    //    kirgandan keyin birinchi ochiladigan sahifa, ya'ni har
+    //    bir seans shu yerdan boshlanadi.
+    const dashClassIds = classes.map((c) => c._id);
+    const [allPaidRows, allExpRows] = await Promise.all([
+      MonthlyPayment.aggregate([
+        { $match: { class: { $in: dashClassIds }, status: "paid" } },
+        { $group: { _id: "$class", sum: { $sum: "$amount" } } },
+      ]),
+      Expense.aggregate([
+        { $match: { class: { $in: dashClassIds } } },
+        { $group: { _id: "$class", sum: { $sum: "$amount" } } },
+      ]),
+    ]);
+    const paidEver = new Map(allPaidRows.map((r) => [String(r._id), r.sum]));
+    const spentEver = new Map(allExpRows.map((r) => [String(r._id), r.sum]));
 
-        const classAllPaid = await MonthlyPayment.find({
-          class: cls._id,
-          status: "paid",
-        });
-        const classAllCollected = classAllPaid.reduce(
-          (s, p) => s + p.amount,
-          0,
-        );
-        const classAllExpenses = await Expense.find({ class: cls._id });
-        const classAllExpensesTotal = classAllExpenses.reduce(
-          (s, e) => s + e.amount,
-          0,
-        );
-        const classRealBalance =
-          (cls.initialBalance || 0) + classAllCollected - classAllExpensesTotal;
+    const classDetails = classes.map((cls) => {
+      const id = String(cls._id);
+      const classStudents = allStudents.filter((s) => String(s.class) === id);
+      const classPayments = monthlyPayments.filter((p) => String(p.class) === id);
+      const classPaid = classPayments.filter((p) => p.status === "paid");
+      const classCollectedThisMonth = classPaid.reduce((sum, p) => sum + p.amount, 0);
+      const classExpensesThisMonth = monthlyExpenses
+        .filter((e) => e.class && String(e.class) === id)
+        .reduce((sum, e) => sum + e.amount, 0);
 
-        return {
-          id: cls._id,
-          name: cls.name,
-          defaultAmount: cls.defaultAmount,
-          studentCount: classStudents.length,
-          paidCount: classPaid.length,
-          unpaidCount: classStudents.length - classPaid.length,
-          collectedThisMonth: classCollectedThisMonth,
-          expectedThisMonth: classStudents.length * cls.defaultAmount,
-          expensesThisMonth: classExpensesThisMonth,
-          initialBalance: cls.initialBalance || 0,
-          initialBalanceNote: cls.initialBalanceNote || "",
-          realBalance: classRealBalance,
-        };
-      }),
-    );
+      const classRealBalance =
+        (cls.initialBalance || 0) + (paidEver.get(id) || 0) - (spentEver.get(id) || 0);
+
+      return {
+        id: cls._id,
+        name: cls.name,
+        defaultAmount: cls.defaultAmount,
+        studentCount: classStudents.length,
+        paidCount: classPaid.length,
+        unpaidCount: classStudents.length - classPaid.length,
+        collectedThisMonth: classCollectedThisMonth,
+        expectedThisMonth: classStudents.length * cls.defaultAmount,
+        expensesThisMonth: classExpensesThisMonth,
+        initialBalance: cls.initialBalance || 0,
+        initialBalanceNote: cls.initialBalanceNote || "",
+        realBalance: classRealBalance,
+      };
+    });
 
     return res.json({
       success: true,
@@ -1690,6 +2068,9 @@ const getDashboard = async (req, res) => {
         features: {
           monthly_reminder: hasFeature(teacher, "monthly_reminder"),
           export: hasFeature(teacher, "export"),
+          // ⚠️ Interfeys tugmani SHUNGA qarab yashiradi — odam
+          //    bosib 403 olmasin (chegara bilan bir xil qoida).
+          import: hasFeature(teacher, "import"),
           multi_lang: hasFeature(teacher, "multi_lang"),
           sms_reminder: hasFeature(teacher, "sms_reminder"),
         },
@@ -1768,12 +2149,37 @@ const getMonthlyReminder = async (req, res) => {
         };
       }
       grouped[cid].unpaidStudents.push({
+        // ⚠️ `studentId` YO'Q EDI va interfeys uning o'rniga qator
+        //    RAQAMINI ishlatardi (`st.studentId || idx`). Ya'ni
+        //    "tanlanganlarga yuborish" tugmasi backend'ga
+        //    `[0, 1, 2]` yuborardi — Pro tarifda sotilayotgan
+        //    xususiyat hech qachon ishlamagan.
+        studentId: String(p.student._id),
         rollNumber: p.student.rollNumber,
         name: p.student.name,
         parentPhone: p.student.parentPhone,
         amount: p.amount,
       });
       grouped[cid].totalUnpaid += p.amount;
+    }
+
+    // ⚠️ `hasTelegram` ham YO'Q EDI: har bir qator "ulanmagan"
+    //    belgisi bilan chiqardi va "Hammasini tanlash" tugmasi
+    //    (`if (st.hasTelegram)`) hech kimni tanlamasdi.
+    //
+    // ⚠️ Ro'yxat IKKALA manbadan — `utils/notifyTargets.js`.
+    const connected = new Set(
+      (
+        await collectTargets({
+          directorId: teacherId,
+          studentIds: unpaidPayments.map((p) => String(p.student._id)),
+        })
+      ).map((t) => t.studentId),
+    );
+    for (const g of Object.values(grouped)) {
+      for (const st of g.unpaidStudents) {
+        st.hasTelegram = connected.has(st.studentId);
+      }
     }
 
     let extraData = {};
@@ -1803,6 +2209,8 @@ const getMonthlyReminder = async (req, res) => {
       month: m,
       year: y,
       totalUnpaidStudents: unpaidPayments.length,
+      // Nechtasiga xabar yetib boradi — "0 yuborildi" ni tushunish uchun
+      telegramReady: connected.size,
       classes: Object.values(grouped),
       ...extraData,
     });
@@ -1830,6 +2238,22 @@ const sendSmsReminders = async (req, res) => {
         success: false,
         error: "SMS reminder faqat Premium uchun",
         requiresUpgrade: true,
+      });
+    }
+
+    // ⚠️ PROVAYDER TEKSHIRUVI TARIFDAN KEYIN, LEKIN ISHDAN OLDIN.
+    //    Ilgari bu yer yo'q edi: `smsService` har bir o'quvchi
+    //    uchun jimgina `failed` qaytarardi va javob `success:
+    //    true` bo'lardi. Premium sotib olgan direktor "0
+    //    yuborildi" ni ko'rib, sababini bilmasdi.
+    //
+    //    Payme/Click bilan bir xil qoida: kalit yo'q → 503 va
+    //    halol xabar.
+    if (!smsService.isConfigured()) {
+      return res.status(503).json({
+        success: false,
+        error: "SMS xizmati sozlanmagan",
+        smsConfigured: false,
       });
     }
 
@@ -2359,9 +2783,99 @@ const exportPayments = async (req, res) => {
   }
 };
 
+// ══ MARKAZ SALOMATLIGI ═════════════════════════════════════
+//
+// ⚠️ Tizimdagi eng qimmat xatolar xato bermaydi — ular
+//    shunchaki SODIR BO'LMAYDI. To'lov varaqasi qo'lda
+//    yaratiladi va bitta guruh unutilsa, o'sha oy o'sha
+//    guruhdan pul umuman so'ralmaydi. Hech qanday xabar yo'q,
+//    oy oxirida esa "nega tushum kam?" degan savol qoladi.
+const getCenterHealth = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    // Moliyaviy ma'lumot bor (qaysi guruhdan pul so'ralmagan)
+    requireAnyPermission(ctx, ["viewPayments", "managePayments"]);
+
+    const now = new Date();
+    const month = Number(req.query.month) || now.getMonth() + 1;
+    const year = Number(req.query.year) || now.getFullYear();
+
+    const teacher = await Teacher.findById(ctx.directorId).select(
+      "institutionType",
+    );
+
+    const data = await centerHealth.collect({
+      directorId: ctx.directorId,
+      branchId: ctx.branchFilter || null,
+      month,
+      year,
+      isLC: teacher?.institutionType === "learning_center",
+    });
+
+    return res.json({
+      success: true,
+      period: { month, year },
+      ...centerHealth.buildHealth(data),
+    });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
+  }
+};
+
 // ============================================================
 //  SUBSCRIPTION
 // ============================================================
+//
+// ⚠️ NARX VA CHEGARA FRONTENDDA QOTIRILMAYDI. Ilgari
+//    `Subscription.vue` uchta tarifni o'zi yozib turardi —
+//    29 000 / 59 000 va "1 ta sinf, 30 ta o'quvchi". Bu FOND
+//    raqamlari, sahifa esa LC menyusida ham bor. Ya'ni o'quv
+//    markazi direktori Pro narxini 29 000 deb ko'rar, o'shancha
+//    to'lar edi — backend esa so'rovni `priceFor` bo'yicha
+//    199 000 deb yozardi va admin uni rad etardi. Mijoz pul
+//    yubordi, xizmat olmadi va sababini bilmadi.
+//
+//    Shuning uchun katalog SHU YERDAN, `planHelper` dan ketadi:
+//    narx ham, chegara ham, funksiyalar ham. Rejim
+//    (`institutionType`) hisobga olinadi.
+//
+// ⚠️ `usage` ham qo'shildi: interfeys chegarani BOSISHDAN
+//    OLDIN ko'rsatsin. Aks holda odam "Xodim qo'shish" ni bosib
+//    403 oladi va nima noto'g'ri ekanini tushunmaydi.
+const PLAN_IDS = ["free", "pro", "premium"];
+
+const buildPlanCatalog = (teacher) =>
+  PLAN_IDS.map((id) => ({
+    id,
+    price: priceFor(id, teacher)?.monthly || 0,
+    limits: limitsFor(id, teacher),
+    features: featuresFor(id, teacher),
+  }));
+
+/** Hozir nechtadan foydalanilyapti — chegara bilan yonma-yon ko'rsatish uchun */
+const collectUsage = async (teacher) => {
+  const id = teacher._id;
+
+  // ⚠️ O'quvchi `Student.teacher` orqali bog'lanmaydi — bunday
+  //    maydon umuman yo'q. Guruh orqali topiladi va sanoq
+  //    `countUniqueStudents` bilan: ikkita guruhda o'qiydigan
+  //    bola ikki marta sanalmasin (`utils/enrollment.js`).
+  const classIds = (await Class.find({ teacher: id }).select("_id").lean()).map(
+    (c) => c._id,
+  );
+
+  const [students, staff, branches, leads] = await Promise.all([
+    countUniqueStudents(classIds),
+    Staff.countDocuments({ director: id, isActive: { $ne: false } }),
+    Branch.countDocuments({ teacher: id, isActive: true }),
+    // Ochiq lidlar — chegara ham aynan shularni sanaydi
+    Lead.countDocuments({ director: id, status: { $nin: ["won", "lost"] } }),
+  ]);
+  return { classes: classIds.length, students, staff, branches, leads };
+};
+
 const getSubscriptionInfo = async (req, res) => {
   try {
     const teacher = await Teacher.findById(req.user.id);
@@ -2372,6 +2886,29 @@ const getSubscriptionInfo = async (req, res) => {
 
     return res.json({
       success: true,
+      mode: teacher.institutionType || "school",
+      plans: buildPlanCatalog(teacher),
+      // ⚠️ Karta raqami frontendda QOTIRILMAYDI. U yerda
+      //    `8600 1234 5678 9012` turgandi — namuna matn, haqiqiy
+      //    karta emas. Direktor uni nusxa olib pul yuborardi.
+      //    Kalit qo'yilmagan bo'lsa `configured: false` va sahifa
+      //    soxta raqam o'rniga ogohlantirish ko'rsatadi.
+      payTo: {
+        configured: platform.configured,
+        card: platform.card,
+        cardPlain: platform.cardPlain,
+        holder: platform.holder,
+      },
+      // ⚠️ TARIFDA BOR ≠ ISHLAYDI. "SMS eslatma" Premium qatorida
+      //    turadi, lekin provayder ulanmagan bo'lsa hech qanday
+      //    SMS ketmaydi. Sahifa buni oldindan aytishi kerak —
+      //    aks holda direktor pulini to'lab, tugmani bosib,
+      //    503 ni ko'radi. `payTo.configured` bilan bir xil qoida.
+      channels: {
+        sms: { configured: smsService.isConfigured() },
+      },
+      usage: await collectUsage(teacher),
+      limits: limitsFor(activePlanOf(teacher), teacher),
       currentPlan: teacher.plan,
       planActive: teacher.isPlanActive(),
       daysLeft: teacher.daysLeft(),
@@ -2380,6 +2917,7 @@ const getSubscriptionInfo = async (req, res) => {
       features: {
         monthly_reminder: hasFeature(teacher, "monthly_reminder"),
         export: hasFeature(teacher, "export"),
+        import: hasFeature(teacher, "import"),
         multi_lang: hasFeature(teacher, "multi_lang"),
         sms_reminder: hasFeature(teacher, "sms_reminder"),
       },
@@ -2409,6 +2947,7 @@ module.exports = {
 
   getDashboard,
   getSubscriptionInfo,
+  getCenterHealth,
 
   getClassesForStaff,
   getMyClasses,
@@ -2424,8 +2963,10 @@ module.exports = {
   deleteStudent,
   getStudents,
   updateStudent,
+  importStudents,
 
   createMonthlyPayments,
+  createMonthlyPaymentsAll,
   getMonthlyPayments,
   getClassPayments,
   updatePaymentStatus,

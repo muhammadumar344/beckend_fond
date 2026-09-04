@@ -207,9 +207,56 @@ test('botni bloklagan direktorning ulanishi tozalanadi', () => {
   assert.ok(CRON.includes('"telegram.chatId": null'));
 });
 
+test("maydoni yo'q eski hisoblar ham xabar oladi", () => {
+  // ⚠️ HAQIQIY BUG edi. Mongoose standart qiymatni faqat hujjat
+  //    SAQLANGANDA yozadi; ulanish esa `updateOne` bilan ketadi.
+  //    Ya'ni `cashReport` maydoni paydo bo'lishidan oldin
+  //    ochilgan hisoblarda u bazada yo'q va `$in: [...]` ularni
+  //    topmasdi — kunlik xabar o'sha direktorlarga hech qachon
+  //    kelmasdi, xatosiz va jimgina.
+  assert.ok(CRON.includes('"cashReport.mode": { $ne: "off" }'));
+  assert.ok(!CRON.includes('$in: ["problems", "daily"]'));
+  // Maydon yo'q bo'lsa `problems` deb olinadi (sxemadagi standart)
+  assert.ok(CRON.includes('dir.cashReport?.mode || "problems"'));
+});
+
 test('vaqt mintaqasi Toshkent — server UTC da ishlaydi', () => {
   assert.ok(CRON.includes('timezone: "Asia/Tashkent"'));
   assert.ok(CRON.includes('"0 21 * * *"'));
+});
+
+// ── Ota-ona kutayotgan to'lovlar ────────────────────────────
+// Ota-ona kartaga o'tkazdi va ilovada "to'ladim" dedi. Hech kim
+// tasdiqlamasa, uning qarzi ochiq turadi va u markazni
+// e'tiborsiz deb biladi — pul esa allaqachon kelgan.
+
+test("tasdiqlanmagan to'lov — muammo", () => {
+  const r = buildReport({
+    ...base,
+    claims: { count: 3, amount: 1200000, oldestDays: 2 },
+  });
+  assert.equal(r.hasProblems, true);
+  assert.match(r.text, /Tasdiqlanmagan to'lov: 3 ta/);
+  assert.match(r.text, /1 200 000/);
+  assert.match(r.text, /2 kundan beri/);
+});
+
+test("bugun kelgan so'rovda kun soni yozilmaydi", () => {
+  // "0 kundan beri kutyapti" — ma'nosiz gap.
+  const r = buildReport({
+    ...base,
+    claims: { count: 1, amount: 400000, oldestDays: 0 },
+  });
+  assert.equal(r.hasProblems, true);
+  assert.doesNotMatch(r.text, /kundan beri/);
+});
+
+test("claims umuman berilmasa eski xatti-harakat saqlanadi", () => {
+  // Eski chaqiruvlar (va testlar) `claims` yubormaydi —
+  // xabar o'sha-o'sha bo'lib qolsin.
+  const r = buildReport(base);
+  assert.equal(r.hasProblems, false);
+  assert.doesNotMatch(r.text, /Tasdiqlanmagan to'lov/);
 });
 
 // ── Ulanish tokeni ──────────────────────────────────────────

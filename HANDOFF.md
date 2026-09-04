@@ -5,8 +5,11 @@
 > - `Desktop/school_fond/HANDOFF.md` (backend)
 > - `Desktop/font_front/font/HANDOFF.md` (frontend)
 >
-> Oxirgi yangilanish: **2026-08-20** (sozlamalar sahifasi tugagach,
-> ikkala repo push qilingan)
+> Oxirgi yangilanish: **2026-08-29** (uchinchi Telegram xabari;
+> barcha sahifalar brauzerda
+> tekshirildi; Intl tuzog'i yopildi; ketish arafasidagi o'quvchilar
+> Telegram'ga chiqdi, backend xabarlari tarjimasi tugadi, tarif
+> chegaralari haqiqatan ishlay boshladi)
 >
 > `CLAUDE.md` — loyihaning **doimiy** qoidalari (arxitektura, tuzoqlar, uslub).
 > `HANDOFF.md` — **shu paytdagi holat**: nima tugadi, nima to'xtab turibdi,
@@ -67,7 +70,935 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Markaz sozlamalari sahifasi"
+### Oxirgi tugagan ish — "Uchinchi Telegram xabari" (2026-08-29)
+
+§5 da "uchinchisi uchun tayyor o'rin bor" deb yozilgan edi.
+To'ldirildi: **oy boshidagi "varaqa yaratilmagan" xabari**.
+
+**Nega aynan bu.** Rollar bo'yicha o'ylaganda eng qimmat
+ko'rinmas yo'qotish shu: oylik to'lov varaqasi QO'LDA
+yaratiladi va administrator bitta guruhni unutsa — o'sha oy
+o'sha guruhdan pul **umuman so'ralmaydi**. Ota-onaga eslatma
+ham ketmaydi, chunki `reminderCron` faqat MAVJUD varaqa
+bo'yicha yuboradi. Na xato, na belgi; oy oxirida faqat "nega
+tushum kam?" qoladi.
+
+`GET /teacher/health` buni allaqachon ko'rsatardi — lekin u
+SAHIFADA yotibdi va direktor har kuni saytga kirmaydi. Ketish
+arafasidagi o'quvchilar bilan aynan bir xil muammo, aynan
+o'sha yechim.
+
+| | |
+|---|---|
+| Cron | `cron/billingAlertCron.js` — 2-sana 09:00 Toshkent |
+| Matn | `services/billingAlert.js` → sof `buildAlert()` |
+| Test | `test/billingAlert.test.js` — 16 ta |
+| Sozlama | `teacher/Payments.vue` (`/teacher/payments` va `/lc/payments`) |
+
+⚠️ **2-sana, 1-sana emas.** 1-sanada hali hech bir guruhda
+varaqa yo'q — xabar butun ro'yxatni sanab shovqinga aylanardi.
+1-sana varaqa yaratiladigan kun; 2-sanada varaqasiz qolgan
+guruh — haqiqiy unutish, va oyning qolgan 28 kuni pulni
+yig'ishga yetadi.
+
+⚠️ **Ikkala rejim uchun ham.** Ketish xabari faqat LC'da
+ma'noli edi (sinf rahbari bolalarni har kuni ko'radi), varaqani
+unutish esa Fond'da ham xuddi shunday ko'rinmas.
+
+**Xabarda summa bor** — "3 ta guruh" ni o'qigan odam ertaga
+qilaman deydi, "7 500 000 so'm so'ralmayapti" ni o'qigan odam
+hozir qiladi.
+
+**To'rtta buzib sinash o'tkazildi** va bittasi SOXTA YASHIL
+chiqdi: `startBillingAlertCron()` ni izohga olganda test
+o'tib ketaverdi — naqsh izohdagi qatorga ham tushardi. Endi
+test izohlarni oldindan olib tashlaydi (`markPayment` testidagi
+`bodyOf` bilan bir xil sabab).
+
+⚠️ **Yo'lda topilgan xato:** `check:messages` markPayment
+ishidan beri **qizil turgan edi** ("Summa 0 dan kichik
+bo'lmasligi kerak" tarjimasiz qolgan) va men uni "yashil" deb
+aytgandim — faqat `tail` ni ko'rgan ekanman. Tuzatildi.
+
+**Ochiq savol (yangi):** `billing.js` ham, bu xabar ham
+o'quvchini `Student.class` bo'yicha sanaydi, ya'ni `Enrollment`
+orqali qo'shimcha guruhda o'qiydigan bolaga **varaqa
+yaratilmaydi**. Ikkalasi bir xil bo'lgani uchun xabar rost
+gapiradi, lekin savol ochiq: qo'shimcha guruh uchun pul
+olinishi kerakmi? Bu **mahsulot qarori** — javob "ha" bo'lsa
+`services/billing.js` `utils/enrollment.js` ga o'tishi kerak.
+
+---
+
+### Undan oldingi ish — "Qolgan sahifalarni brauzerda tekshirish" (2026-08-29)
+
+Muhammadumar: *"qolgan sahifalarni brauzerda ochib tekshir"*.
+
+Barcha 60 dan ortiq marshrut **haqiqiy brauzerda** (headless
+Chromium) to'rt rol ostida ochildi — Fond direktori, LC
+direktori, xodim, admin — ish stoli (1440px) va telefon (430px)
+kengligida. Soxta API bilan, production bazaga tegmasdan.
+
+⚠️ **`npm run check` yashil bo'lsa ham topilmaydigan xatolar
+chiqdi.** Hammasi bir turdan: kod to'g'ri, brauzer boshqacha
+o'ylaydi.
+
+**Eng kattasi — `Intl` va o'zbek tili**
+
+Chromium'da `uz-UZ` lug'ati **umuman yo'q** (o'lchandi). Intl
+bunday holatda xato bermaydi, jimgina `en-US` ga tushadi:
+
+| Kod | Kutilgan | Haqiqatda chiqqan |
+|---|---|---|
+| `Intl.NumberFormat('uz-UZ')` | `1 200 000` | `1,200,000` |
+| `{ style:'currency', currency:'UZS' }` | `1 200 000 so'm` | `UZS 1,200,000` |
+| `toLocaleDateString('uz-UZ')` | `29.08.2026` | `2026-08-29` |
+
+Ya'ni direktor o'z pulini xorijiy valyuta kabi ko'rardi. 24 ta
+joyda shunday edi. Endi yagona manba: `utils/money.js` →
+`groupDigits()` (Intl'siz, sof funksiya) va `i18n/months.js` →
+`formatShortDate` / `formatDateTime`.
+
+⚠️ CLAUDE.md da sana bo'limida "raqamli format xavfsiz" deb
+yozilgan edi — **noto'g'ri**, tuzatildi.
+
+**Boshqa topilganlar**
+
+| Sahifa | Nima edi |
+|---|---|
+| `/lc` | `undefined%` — `=== null` `undefined` ni ushlamaydi |
+| `/staff` | `NaN yanvar` — `formatDayMonth` to'liq ISO vaqtda buzilardi |
+| `/lc/leads` | Kanban butun sahifani gorizontal siljitardi (1508 > 1440) |
+| `/teacher/payments`, `/teacher/expenses` | Sarlavha ostida "Xush kelibsiz" turardi |
+| `/staff/team` | "{filial} xodimlari" — tarjimasiz qolgan |
+| `/teacher/reports` | 430px da kartochka matni kesilardi |
+| Menyu | "Qo'shimcha mashg'ulot" sidebar'ga sig'masdi |
+
+**Bosiladigan nishonlar** — 21×21 dan 18×18 gacha bo'lgan
+tugmalar 32px ga kengaytirildi (ko'rinishi o'zgarmadi, faqat
+bosiladigan maydon): lid kartochkasi, uy vazifasi, jadval,
+to'lov tuzatish qalami, parolni ko'rsatish ko'zi, auth
+sahifalaridagi matn havolalari, landing menyusi va futeri.
+
+**Yangi guardrail**
+
+| Buyruq | Nimani ushlaydi |
+|---|---|
+| `verify` §14 | `Intl`/`toLocale*` ga til kodi berilgan har qanday joy |
+
+Buzib sinaldi: `.vue` va `.js` faylga bittadan qo'yildi —
+ikkalasi ham ushlandi, qaytarilgach yashil.
+
+⚠️ **Landing'dagi `@fondschool_uz`, `demo@fondschool.uz` va
+`@SchoolfondsBot` ATAYLAB tegilmadi** — bular jonli
+Telegram/Instagram hisoblari va ishlayotgan bot. Nomini
+o'zgartirish havolalarni buzadi. Yangi hisoblar ochilsa
+alohida qaror bilan almashtiriladi.
+
+---
+
+### Undan oldingi ish — "To'lov summasini tuzatish" (2026-08-29)
+
+Muhammadumar: *"o'zing qaror qabul qilaver sayt yaxshi chiqsa
+boldi"* — shu sababli HANDOFF §4.2 da turgan qaror bajarildi.
+
+**Muammo**: varaqa guruhning `defaultAmount` idan kelar va keyin
+HECH QACHON o'zgarmasdi. Ya'ni **chegirma, qisman to'lov va
+aka-uka uchun boshqa narx** — hech biri kiritilmasdi, noto'g'ri
+yozilgan summani ham tuzatib bo'lmasdi. Yagona yo'l varaqani
+o'chirib qayta yaratish edi va u bilan birga **to'lov tarixi ham
+yo'qolardi**.
+
+**Nega ochish xavf qo'shmaydi**: bir xil huquqli odam
+(`managePayments`) allaqachon o'chirib qayta yarata olardi.
+Farqi shundaki, endi o'zgarish jurnalga tushadi
+(`payment.amount_changed`) — kim, qachon, nimadan nimaga.
+
+⚠️ **Ulashdan oldin ikkita teshik yopildi.** `markPayment`
+uzoq vaqt route'ga ulanmay turgani uchun ular ko'rinmasdi:
+
+1. **Filial cheklovi yo'q edi** — bitta filialga biriktirilgan
+   administrator boshqa filial to'lovini o'zgartira olardi
+   (`updatePaymentStatus` da bu tekshiruv bor edi).
+2. **Summa tekshirilmasdi** — manfiy son ham, matn ham bazaga
+   tushardi va hisobotlar jimgina buzilardi.
+
+`test/markPayment.test.js` — sakkizta test. Uchtasi ataylab
+buzib sinaldi: har birida test yiqildi, qaytarilgach o'tdi.
+
+⚠️ Birinchi urinishda test **soxta yashil** bo'lgan edi: u
+`ctx.branchFilter` so'zini qidirardi, u esa tanada ikki marta
+uchraydi (shart va solishtirish). Endi butun himoya shakli
+tekshiriladi.
+
+**Uchta yangi guardrail**
+
+| Buyruq | Nimani ushlaydi |
+|---|---|
+| `verify` §11 | Noma'lum slot nomi — Vue uni jimgina tashlab yuboradi va tugmalar chizilmaydi |
+| `verify` §12 | Bitta faylda aralash qator oxiri (12 ta fayl topildi va tuzatildi) |
+| `check:api` §3 | Jurnal amali tarjimasiz qolgan bo'lsa |
+
+**Yo'lda topilgan ikkita jim xato**
+
+- Men modalda `<template #footer>` deb yozdim, `AppModal` da esa
+  slot `actions` deb ataladi. **Vue noma'lum slotni jimgina
+  tashlab yuboradi**: oyna ochiladi, "Saqlash" va "Bekor"
+  tugmalari esa umuman chizilmaydi. Xato yo'q, konsol toza.
+  → `verify` §11.
+- Jurnalda uchta amal tarjimasiz edi (`class.updated`,
+  `student.updated`, `student.imported`) — direktor inglizcha
+  kod so'zini ko'rardi. → `check:api` §3.
+
+⚠️ **Ikkalasi ham "buzilmagan, shunchaki noto'g'ri" turdagi
+xato** — aynan shu sababli oylab turishi mumkin edi.
+
+---
+
+### Undan oldingi ish — "Ertalab boshqacha ko'rinsin" (2026-08-29)
+
+Muhammadumar: *"landing page dan tortib 404gacha… sayt iloji
+boricha tshunarli va qulay bolsin… ertalab turganimda men
+boshqacha dizaynda korishim kerak"*.
+
+**Ko'rinishda nima o'zgardi**
+
+| Ilgari | Endi |
+|---|---|
+| Faol menyu havolasi shaffof ko'k tus — hover'dan farq qilmasdi | To'ldirilgan gradient + oq matn. 14 ta o'xshash qatordan qaysi biri ochiq ekani bir qarashda ko'rinadi |
+| Yon menyu kontentdan OCHROQ (ko'z avval unga tushardi) | Yon menyu to'qroq, asosiy maydon ochroq |
+| Bitta sahifada ikkita "asosiy" tugma ikki xil rangda (`.btn-primary` to'q ko'k gradient, `AppButton` ochiq ko'k) | Bittasi — ochiq ko'k + qorong'i matn |
+| Sahifalarning yarmida `max-width` bor, `margin: auto` yo'q → keng monitorda kontent chap chetga siqilgan | Kenglik va markazlash `App.vue` da, bitta joyda |
+| 246 ta qattiq yozilgan HEX rang (Material palitrasi ham bor edi) | Tokenlar |
+| 395 ta qo'lda yozilgan burchak radiusi, bir ekranda 11 xil yumaloqlik | `--r-*` tokenlari |
+| Xodim panelida 8 ta rang, yarmi bir-biridan farq qilmasdi | 4 ta, ma'no bo'yicha |
+| `.stat-card` QATOR edi — beshta sahifaning hech biri qator shaklida yozilmagan | Ustun (`:has(.sc-ico)` bo'lsa qator) |
+| 404 — to'q sariq (ilovada "diqqat" rangi) | Ko'k, va qaysi manzil topilmagani yozilgan |
+
+**Muhammadumar aytgan aniq xatolar — hammasi tuzatildi**
+
+- Davomatda belgilangani bilinmasdi → to'ldirilgan tugma
+- O'tib ketgan darslar panelda turardi → yo'qoladi
+- Ctrl+K qidiruv Fond rejimida umuman ishlamasdi (`/lc/search`
+  → 403) → `/teacher/search`
+- "Mening maoshim" chap tarafga siqilib qolgan → 7 ta sahifa
+  markazlashtirildi, keyin qoida `App.vue` ga ko'chirildi
+- Sahifaga qaytganda bazaga qayta so'rov ketardi → 60 soniyalik
+  GET keshi (`services/api.js`), `npm run check:cache` qulflaydi
+
+**Yo'lda topilgan jim xatolar**
+
+1. **Oy nomlari 20 ta faylda o'zbekcha qotirilgan edi.** Ruscha
+   interfeysdagi direktor to'lovlar, maoshlar, davomat va
+   hisobotlarda baribir "Yanvar 2026" ni ko'rardi.
+   → `src/i18n/months.js`, uch tilda.
+2. **`views/teacher/Reports.vue` yozilgan-u ulanmagan edi** —
+   to'liq ishlaydigan sahifa, lekin hech qaysi route unga olib
+   bormasdi. Ya'ni Fond direktorida hisobot sahifasi umuman
+   yo'q edi.
+3. **Onboarding'da eski brend nomi** — ro'yxatdan o'tgan direktor
+   ko'radigan BIRINCHI ekranda hamon `FondSchool` turardi
+   (`set-brand` so'zbelgi naqshini `Lu<strong>mo</strong>` deb
+   qidiradi, u yerda bo'linish boshqa joyda edi).
+4. **Xarajatlar sahifasida yillar qo'lda yozilgan:**
+   `[2024, 2025, 2026, 2027]` — 2028-yilda joriy yil ro'yxatda
+   bo'lmasdi.
+5. **162 ta tarjimasiz matn** — 54 tasi shablonda (bitta so'zli:
+   "Saqlash", "Bekor", "Kirish", "Maoshlar"), 108 tasi
+   `<script>` ichida (xato xabarlari, brauzer yorlig'i
+   sarlavhasi, lid holatlari, pul birligi).
+6. **Xodim panelida sana modul yuklanganda bir marta olinardi** —
+   kechqurun ochilgan sahifa ertalab kechagi kunni ko'rsatardi.
+7. **Yon menyudagi rol yozuvi tarjimasiz** — Fond direktori o'z
+   ismi ostida inglizcha `teacher` so'zini ko'rardi.
+
+**🔴 Eng jiddiy topilma — brauzerda tekshirganda chiqdi**
+
+`Landing.vue` va `Onboarding.vue` scoped uslubida shunday
+yozilgandi:
+
+```css
+@import url('https://fonts.googleapis.com/css2?family=Sora…')
+```
+
+Vite uni marshrut CSS faylining BOSHIGA chiqaradi, brauzer esa
+o'sha `<link rel="stylesheet">` yuklanmaguncha marshrutni
+**umuman ko'rsatmaydi**. Ya'ni `fonts.googleapis.com` sekin
+bo'lsa yoki bloklansa — sotuv sahifasi ham, ro'yxatdan o'tgandan
+keyingi BIRINCHI ekran ham **oq** chiqadi. Xato yo'q, konsol
+toza.
+
+Bu ehtimol emas: sinovda aynan shunday bo'ldi
+(`<div id="app"><!----></div>`). Endi shrift sahifa
+chiqqandan keyin yuklanadi (`src/utils/loadFont.js`).
+
+⚠️ **Xulosa:** `@import url(https://…)` ni sahifa uslubiga
+hech qachon yozmang. Har qanday tashqi CSS shu tarzda butun
+sahifani bo'g'ib qo'yadi.
+
+**Brauzerda ko'rib tekshirilganda chiqqanlari**
+
+Bu safar sahifalar haqiqiy brauzerda ochib ko'rildi (build →
+preview → surat). Faqat shu yo'l bilan topiladigan uchta narsa:
+
+1. **Server javob bermaganda sahifa BO'SH qolardi.** Xato
+   ingichka qizil chiziq bilan ko'rsatilar, qolgan joy bo'sh
+   edi. Render bepul tarifda uxlab qoladi — ertalab birinchi
+   kirgan direktor deyarli har kuni shu holatga tushadi.
+   → `ui/AppError.vue`: "Qayta urinish" tugmasi va halol izoh.
+
+2. **LC panelida `Promise.allSettled` hamma xatoni yutardi** —
+   server javob bermasa "0 o'quvchi, 0 guruh, 0 so'm" chiqardi
+   va direktor ma'lumoti yo'qolgan deb o'ylardi. Xatodan ham
+   yomon.
+
+3. **LC panelida sana buzuq edi: "M08 29, Sat".**
+   `toLocaleDateString('uz-UZ', { month: 'long' })` brauzerda
+   uz-UZ lug'ati bo'lmasa aynan shunday qaytaradi. Yetti joyda
+   shu naqsh bor edi.
+
+⚠️ **Xulosa: `npm run build` va `npm run check` yashil bo'lishi
+   sahifa ochilishini KAFOLATLAMAYDI.** Katta o'zgarishdan
+   keyin `npx vite preview` bilan bir marta ochib ko'ring.
+
+**Landing raqamlari — qaror qabul qilindi**
+
+"500+ o'qituvchi · 10K+ o'quvchi · 99% mamnun" olib tashlandi.
+Tekshirib bo'lmaydigan da'vo bir marta ushlansa, qolgan hamma
+gap shubha ostida qoladi. O'rniga tekshirib bo'ladigan uchtasi:
+2 rejim, 3 til, Telegram xabarnoma.
+
+⚠️ Bu yerga SON yozmang. Haqiqiy sanoq kerak bo'lsa — bazadan.
+
+**Yangi guardrail'lar**
+
+| Buyruq | Nimani ushlaydi |
+|---|---|
+| `npm run check:cache` | Kesh ishlayaptimi va ORTIQCHA ishlamayaptimi (QR keshlansa o'quvchi eski kod bilan "keldim" qilib qo'yardi) |
+| `npm run check:uztext` | `<script>` ichidagi tarjimasiz o'zbekcha matn |
+| `verify` §10 | Eski brend nomi (`FondSchool`, `Daftar`) |
+| `check:i18n` uchinchi o'tishi | Istalgan tegdagi bitta so'zli tarjimasiz matn |
+
+⚠️ Uchalasi ham `check:solo` da — CI ishga tushsa avtomatik
+ishlaydi.
+
+---
+
+### Undan oldingi ish — "Backend bor, tugma yo'q"
+
+`check:api` ning "backend'da bor, frontend chaqirmaydi"
+ro'yxati shu paytgacha **hisobot** deb qaralardi. Uni qatorma-qator
+tekshirib chiqilganda ikkitasi haqiqiy teshik bo'lib chiqdi.
+
+#### 1. Noto'g'ri ulangan hisobni uzib bo'lmasdi 🔴
+
+O'quvchi kartochkasidagi "Ulangan hisoblar" ro'yxati faqat
+KO'RSATARDI. Noto'g'ri odam ulanib qolsa — bazadagi telefon
+boshqa oilaniki bo'lsa yoki kod adashib berilgan bo'lsa — u
+bolaning **bahosini, davomatini va to'lovini abadiy** ko'rardi.
+
+`DELETE /teacher/links/:linkId` backendda bor edi, IDOR
+himoyasi bilan. Lekin `getStudentLinks` javobida `id`
+qaytmasdi — interfeys qatorni adreslay olmasdi, shuning uchun
+endpoint hech qayerdan chaqirilmagan.
+
+⚠️ Uzilganda yozuv **o'chirilmaydi**, `isActive: false` bo'ladi:
+"bu odam qayerdan ko'rdi?" degan savol keyin ham so'raladi.
+
+#### 2. Qo'shimcha mashg'ulotga qo'lda yozib bo'lmasdi
+
+`POST /lc/support/bookings` va `GET /lc/support/free` backendda
+tayyor, xodimga ochiq, va xodim yozganini `via: "crm"` deb
+belgilaydi — ya'ni CRM interfeysi ATAYLAB mo'ljallangan edi.
+Sahifasi esa yo'q edi.
+
+Natijada yozilishning yagona yo'li Mini App edi: Telegram'i
+yo'q ota-ona, yoki markazga shunchaki qo'ng'iroq qilgani,
+umuman yozila olmasdi.
+
+Endi "Yozuvlar" sarlavhasi yonida tugma bor: o'quvchini
+qidirib tanlash → ustoz → sana → bo'sh vaqtlar.
+
+#### 3. Yo'lda topilgan bug: "0 ta yuborildi"
+
+`sendMonthlyReminders` (cron funksiyasi) hech narsa
+qaytarmasdi, controller esa `result?.sent || 0` deb o'qirdi.
+"Hammaga eslatma yuborish" tugmasi xabarlar HAQIQATAN ketgan
+holda ham **doim nol** ko'rsatardi — direktor ishlamayapti deb
+o'ylab, qayta-qayta bosardi va ota-onalarga takror xabar
+ketardi.
+
+#### 4. Tozalash
+
+- **`src/tools/i18n/translations.js` o'chirildi** — 320
+  qatorlik o'lik nusxa, hech qayerdan import qilinmaydi.
+  Kalit qidirgan odam avval shuni topib tahrirlab qo'yishi
+  mumkin edi va hech narsa o'zgarmasdi.
+- **Interfeysdan emoji olib tashlandi** (19 ta Landing'da,
+  ustiga tugma va xabarlar). Emoji `color` ni qabul qilmaydi
+  va har platformada boshqacha chiziladi; `❄️` esa ba'zi
+  brauzerda ikkita belgi bo'lardi. Hammasi `Icon.vue` ga.
+- **`check:shape` va `check:api` Mini App'ni ham ko'radi.**
+  `/api/tma/*` ikkalasidan ham tushib qolgandi — ya'ni
+  ota-onalar har kuni ochadigan bo'lim tekshiruvsiz edi.
+  Mini App `fetch` ishlatadi va javobning O'ZINI qaytaradi
+  (`res.data.X` emas, `x.X`), shuning uchun ikkala naqsh ham
+  qo'shildi. Qamrov: 103 → 108 chaqiruv, 204 → 220 route.
+
+### Undan oldingi ish — "Ishlayapti deb ko'ringan, lekin ishlamagan"
+
+Bu safar topilganlarning hammasi bitta turdagi: **kod bor,
+tugma bor, xato yo'q — natija esa yo'q**. Hech biri log'da
+ko'rinmaydi.
+
+#### 1. Telegram xabarlari yangi ota-onalarga BORMASDI 🔴
+
+Bog'lanishning ikkita manbai bor: eski `TelegramParent` va
+yangi `StudentLink` (Mini App orqali, raqamini tasdiqlab).
+**Yangi ota-onalar faqat ikkinchisiga tushadi.**
+
+`utils/notifyTargets.js` aynan shu ikkalasini birlashtirish
+uchun yozilgan edi — lekin unga faqat `reminderCron` o'tgan.
+Qolgan to'rt joy eski modelni bevosita o'qiyverdi:
+
+| Joy | Nima yo'qolardi |
+|---|---|
+| CRM "Ulangan ota-onalar" | "80 tadan 3 tasi" — direktor botni ishlamayapti deb o'ylardi |
+| "Tanlanganlarga yuborish" | jimgina `failed` bo'lardi |
+| Uy vazifasi reytingi | `skipped` |
+| To'lov tasdiqlash | **pulini to'lagan ota-ona hech qanday tasdiq olmasdi** |
+| Admin paneli | platforma bo'yicha bot ishlatilishi nol ko'rinardi |
+
+⚠️ **Bitta bolada bir nechta qabul qiluvchi bo'lishi mumkin**
+(ota, ona, o'quvchining o'zi). Eski `byStudent[id] = p` naqshi
+bittasini ustiga yozib yuborardi. `groupByStudent` massiv
+qaytaradi.
+
+⚠️ **Guardrail:** `test/notifyTargets.test.js` — xabar
+yuboradigan fayl `TelegramParent.find` yozsa test yiqiladi.
+Bu xato loyihada besh marta takrorlangan.
+
+#### 2. "Tanlanganlarga eslatma" HECH QACHON ishlamagan 🔴
+
+`GET /teacher/reminder` javobida `studentId` UMUMAN yo'q edi.
+Interfeys uning o'rniga qator RAQAMINI ishlatardi
+(`st.studentId || idx`) — ya'ni so'rov backend'ga `[0, 1, 2]`
+yuborardi.
+
+`hasTelegram` ham yo'q edi: har bir qator "Ulanmagan" belgisi
+bilan chiqardi va "Hammasini tanlash" tugmasi hech kimni
+tanlamasdi.
+
+Pro/Premium tarifda sotilayotgan oqim shu holatda turgan.
+
+⚠️ `|| idx` naqshi bug'ni YASHIRIB turardi — backend maydonni
+qaytarmasa ham kod jimgina qator raqamini ishlatardi.
+
+#### 3. "SMS eslatma" sotiladi, lekin xizmat yo'q 🔴
+
+`smsService` umuman ulanmagan edi va har bir o'quvchi uchun
+jimgina `status: 'failed'` qaytarardi; endpoint esa buni
+`success: true` bilan yuborardi. Premium sotib olgan direktor
+"0 yuborildi, 25 muvaffaqiyatsiz" ni ko'rardi.
+
+Endi Payme/Click va platforma kartasi bilan bir xil qoida:
+kalit yo'q → **503 va halol xabar**. Obuna sahifasida SMS
+qatori "tez orada" belgisi bilan — **sotib olishdan oldin**.
+
+#### 4. Ro'yxatdan o'tishda LC'ga Fond narxi ko'rsatilardi 🔴
+
+Tavsiya bloki faqat o'quv markaziga chiqadi, ichida esa
+"oyiga 29 000 so'm" qotirib yozilgan edi — bu Fond raqami,
+LC Pro esa 199 000. `Subscription.vue` da bu bir marta
+tuzatilgan, `Onboarding.vue` o'sha holicha qolgandi.
+
+`usePlanLimits` ga `plans`, `priceOf()` va `can()` qo'shildi —
+narx ham, xususiyat ham endi bitta manbadan.
+
+#### 5. Tarif bayroqlarining yettitasi tekshirilmasdi
+
+`PLAN_FEATURES` dagi `import`, `branches`, `homework`,
+`salaries`, `roles`, `branch_stats`, `reports`, `white_label`
+hech qayerda `hasFeature(...)` bilan tekshirilmasdi.
+
+`import` yopildi (yangi xususiyat, hech kim ishlatmayapti).
+Qolganlari `test/planFeatures.test.js` dagi `UNGATED`
+ro'yxatida izoh bilan — **ularni yopish mahsulot qarori**,
+§4.2 ga qarang.
+
+#### 6. Yangi guardrail — `npm run check:shape`
+
+`check:api` faqat MANZILni tekshiradi. Eng ko'p takrorlangan
+xato esa boshqa: manzil to'g'ri, javob keladi, frontend YO'Q
+maydonni o'qiydi.
+
+Birinchi yurishdayoq admin panelidan haqiqiy bug topdi:
+`POST /admin/freeze/activate` `frozenCount` qaytaradi, sahifa
+`affectedTeachers` ni o'qirdi — admin butun platformani
+muzlatib, "**undefined** ta ustoz ta'sirlandi" ni ko'rardi.
+
+O'sha sahifadagi "Ha, taklif qil" tugmasi ham hech narsa
+qilmasdi: hech qanday so'rov yubormay, "yuborildi" deb
+yozardi. Olib tashlandi.
+
+⚠️ Skript **ataylab qo'rqoq**: o'qib bo'lmaydigan handler
+(yuqori darajada `...spread`, javob o'zgaruvchidan yasalgan)
+umuman tekshirilmaydi — 204 tadan 53 tasi. Soxta xato
+beradigan guardrail'ga hech kim qaramaydi.
+
+### Undan oldingi ish — "Jimgina yo'qotilayotgan pul"
+
+Tizimdagi eng qimmat xatolar xato bermaydi — ular shunchaki
+**sodir bo'lmaydi**. Uchtasi topildi va uchalasi ham pulga
+tegadi.
+
+#### 1. To'lov varaqasi unutilgan guruh 🔴
+
+Oylik varaqa **qo'lda** yaratiladi va **har guruh uchun
+alohida**. Administrator o'n guruhdan bittasini unutsa — o'sha
+oy o'sha guruhdan pul **umuman so'ralmaydi**. Ota-ona ham
+bilmaydi (unga eslatma varaqadan chiqadi), tizim ham xato
+bermaydi. Oy oxirida faqat "nega tushum kam?" degan savol
+qoladi va javobi hech qayerda yo'q.
+
+Endi ikkita narsa bor:
+
+- `GET /teacher/health` → **Dashboard'da "E'tibor talab qiladi"
+  kartochkasi**: shu oy varaqasi yo'q guruhlar, telefoni yo'q
+  o'quvchilar, jadvalsiz va ustozsiz guruhlar (oxirgi ikkitasi
+  faqat LC'da).
+- `POST /teacher/payments/create-monthly-all` — **hamma
+  guruhga bir bosishda**. To'lovlar sahifasidagi tugma.
+
+⚠️ **Bo'sh guruh tekshirilmaydi.** Yangi ochilgan, hali
+o'quvchisi yo'q guruhda na jadval, na ustoz, na varaqa
+bo'lishi tabiiy — u hali tayyorlanyapti. Uni ro'yxatga
+qo'shsak, kartochka birinchi kundanoq "muammo" bilan to'lib
+ketardi va direktor unga qaramay qo'yardi.
+
+⚠️ **Sanoq + bir nechta misol, to'liq ro'yxat emas.**
+Direktorga "nima unutilgan" kerak; ro'yxatning o'zi o'sha
+sahifalarda allaqachon bor.
+
+#### 2. Arxivdagi o'quvchiga har oy yangi qarz yozilardi 🔴
+
+Varaqa yaratish `Student.find({ class })` deb olardi. Arxiv
+paydo bo'lgach bu **bug** bo'ldi: markazni tashlab ketgan
+bolaga har oy yangi qarz yozilib boraverardi, qarz hisoboti
+esa o'sib turardi. Endi `isActive: { $ne: false }`.
+
+⚠️ `{ $ne: false }` — `true` bilan solishtirilmaydi: eski
+hujjatlarda bu maydon umuman yo'q (sxemadagi standart qiymat
+mavjud hujjatlarga tushmaydi).
+
+⚠️ **Ikki marta bosish xavfsiz.** Mavjud varaqalar bitta
+so'rov bilan olinadi va faqat yetishmaganlari qo'shiladi.
+
+#### 3. O'chirilgan o'quvchining yozuvlari bazada qolardi
+
+`deleteStudent` faqat `Student` va `MonthlyPayment` ni
+o'chirardi. Qolgan hammasi **egasiz** qolib ketardi:
+
+| Nima qolardi | Nima buzilardi |
+|---|---|
+| `Attendance` | davomat foizi abadiy — maxrajda yo'q odam |
+| `Grade`, `HomeworkResult` | o'rtacha baho va reyting |
+| `Enrollment` | qo'shimcha guruhda "yo'q odam" turaverardi |
+| `StudentLink`, `TelegramParent` | ota-ona hisobi bog'liq qolardi |
+| `PaymentClaim`, `SupportBooking`, `InviteCode` | — |
+
+Endi `utils/studentPurge.js` — bitta ro'yxat, `accountPurge`
+bilan bir xil naqsh. `test/studentPurge.test.js` `src/models/`
+papkasini **o'zi skanerlaydi**: `ref: "Student"` maydoni bor
+model ro'yxatda bo'lmasa test yiqiladi.
+
+⚠️ **Odatdagi yo'l baribir ARXIV.** O'chirish to'lov tarixini
+ham olib ketadi — u faqat adashib qo'shilgan yozuv uchun.
+
+### Undan oldingi ish — "O'chirish yagona yo'l bo'lmasin"
+
+Uch joyda bir xil naqsh topildi: **ma'lumotni yo'qotish —
+oddiy ishning yagona yo'li**.
+
+| Nima qilmoqchi | Yagona yo'l edi | Nima yo'qolardi |
+|---|---|---|
+| Telefonni tuzatish | o'quvchini o'chirib qayta yaratish | butun to'lov tarixi |
+| Ketgan o'quvchi | o'chirish | to'lov tarixi |
+| O'quv yilini yopish | sinfni o'chirish | o'quvchilar, to'lovlar, xarajatlar |
+
+Endi uchalasi ham bor: **tahrirlash**, **o'quvchi arxivi**,
+**guruh/sinf arxivi**. O'chirish tugmasi qoldi — adashib
+qo'shilgan yozuv uchun kerak.
+
+⚠️ **Yo'lda ma'lum bo'ldi: arxivlash hech qachon ishlamagan.**
+`updateClass` da `cls.isActive = isActive` turgandi, `Class`
+sxemasida esa bunday maydon YO'Q — Mongoose uni jimgina tashlab
+yuborardi. Endi `archivedAt` (sana): hisobotda "qachon yopilgan"
+darhol so'raladi va bulean bunga javob bermaydi.
+
+⚠️ **Filtr `archivedAt: null`** — Mongo'da u maydoni umuman
+yo'q hujjatlarni ham topadi, ya'ni mavjud sinflar avtomatik
+faol bo'lib qoladi. `$exists: false` yoki `false` bilan
+solishtirsak, butun ro'yxat yo'qolardi (sxemadagi standart
+qiymat mavjud hujjatlarga tushmaydi).
+
+⚠️ **Arxivdagi guruh tarif chegarasini band qilmaydi.** O'tgan
+yilni yopgan direktor yangi guruh ocholmay qolmasin — aks holda
+arxivning ma'nosi qolmasdi.
+
+### Undan oldingi ish — `check:dead` guardrail'i
+
+Bugun "yozilgan-u ulanmagan" xato **besh marta** topildi
+(`canAddStaff`, `updateStudent`, `updateClass`,
+`sendFreezeNotification`, `cancelBooking`) — ilgari ikki marta
+bo'lgani ustiga. Hech biri xato bermaydi: funksiya shunchaki
+**yo'q** bo'lib turadi.
+
+`npm run check:dead` ikki narsani qaraydi: controller eksporti
+route'ga ulanganmi va servis funksiyasi umuman chaqiriladimi.
+
+⚠️ **Heuristika ikki marta o'tkirlashtirildi va ikkalasi ham
+o'z sinovidan yiqilgandan keyin:**
+
+1. Birinchi variant **44 ta** nom qaytardi (konstantalar, test
+   uchun eksport qilingan cron funksiyalari). Bunday ro'yxatga
+   hech kim qaramaydi — guardrail o'zi shovqinga aylanardi.
+2. Ikkinchi variantda **eksport qatorining o'zi** "ishlatilgan"
+   deb sanalardi: ataylab qo'shilgan o'lik funksiya
+   "ishlatilyapti" bo'lib chiqdi (ta'rif + `module.exports` = 2 ta).
+   Lekin eksport blokidagi **qiymat** sanalishi kerak
+   (`requireSchoolMode: requireMode("school")`).
+
+Ataylab qoldirilganlar `ALLOW` ro'yxatida, har biri izohli.
+⚠️ `getStudents` u yerda alohida ogohlantirish bilan: u ham
+`updateStudent` bilan bir xil kasal edi
+(`Student.find({ teacher })` — bunday maydon yo'q), route'ga
+ulansa doim bo'sh ro'yxat qaytaradi.
+
+### Undan oldingi ish — tezlik va platforma egasining paneli
+
+**N+1 uch joyda** topildi va uchalasi ham eng ko'p ochiladigan
+sahifalarda edi: admin paneli, Fond dashboard'i va Sinflar
+ro'yxati. Har birida halqa ichida `MonthlyPayment.find(...)`
+turardi — u sinfning (yoki markazning) **butun tarixini**
+xotiraga yuklab, keyin JS'da yig'ardi. Uch yillik markazda bu
+o'n minglab hujjat, yuzta markazli admin panelida esa 400 dan
+ortiq so'rov. Render'ning bepul tarifida bunday sahifa avval
+sekinlashadi, keyin umuman ochilmay qoladi.
+
+Endi hammasi `aggregate` bilan — pul bazada yig'iladi.
+
+**Admin paneliga "e'tibor talab qiladi" bo'limi** qo'shildi:
+obunasi 7 kun ichida tugaydiganlar, yaqinda tugaganlar va 14
+kundan beri kirmagan markazlar. Har birida telefon raqami
+bosiladigan qilib turadi.
+
+⚠️ Lumo direktorlarga "qaysi o'quvchi ketish arafasida" deb
+aytadi; platforma egasiga esa aynan shu savol bir qavat
+yuqorida turadi. `Teacher.lastLoginAt` shu uchun qo'shildi va
+kirishda `await` siz yoziladi.
+
+⚠️ **`lastLoginAt` yo'q eski hisoblar "kirmagan" ro'yxatiga
+tushmaydi** — ularni "2 yil kirmagan" deb ko'rsatish yolg'on
+bo'lardi.
+
+### Undan oldingi ish — "Yozilgan-u ulanmagan kod" auditi
+
+Sidirg'a qidiruv: `module.exports` dagi har bir nom boshqa
+fayllarda ishlatiladimi? Bu loyihada shu turdagi xato allaqachon
+ikki marta bo'lgan (`startReminderCron`, `manageExpenses`) —
+uchinchi, to'rtinchi va beshinchisi ham topildi.
+
+#### 1. O'quvchini tahrirlash UMUMAN yo'q edi 🔴
+
+`updateStudent` yozilgan, route'ga ulanmagan — **va ustiga buzuq
+ham edi**: `Student.findOne({ _id, teacher })` deb qidirardi,
+`Student` da esa `teacher` maydoni umuman yo'q (o'quvchi guruh
+orqali bog'lanadi). Ya'ni ulangan taqdirda ham har doim
+"topilmadi" qaytarardi.
+
+Natijada telefon o'zgarsa yoki ismda bitta harf xato bo'lsa,
+yagona yo'l — **o'chirib qayta yaratish**. `deleteStudent` esa
+o'quvchining butun to'lov tarixini o'chiradi. Xato uchun
+ma'lumot yo'qotiladigan tizim — bu tizim emas.
+
+Qayta yozildi: egalik guruh orqali tekshiriladi, boshqa guruhga
+ko'chirish tarif chegarasidan o'tadi (aks holda "qo'shib"
+bo'lmaydigan to'lgan guruhga "ko'chirib" bo'lardi), o'zgarishlar
+`AuditLog` ga tushadi. Interfeys: `lc/Students.vue` va
+`teacher/ClassDetail.vue` da tahrir tugmasi.
+
+#### 2. Sinf nomini o'zgartirish ham yo'q edi
+
+`updateClass` — xuddi shunday holat, faqat buzuq emas edi.
+`PUT /teacher/classes/:classId` qo'shildi, nom o'zgarishi
+jurnalga tushadi.
+
+#### 3. Obuna muzlatilganda direktorga xabar bormasdi
+
+`sendFreezeNotification` / `sendUnfreezeNotification`
+`telegramService.js` da yozilgan, lekin **hech qayerdan
+chaqirilmagan**. Sabab tushunarli: yozilgan paytda direktorga
+xabar yuboradigan kanalning o'zi yo'q edi (bot faqat ota-onalar
+uchun ishlardi). Kanal bu hafta paydo bo'ldi — ulandi.
+
+`services/freezeNotify.js`: kimga ketishini sof funksiya
+ajratadi, xabar **fonda** yuboriladi (200 ta hisob saqlanib,
+200 ta Telegram xabari ketishi mumkin — admin so'rovi kutib
+turmasin), har 20 tadan keyin tanaffus, 403 da ulanish
+tozalanadi.
+
+⚠️ **Rejim tanloviga qaramaydi.** `cashReport.mode` va
+`churnDigest.mode` — kunlik/haftalik shovqin darajasi uchun.
+Obuna muzlatilishi esa HISOB haqidagi xabar: uni o'chirib
+qo'ygan direktor ham bilishi kerak, chunki bu uning puliga
+tegadi.
+
+#### 4. Bekor qilish qoidasi ikki joyda edi
+
+`services/supportBooking.cancelBooking` faqat **faol** yozuvni
+bekor qiladi; `supportController.updateBooking` esa o'z qo'lda
+yozilgan nusxasini ishlatardi va **istalganini** bekor qilardi.
+Ya'ni o'quvchi kelib, QR skanerlab `done` bo'lgan yozuvni ham
+"bekor qilindi" ga o'tkazish mumkin edi — kelgani haqidagi yozuv
+yo'qolardi. Endi controller servisni chaqiradi.
+
+### Undan oldingi ish — "O'quvchilarni Excel'dan import qilish"
+
+Yangi markaz Lumo'ga o'tayotganda 200 ta o'quvchini qo'lda
+kiritishi kerak edi. Bu — tizimga o'tishning eng katta to'sig'i:
+direktor bir kunlik ishni ko'radi va "keyinroq" deb qo'yadi.
+Ro'yxat esa allaqachon uning Excel faylida turibdi.
+
+`services/studentImport.js` — **sof** parser, `POST
+/teacher/classes/:classId/students/import`.
+
+**To'rtta ataylab qilingan qaror:**
+
+1. **Avval ko'rsatadi, keyin yozadi.** `apply` berilmasa faqat
+   tahlil qaytadi: nechta qo'shiladi, qaysilari takror, qaysi
+   qatorda ism yo'q. Begona faylni ko'r-ko'rona bazaga
+   to'kmaymiz (`/lc/rooms/import` bilan bir xil qoida).
+2. **Yarim import yo'q.** Tarif chegarasidan oshsa hech narsa
+   yozilmaydi: yarmi tushgan ro'yxatda direktor qaysi bola
+   qolganini bilmaydi va butun faylni qo'lda solishtirishga
+   majbur bo'ladi.
+3. **Takror ikki qatlamda** — fayl ichida va bazada. Telefon
+   **oxirgi 9 raqam** bo'yicha solishtiriladi (`utils/phone.js`):
+   aks holda `+998 90 123 45 67` va `90 123 45 67` boshqa-boshqa
+   ko'rinib, bitta bola ikki marta tushardi. Bu bug o'z sinovimda
+   chiqdi.
+4. **Bir xil ismli ikki bola ikkalasi ham tushadi** (raqami
+   boshqa) — faqat ism bo'yicha solishtirsak ikkinchisi
+   yo'qolardi, bu esa haqiqiy hol.
+
+⚠️ **Fayl BACKENDDA o'qiladi.** Brauzerda o'qish uchun xlsx
+kutubxonasi kerak bo'lardi — u ~500 KB, ya'ni butun CRM
+bundle'ining yarmi. Backendda `xlsx` allaqachon bor (export
+uchun).
+
+⚠️ Ustun nomi topilmasa javobda **fayldagi sarlavhalar**
+qaytadi — odam nimani tuzatishni bilsin.
+
+### Undan oldingi ish — "Sotilayotgan tarif haqiqatan sotilsin"
+
+Uchta narsa bir vaqtda ma'lum bo'ldi va uchalasi ham **pulga
+tegadi**. Boshlanishi oddiy edi: "yozilgan-u ulanmagan kod bormi?"
+degan sidirg'a qidiruv (bu loyihada `startReminderCron` va
+`manageExpenses` bilan ikki marta takrorlangan xato).
+
+#### 1. LC direktoriga FOND narxi ko'rsatilardi 🔴
+
+`Subscription.vue` uchta tarifni **o'zi yozib turardi**:
+`29 000 / 59 000` va "1 ta sinf, 30 ta o'quvchi". Bular Fond
+raqamlari. Sahifa esa `lcNav` da ham bor.
+
+Ya'ni o'quv markazi direktori Pro narxini **29 000** deb ko'rar,
+o'shancha pul o'tkazar va chekni yuborardi. Backend esa so'rovni
+`priceFor` bo'yicha **199 000** deb yozardi (bu joyi to'g'ri
+ishlagan) — admin panelida 199 000 lik so'rov va 29 000 lik chek.
+So'rov rad etiladi. Mijoz pul yubordi, xizmat olmadi va nima
+uchunligini bilmadi.
+
+Endi katalog **backenddan** keladi (`GET /teacher/subscription`):
+narx, chegara va funksiyalar — hammasi `planHelper` dan, rejim
+bo'yicha. Frontendda faqat ko'rinish qoldi (ikonka, tartib).
+
+#### 2. Xodim va lid chegarasi UMUMAN tekshirilmasdi 🔴
+
+`canAddStaff` yozilgan, eksport qilingan — va hech qayerdan
+**chaqirilmagan**. `PLAN_LIMITS` dagi `leads` ham xuddi shunday.
+Ya'ni Free hisob cheksiz xodim qo'sha olardi va cheksiz lid
+yuritardi. Pro sotib olishning ma'nosi qolmasdi.
+
+Endi `createStaff` va `createLead` chegarani tekshiradi.
+
+⚠️ **Lidlarda faqat OCHIQ lidlar sanaladi** (`won`/`lost` emas).
+Hammasini sansak, yigirmata lid yozgan markaz abadiy to'xtab
+qolardi — hatto hammasini o'quvchiga aylantirgan bo'lsa ham.
+Chegara "qancha ish yuritasan" haqida, "qancha ish yuritgansan"
+haqida emas.
+
+⚠️ Lid chegarasi **markaz bo'yicha**, filial bo'yicha emas —
+aks holda uchta filiali bor Free markaz 60 ta lid tutardi.
+
+#### 3. Filial chegarasi IKKITA jadvaldan o'qilardi 🔴
+
+`branchController` o'z jadvalini tutardi (`free: 1, pro: 3,
+premium: 10`), `planHelper` esa boshqa raqamlarni. Ikkita jadval —
+ikkita haqiqat: **Premium LC'ga 9999 ta filial va'da qilinardi,
+kod esa 10 tada to'xtatardi.** Eng ko'p to'lagan mijoz tushunarsiz
+devorga urilardi.
+
+Endi jadval bitta: `utils/planHelper.js`.
+
+⚠️ **Fond filiallari (1 / 3 / 10) — ishlab turgan xatti-harakat.**
+`planHelper` da `0 / 0 / 5` yozilgandi va u hech qachon
+qo'llanmagan. Birlashtirishda ishlayotgani olindi: aks holda
+bugun filiali bor Fond direktori ertaga yangisini ocholmay
+qolardi. **Chegarani pasaytirish — mahsulot qarori**, kod
+tozalashning yon ta'siri emas. Qaror qilsangiz, o'zgartirish
+endi faqat bitta joyda.
+
+#### Interfeys: chegara BOSISHDAN OLDIN ko'rinadi
+
+- `composables/usePlanLimits.js` — `limits` va `usage` ni bir
+  marta oladi, keshlaydi (raqam frontendda o'ylab topilmaydi).
+- `StaffManagement.vue` (xodim va filial), `Leads.vue` — tugma
+  o'chadi va "Tarifni ko'tarish" havolasi chiqadi.
+- `Subscription.vue` — "Hozir ishlatilyapti: Guruh 3/15,
+  Xodim 1/10…" va to'lgani to'q sariq.
+
+⚠️ So'rov yiqilsa chegara ko'rsatkichi **jim o'chadi va tugmalar
+ochiq qoladi** — haqiqiy tekshiruv baribir backendda. Qulaylik
+sahifani bloklamasin.
+
+#### 4. To'lov kartasi SOXTA edi 🔴
+
+Sahifada `8600 1234 5678 9012` qotirib yozilgandi. Bu haqiqiy karta
+emas — aynan shu satr `PaymentClaims.vue` va `Settings.vue` da
+**`placeholder`** sifatida turadi, ya'ni namuna matn. Backendda
+platforma kartasi degan tushuncha umuman yo'q edi.
+
+Ya'ni yuqoridagi uchta xato tuzatilgandan keyin ham direktor
+to'g'ri narxni ko'rib, **noto'g'ri kartaga** pul yuborardi.
+
+Endi `config/platform.js` → `PLATFORM_CARD` / `PLATFORM_CARD_HOLDER`
+env o'zgaruvchilari, javobda `payTo: { configured, card, cardPlain,
+holder }`.
+
+⚠️ **Kalit yo'q bo'lsa SOXTA RAQAM O'RNIGA OGOHLANTIRISH** chiqadi:
+"rekvizitlar kiritilmagan, administrator bilan bog'laning". Bu
+Payme/Click bilan bir xil qoida — yarim sozlangan holatda pul
+qabul qilishga urinmaymiz.
+
+⚠️ **Yarim yozilgan raqam ham `configured: false`** (16 xona
+tekshiriladi): aks holda 12 xonali raqam ekranga chiqib, kimdir
+o'shanga o'tkazishga urinardi.
+
+⚠️ Kalitni **Muhammadumar qo'yadi** — 4.2 bo'limiga qarang.
+Qo'yilmaguncha sotib olish oqimi ochiq qoladi (so'rov yuborish
+mumkin), lekin karta ko'rsatilmaydi.
+
+**Tekshirildi:** backend 420/420 test, `check:messages` toza;
+frontend build + `check` 0 xato.
+
+### Undan oldingi ish — "Ketayotgan o'quvchi direktorga o'zi aytadi"
+
+Ro'yxat allaqachon bor edi (`/lc/at-risk`, `services/churnRisk.js`) —
+lekin u **sahifada yotardi**. Direktor esa har kuni saytga kirmaydi:
+bola uch dars kelmaydi, keyin to'rt, keyin butunlay qoladi va markaz
+buni navbatdagi to'lov kelmaganda biladi. O'sha paytda qaytarib
+bo'lmaydi.
+
+Bu — kunlik kassa xabari bilan **aynan bir xil muammo**, shuning
+uchun aynan o'sha kanal ishlatildi (`Teacher.telegram`). HANDOFF'da
+u kanal haqida "bitta funksiya uchun emas" deb yozib qo'yilgandi;
+ikkinchi ishlatuvchisi shu.
+
+**Backend:**
+- `services/churnDigest.js` — **sof** `buildDigest()` + `collect()`.
+- `cron/churnDigestCron.js` — **dushanba 09:00 Toshkent**, `server.js` ga ulandi.
+- `Teacher.churnDigest.mode` (`weekly` | `off`, standart `weekly`).
+- `PUT /teacher/telegram/director/churn-mode`.
+- `POST /teacher/telegram/director/preview` — **"Hozir yuborib ko'rish"**.
+- 18 ta yangi test.
+
+**Frontend:**
+- `AtRisk.vue` — haftalik xabar sozlamasi aynan ro'yxat ostida.
+- `Cash.vue` — kassa xabari uchun ham "Hozir yuborib ko'rish".
+- `Settings.vue` — bitta ulanish, ikkita xabar ekani yozib qo'yildi.
+- 10 ta i18n kalit × 3 til.
+
+**Uchta ataylab qilingan qaror:**
+
+1. **Telefon raqami xabarning O'ZIDA.** Telegram raqamni bosiladigan
+   qiladi — direktor xabarni o'qib, o'sha yerdan qo'ng'iroq qiladi.
+   Faqat ism yozsak, u CRM'ni ochib, o'quvchini qidirib, raqamni
+   ko'chirishi kerak bo'lardi va ish aynan shu yerda "keyinroq" ga
+   qolardi. Raqam **alohida qatorda, bezaksiz**: Markdown belgilari
+   orasida qolsa Telegram uni tanimaydi (test bilan qulflangan).
+2. **Bo'sh hafta — xabar yo'q.** "Bu hafta hech kim ketmayapti"
+   foydali ko'rinadi, lekin odatni buzadi: xabar kelsa — ish bor.
+   Kassa xabaridagi `problems` bilan bir xil qoida.
+3. **Sozlama ro'yxat ostida, ULANISH esa Kassa sahifasida qoldi.**
+   Bir martalik token ikki joydan so'ralsa, ikkinchisi jimgina
+   eskirgan havola berardi.
+
+⚠️ **"Hozir yuborib ko'rish" — bugungi HAQIQIY ma'lumot**, soxta
+namuna emas. Namuna ulanishni tekshiradi, lekin "menga bu kerakmi?"
+degan savolga javob bermaydi. Busiz direktor tugmani bosib ertaga
+21:00 gacha kutishi va xabar kelmasa nima buzilganini bilmasligi
+kerak edi: bot bloklanganmi, rejim o'chiqmi, ulanish uzilganmi —
+uchalasi ham JIM.
+
+### Shu bilan birga — tasdiqlanmagan to'lovlar kassa xabariga qo'shildi
+
+Ota-ona kartaga o'tkazadi va ilovada "to'ladim" deydi
+(`PaymentClaim`). Hech kim tasdiqlamasa, uning qarzi ochiq turadi
+va u o'zini e'tiborsiz qoldirilgandek his qiladi — pul esa
+allaqachon markazda.
+
+Endi kunlik kassa xabarida alohida qator bor: nechta so'rov,
+umumiy summa va **eng eskisi necha kundan beri kutayotgani**.
+
+⚠️ **Yangi cron YOZILMADI.** Bu ham kassa haqidagi gap va xabar
+allaqachon har kuni 21:00 da ketadi. Ikkinchi xabar birinchisining
+o'qilishini kamaytirardi — bu loyihada bir necha marta takrorlangan
+qoida.
+
+⚠️ Tasdiqlanmagan so'rov `hasProblems` ni yoqadi, ya'ni `problems`
+rejimidagi direktor ham ko'radi. Kutayotgan ota-ona — bu muammo.
+
+### Yo'lda topilgan IKKITA jim bug
+
+⚠️ **1. Kunlik kassa xabari eski hisoblarga UMUMAN kelmasdi.**
+Cron `"cashReport.mode": { $in: ["problems", "daily"] }` deb
+qidirardi. Lekin Mongoose standart qiymatni faqat hujjat
+**saqlanganda** yozadi, ulanish esa `updateOne` bilan ketadi —
+ya'ni `cashReport` maydoni paydo bo'lishidan oldin ochilgan
+hisoblarda u bazada **umuman yo'q**. `$in` bunday hujjatni topmaydi.
+Direktor Telegram'ga ulanadi, "Faqat muammo bo'lganda" turadi,
+va xabar hech qachon kelmaydi — xatosiz, jimgina. Endi
+`{ $ne: "off" }` (maydoni yo'q hujjat ham qamrab olinadi) va rejim
+`dir.cashReport?.mode || "problems"` bilan o'qiladi.
+
+**Yangi sxema maydoni qo'shsangiz shu tuzoqni eslang:** mavjud
+hujjatlarda u yo'q. Filtrni "qiymat X ga teng" emas, "X emas" deb
+yozing.
+
+⚠️ **2. `check:api` va `check:perms` bulutli/yangi klonda umuman
+ishlamasdi.** Backend yo'li qattiq yozilgan edi
+(`../../school_fond`), GitHub'dagi repo nomi esa `beckend_fond`.
+Skript to'rtta ogohlantirish yozib, ENOENT bilan yiqilardi — va bu
+zanjirning o'rtasida bo'lgani uchun `check:perms`, `check:css`,
+`check:i18n` **umuman ishlamasdi**. Ya'ni guardrail o'zi jimgina
+o'chib qolardi. Endi `scripts/backend-path.cjs`: `LUMO_BACKEND`
+o'zgaruvchisi → yonidagi papkalar (nomi muhim emas, `src/routes/lc.js`
+va `src/models/Role.js` bo'yicha taniladi) → topilmasa tushunarli
+xabar va exit 1.
+
+### Undan oldingi ish — "Markaz sozlamalari sahifasi"
 
 Sozlamalar **besh xil sahifaga tarqalgan** edi: qo'shimcha mashg'ulot
 o'z sahifasida, xodim davomati o'zinikida, kassa xabari Kassa ostida,
@@ -590,10 +1521,11 @@ O'z izini ko'ra oladigan administrator uchun jurnal nazorat emas,
 ### Tekshiruvlar — hammasi yashil
 
 ```
-backend :  npm test              →  380/380
-backend :  npm run check:messages →  yangi xabarlar ru/en bilan
+backend :  npm test              →  484/484
+backend :  npm run check:messages →  tarjimasiz matn 0 ta (endi XATO beradi)
+backend :  npm run check          →  test + check:messages + check:dead
 frontend:  npm run build         →  ✓
-frontend:  npm run check         →  check:api, check:perms, check:css, check:i18n — 0 xato
+frontend:  npm run check         →  verify, check:api, check:perms, check:css, check:i18n — 0 xato
 ```
 
 ---
@@ -631,6 +1563,93 @@ brauzer ochiladi va token qaytadan saqlanadi.
 
 ### 4.2 Qolganlari
 
+- 🔴 **Render → Environment: `PLATFORM_CARD`** — tarif uchun pul
+  tushadigan karta. **Bugun sahifada soxta raqam turgan edi**
+  (`8600 1234 5678 9012` — namuna matn), ya'ni Pro sotib olmoqchi
+  bo'lgan har bir direktor pulni yo'qqa yuborardi. Endi raqam
+  backenddan keladi va kalit qo'yilmaguncha sahifa "rekvizitlar
+  kiritilmagan" deb yozib turadi — soxta raqam ko'rsatilmaydi.
+
+  ```
+  PLATFORM_CARD=8600XXXXXXXXXXXX
+  PLATFORM_CARD_HOLDER=FAMILIYA ISM
+  ```
+
+  Kalit qo'yilishi bilan ishlaydi, deploy dan boshqa hech narsa
+  kerak emas.
+
+- 🟡 **SMS provayderi — "SMS eslatma" Premium'da sotiladi, lekin
+  xizmat umuman ulanmagan.** Ilgari u soxta muvaffaqiyat
+  qaytarardi; endi kalit yo'q bo'lsa **503** va sahifada "tez
+  orada" belgisi turadi. Eskiz yoki Play Mobile merchant
+  olingach:
+
+  ```
+  SMS_PROVIDER=eskiz
+  SMS_EMAIL=...
+  SMS_PASSWORD=...
+  SMS_SENDER=4546
+  ```
+
+  ⚠️ To'rttasi ham to'ldirilishi shart — yarmi to'ldirilgan
+  sozlama provayderga ulanishga urinib, har bir SMS uchun xato
+  qaytarardi. `services/smsService.js` ichida `TODO(provayder)`
+  belgisi bor, chaqiruvchi kod o'zgarmaydi.
+
+- 🟡 **MAHSULOT QARORI: oltita tarif bayrog'i ochiq turibdi.**
+  `homework`, `salaries`, `roles`, `branch_stats`, `reports`,
+  `white_label` — `planHelper` jadvalida Free uchun `false`,
+  lekin **hech qayerda tekshirilmaydi**, ya'ni Free hisob
+  hammasidan foydalanmoqda.
+
+  Yopish — sizning qaroringiz: bugun ulardan foydalanayotgan
+  markazlar bor va yopish ulardan imkoniyatni tortib olish
+  demakdir (filial chegarasini pasaytirish bilan bir xil
+  qoida). Yopmoqchi bo'lsangiz, `test/planFeatures.test.js`
+  dagi `UNGATED` ro'yxatidan olib tashlang va controllerga
+  `hasFeature(...)` qo'shing — test yo'lni ko'rsatadi.
+
+  Bayroqni butunlay olib tashlash ham to'g'ri yechim: u holda
+  jadval yolg'on va'da bermay qo'yadi.
+
+- 🟡 **GitHub Actions ishlamayapti — CI qo'shib bo'lmadi.**
+  Ikkala repoga `.github/workflows/check.yml` qo'shib ko'rildi
+  (har push'da `npm run check`). Ish **3 soniyada** yiqildi:
+  runner umuman berilmadi va log yozilmadi. Repo **public**,
+  ya'ni daqiqa cheklovi sabab emas.
+
+  Ehtimoliy sabab (ikkalasi ham hisob sozlamasi):
+
+  - GitHub hisobida Actions o'chirilgan yoki cheklangan
+  - **Settings → Actions → General → Allowed actions** "Local
+    actions only" ga qo'yilgan — u holda `actions/checkout`
+    bloklanadi va ish darhol yiqiladi
+
+  PR'da doimiy qizil belgi qolmasin deb workflow fayllari
+  **olib tashlandi**. Sozlamani tuzatganingizdan keyin qaytadan
+  qo'shsa bo'ladi — mazmuni oddiy:
+
+  ```yaml
+  name: check
+  on: [push, pull_request]
+  jobs:
+    check:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-node@v4
+          with: { node-version: "20", cache: npm }
+        - run: npm ci
+        - run: npm run check          # frontendda: npm run check:solo && npm run build
+  ```
+
+  ⚠️ Frontendda `npm run check` EMAS, `check:solo`: to'liq
+  tekshiruv backend repozitoriyasini o'qiydi, CI'da esa
+  ikkinchi repo yo'q.
+
+  ⚠️ Bazaga ulanmaydi va sir (secret) kerak emas — testlar sof
+  mantiqni sinaydi.
+
 - **Render → Environment:** `TELEGRAM_BOT_TOKEN` (almashtirilgan — eskisi
   ochiq qolgan edi), `NODE_ENV=production`, Cloudinary kalitlari.
 - **MongoDB Atlas → `teachers`:** `notgmail@mail.ru` test yozuvini o'chirish.
@@ -644,38 +1663,75 @@ brauzer ochiladi va token qaytadan saqlanadi.
 
 ## 5. Keyin nima qilinadi
 
-Rollar bo'yicha o'ylash davom etadi. Kassa zanjiri, lid→guruh oqimi
-va **butun frontend tarjimasi** tugadi.
+Rollar bo'yicha o'ylash davom etadi. Kassa zanjiri, lid→guruh oqimi,
+**butun frontend tarjimasi** va **backend xabarlari** tugadi.
 
-### A. Backend xabarlari tarjimasi
+Direktorning Telegram kanali endi **uchta** xabar tashiydi: kunlik
+kassa (21:00), haftalik ketish arafasida (dushanba 09:00) va oy
+boshidagi "varaqa yaratilmagan" (2-sana 09:00). To'rtinchisi uchun
+ham o'rin tayyor: xabar matni sof funksiyada, cron esa bitta
+naqshdan nusxa (uchtasi ham bir xil).
 
-Frontend butunlay tugadi — interfeysda tarjimasiz matn **yo'q** va
-`npm run check` buni qulflab turibdi. Backendda esa hali **26 ta**
-xabar qolgan (`npm run check:messages`).
+⚠️ **Yangi xabar qo'shishdan oldin o'ylang:** har bir qo'shimcha
+xabar oldingilarining o'qilishini kamaytiradi. Uchtasi ham
+"kelsa — ish bor" qoidasida (bo'sh bo'lsa yubormaydi) va aynan
+shu ularni o'qiladigan qiladi.
 
-Bular foydalanuvchi ko'radigan xato matnlari: "Belgilandi",
-"Karta raqami 16 xonali bo'lishi kerak", "Oy formati: YYYY-MM"…
-Ruscha interfeysda ular jimgina o'zbekcha chiqadi.
+### A. Backend xabarlari tarjimasi — ✅ TUGADI (2026-08-21)
 
-⚠️ Ish hajmi kichik, lekin **`check:messages` ni ham xatoga
-aylantirish** mumkin — frontendda aynan shu narsa qarzni to'xtatdi.
+Qolgan **30 ta** xabar (26 tasi eski ro'yxatdan + 4 tasi yangi kod)
+`utils/messages.js` ga qo'shildi. `npm run check:messages` endi
+**xato beradi** (exit 1), ogohlantirish emas — frontendda aynan shu
+narsa qarzni bir kunda to'xtatgan edi. Guardrail ataylab buzib
+sinaldi va `test/lang.test.js` uni qulflab turibdi.
+
+ℹ️ Chiqishdagi "lug'atda bor, kodda topilmadi" ro'yxati (19 ta) —
+**hisobot, xato emas**: skaner faqat `error:`/`message:` dan keyin
+darhol qo'shtirnoq kelgan joyni ko'radi, shart ichida yasalgan
+xabarni esa topmaydi.
 
 ### B. Guruh/sinf ajratish (reja 1.2)  ⭐ katta ish
 
-LC guruhlari hali `Class` da yashaydi. Skript va hujjat **tayyor**,
-ishga tushirilmagan: `src/scripts/migrateGroups.js`,
+LC guruhlari hali `Class` da yashaydi. Hujjat tayyor:
 `docs/GROUP_MIGRATION.md`. Asosiy qiyinchilik — 13 joydagi
 `populate("class")`.
 
+🚨 **`src/scripts/migrateGroups.js` NI ISHLATMANG** — u endi
+o'zini to'xtatadi va bu ataylab. Skript **B varianti** uchun
+yozilgan (`Group` alohida kolleksiyada), loyihada esa **A
+varianti** deploy qilingan: `models/Group.js` aynan `classes`
+ga bog'langan. Shu holatda:
+
+- `--apply` → o'sha `_id` bilan **o'sha** kolleksiyaga yozadi
+- `--rollback --apply` → `deleteMany` **jonli `classes`** ga
+  tushadi, ya'ni markazlarning hamma guruhini (va ular orqali
+  o'quvchi, to'lov, davomat tarixini) o'chirib yuborishi mumkin
+
+Bugun ikkinchisi tasodifan xavfsiz: `migratedFromClass` maydoni
+sxemada yo'q, Mongoose uni jimgina tashlab yuboradi. Kimdir uni
+qo'shsa — zarar haqiqiy bo'ladi.
+
+Ajratishni rostdan boshlamoqchi bo'lsangiz: avval `Group` ni
+alohida kolleksiyaga bog'lang, keyin skriptni qayta ko'rib
+chiqing. `test/groupMigration.test.js` shu shartni qulflaydi.
+
 ⚠️ Bazadan nusxa olmasdan tegmang.
 
-### Ataylab keyinga qoldirilgan (mayda ish deb hisoblangan)
+### Tarjima qarzi — ✅ TUGADI (2026-08-24)
 
-`Reports.vue` (10), `Leads.vue` (7), `StaffManagement.vue` (20) da
-tarjima qilinmagan matnlar. `Schedule.vue` dagi `validate()` ichida ham
-uchta qattiq yozilgan matn bor. `npm run check:i18n` ularni ogohlantirish
-sifatida ko'rsatadi, build'ni to'xtatmaydi. Katta funksiya orasida
-o'z-o'zidan tuzatilsa — yaxshi; alohida ish sifatida qilinmasin.
+Qolgan hamma joy yopildi:
+
+- `check:i18n` teshigidan chiqqan **54 ta** matn (ko'p qatorli va
+  `{{ }}` bilan aralash yozilganlari)
+- `StaffManagement.vue` ichidagi **92 ta** matn — 24 ta huquq nomi
+  va izohi, 13 ta bo'lim, 8 ta rol shabloni. Ular `<script>` da
+  yozilgan edi va tekshiruv `<script>` ichini qaramaydi
+- `Schedule.vue` dagi uchta validatsiya xabari
+
+⚠️ **`<script>` ichidagi matn hamon tekshirilmaydi.** Yangi
+sahifada matnni obyekt ichiga yozib qo'ysangiz, tekshiruv yashil
+turaveradi. Naqsh: obyektda faqat ikonka/rang, matn esa i18n
+kalitida (`PERM_META` ga qarang).
 
 ---
 
@@ -741,8 +1797,43 @@ Bular allaqachon bir marta bug chiqargan. Takrorlamang.
 
 9. **Yangi xabar yozsangiz `utils/messages.js` ga ham qo'shing.** Aks
    holda ruscha va inglizcha interfeysda o'sha xabar **jimgina**
-   o'zbekcha chiqaveradi — xato bermaydi. `npm run check:messages`
-   aynan shuni topadi.
+   o'zbekcha chiqaveradi. `npm run check:messages` aynan shuni topadi
+   va 2026-08-21 dan beri **exit 1** qaytaradi.
+
+10. **Sxemadagi standart qiymat MAVJUD hujjatlarga tushmaydi.**
+    Mongoose uni faqat hujjat `save()` qilinganda yozadi;
+    `updateOne` / `findOneAndUpdate` yozmaydi. Ya'ni yangi maydon
+    qo'shsangiz, eski hisoblarda u bazada **umuman yo'q**.
+
+    Shu sabab cron va hisobot filtrlarida **"qiymat X ga teng"
+    emas, "X emas"** deb yozing:
+
+    ```js
+    "cashReport.mode": { $in: ["problems", "daily"] }  // ❌ eski hisob tushmaydi
+    "cashReport.mode": { $ne: "off" }                  // ✅ standart ham qamrab olinadi
+    ```
+
+    Kodda o'qiyotganda ham shunday: `dir.cashReport?.mode || "problems"`.
+    Kunlik kassa xabari aynan shu sababli eski hisoblarga hech qachon
+    kelmagan — va xato bermagani uchun buni hech kim sezmagan.
+
+11. **Tarif raqamini FRONTENDDA yozmang.** Narx ham, chegara ham
+    `utils/planHelper.js` da va `GET /teacher/subscription`
+    orqali keladi. `Subscription.vue` ilgari o'zi yozib turardi
+    va LC direktoriga Fond narxini ko'rsatardi — u o'sha summani
+    kartaga o'tkazardi.
+
+12. **"Yozilgan-u ulanmagan" kodni vaqti-vaqti bilan qidiring.**
+    Bu loyihada uch marta takrorlandi: `startReminderCron`
+    (cron ulanmagan), `manageExpenses` (ruxsat tekshirilmagan),
+    `canAddStaff` / `canOpenBranch` (chegara chaqirilmagan).
+    Hech biri xato bermaydi — funksiya shunchaki **yo'q** bo'lib
+    turadi. Eng oson tekshiruv: `module.exports` dagi nomni
+    boshqa fayllarda qidirib ko'ring.
+
+13. **Ikkala repoda `HANDOFF.md` bir xil bo'lishi shart.** Birini
+    yangilab ikkinchisini unutsangiz, keyingi sessiya qaysi
+    repodan boshlashiga qarab boshqa holatni o'qiydi.
 
 ---
 
@@ -751,8 +1842,7 @@ Bular allaqachon bir marta bug chiqargan. Takrorlamang.
 ```bash
 # backend
 cd /c/Users/Lenovo/Desktop/school_fond
-npm test
-npm run check:messages
+npm run check          # npm test + check:messages
 
 # frontend
 cd /c/Users/Lenovo/Desktop/font_front/font

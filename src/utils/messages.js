@@ -53,6 +53,10 @@ const MESSAGES = {
   "Maosh yozuvi topilmadi": { ru: "Запись о зарплате не найдена", en: "Salary record not found" },
   "Jadval topilmadi": { ru: "Расписание не найдено", en: "Schedule not found" },
   "To'lov topilmadi": { ru: "Платёж не найден", en: "Payment not found" },
+  "SMS xizmati sozlanmagan": {
+    ru: "SMS-сервис не настроен",
+    en: "SMS service is not configured",
+  },
   "Baho topilmadi": { ru: "Оценка не найдена", en: "Grade not found" },
   "Aktiv freeze topilmadi": { ru: "Активная заморозка не найдена", en: "No active freeze found" },
   "Referral kod topilmadi": { ru: "Реферальный код не найден", en: "Referral code not found" },
@@ -254,6 +258,10 @@ const MESSAGES = {
   "So'rov rad etildi.": { ru: "Заявка отклонена.", en: "Request rejected." },
   "Bu so'rov allaqachon ko'rib chiqilgan": { ru: "Эта заявка уже рассмотрена", en: "This request has already been reviewed" },
   "Export faqat Premium uchun": { ru: "Экспорт только для Premium", en: "Export is Premium only" },
+  "Import faqat yuqori tarifda": {
+    ru: "Импорт доступен на более высоком тарифе",
+    en: "Import is available on a higher plan",
+  },
   "Bu funksiya Pro va Premium tarifda": { ru: "Эта функция доступна в тарифах Pro и Premium", en: "This feature is available on the Pro and Premium plans" },
   "SMS reminder faqat Premium uchun": { ru: "SMS-напоминание только для Premium", en: "SMS reminders are Premium only" },
 
@@ -358,6 +366,58 @@ const MESSAGES = {
   "SMS yuborilmaydigan o'quvchi yo'q": { ru: "Нет учеников для отправки SMS", en: "There are no students to send SMS to" },
   "SMS reminder yuborildi": { ru: "SMS-напоминание отправлено", en: "SMS reminder sent" },
   "studentIds bo'sh": { ru: "studentIds пуст", en: "studentIds is empty" },
+
+  "Ism bo'sh bo'lmasin": { ru: "Имя не может быть пустым", en: "The name cannot be empty" },
+  "Tarif chegarasi: bu guruhga ko'proq o'quvchi sig'maydi": { ru: "Ограничение тарифа: в эту группу больше учеников не поместится", en: "Plan limit: this group cannot take more students" },
+  "O'zgarish yo'q": { ru: "Изменений нет", en: "Nothing changed" },
+  // ── Excel import ───────────────────────────────────────
+  "Faylni o'qib bo'lmadi": { ru: "Не удалось прочитать файл", en: "The file could not be read" },
+  "Import tugadi": { ru: "Импорт завершён", en: "Import finished" },
+  "Fayl bo'sh": { ru: "Файл пустой", en: "The file is empty" },
+  "Ism ustuni topilmadi": { ru: "Столбец с именем не найден", en: "No name column found" },
+  "Faylda varaq yo'q": { ru: "В файле нет листов", en: "The file has no sheets" },
+  // ── Tarif chegaralari ──────────────────────────────────
+  // ⚠️ Raqam matnda EMAS — javobdagi `limit` maydonida.
+  //    Shablonli xabar tarjima qilinmaydi va ruscha
+  //    interfeysda o'zbekcha chiqib qolardi.
+  "Tarif chegarasi: bu rejada ko'proq xodim qo'shib bo'lmaydi": { ru: "Ограничение тарифа: на этом плане больше сотрудников добавить нельзя", en: "Plan limit: this plan does not allow more staff" },
+  "Tarif chegarasi: bu rejada ko'proq filial ochib bo'lmaydi": { ru: "Ограничение тарифа: на этом плане больше филиалов открыть нельзя", en: "Plan limit: this plan does not allow more branches" },
+  "Tarif chegarasi: bu rejada ko'proq ochiq lid saqlab bo'lmaydi": { ru: "Ограничение тарифа: на этом плане больше открытых лидов держать нельзя", en: "Plan limit: this plan does not allow more open leads" },
+
+  // ── 2026-08-21 da qo'shilgan: qolgan tarjimasiz xabarlar ──
+  // Ular foydalanuvchi ko'radigan xato matnlari edi va ruscha
+  // interfeysda jimgina o'zbekcha chiqardi.
+  "Sana noto'g'ri — YYYY-MM-DD kutilgan": { ru: "Неверная дата — ожидается YYYY-MM-DD", en: "Invalid date — YYYY-MM-DD expected" },
+  "Kelajakdagi kunni yopib bo'lmaydi": { ru: "Будущий день закрыть нельзя", en: "A future day cannot be closed" },
+  "Sanalgan naqd pul noto'g'ri": { ru: "Пересчитанная наличность указана неверно", en: "The counted cash amount is invalid" },
+  "Bu kun allaqachon yopilgan": { ru: "Этот день уже закрыт", en: "This day is already closed" },
+  "Qaror: 'confirmed' yoki 'rejected'": { ru: "Решение: 'confirmed' или 'rejected'", en: "Decision must be 'confirmed' or 'rejected'" },
+  "Karta raqami 16 xonali bo'lishi kerak": { ru: "Номер карты должен состоять из 16 цифр", en: "The card number must be 16 digits" },
+  "Oy yoki yil noto'g'ri": { ru: "Неверный месяц или год", en: "Invalid month or year" },
+  "Bu oy uchun to'lov varaqasi yaratilmagan. Markazga murojaat qiling.": { ru: "Счёт за этот месяц ещё не выставлен. Обратитесь в центр.", en: "No bill has been issued for this month. Please contact the centre." },
+  "Bu oy allaqachon to'langan": { ru: "Этот месяц уже оплачен", en: "This month is already paid" },
+  "Bu oy uchun to'lovingiz allaqachon tekshirilmoqda": { ru: "Ваш платёж за этот месяц уже проверяется", en: "Your payment for this month is already being reviewed" },
+  "Yuborildi. Markaz tasdiqlagach qarz yopiladi.": { ru: "Отправлено. Долг закроется после подтверждения центром.", en: "Sent. The balance clears once the centre confirms." },
+  "Oy formati: YYYY-MM": { ru: "Формат месяца: YYYY-MM", en: "Month format: YYYY-MM" },
+  "Foiz 0–100 oralig'ida": { ru: "Процент — от 0 до 100", en: "The percentage must be between 0 and 100" },
+  "Summa manfiy bo'lmasin": { ru: "Сумма не может быть отрицательной", en: "The amount cannot be negative" },
+  "Summa 0 dan kichik bo'lmasligi kerak": { ru: "Сумма не может быть меньше 0", en: "The amount cannot be less than 0" },
+  "Bu sozlamani direktor yoki filial boshqaruvchisi o'zgartiradi": { ru: "Эту настройку меняет директор или руководитель филиала", en: "Only the director or a branch manager can change this setting" },
+  "Kechikish chegarasi 0–60 daqiqa oralig'ida": { ru: "Порог опоздания — от 0 до 60 минут", en: "The lateness threshold must be between 0 and 60 minutes" },
+  "Sana noto'g'ri": { ru: "Неверная дата", en: "Invalid date" },
+  "Xodim tanlanmagan": { ru: "Сотрудник не выбран", en: "No staff member selected" },
+  "Oy noto'g'ri": { ru: "Неверный месяц", en: "Invalid month" },
+  "Uchrashuv davomiyligi 10–120 daqiqa oralig'ida": { ru: "Длительность встречи — от 10 до 120 минут", en: "A session must last between 10 and 120 minutes" },
+  "Ish vaqti bitta uchrashuvga ham yetmaydi": { ru: "Рабочего времени не хватает даже на одну встречу", en: "The working window is too short for even one session" },
+  "Kamida bitta ish kuni tanlansin": { ru: "Выберите хотя бы один рабочий день", en: "Select at least one working day" },
+  "Bugunga yozilib bo'lmaydi — eng erta ertangi kunga": { ru: "На сегодня записаться нельзя — самое раннее на завтра", en: "Today cannot be booked — tomorrow is the earliest" },
+  "Mavzuni yozing — ustoz shunga tayyorlanadi": { ru: "Напишите тему — преподаватель подготовится к ней", en: "Write the topic — the teacher prepares for it" },
+  "Bu xodim qo'shimcha mashg'ulot o'tkazmaydi": { ru: "Этот сотрудник не проводит дополнительные занятия", en: "This staff member does not run support sessions" },
+  "Belgilandi": { ru: "Отмечено", en: "Marked" },
+  "Xabar turi noto'g'ri": { ru: "Неверный тип сообщения", en: "Invalid message type" },
+  "Telegram ulanmagan": { ru: "Telegram не подключён", en: "Telegram is not connected" },
+  "Bot bloklangan — Telegram'da botni oching va qayta ulaning": { ru: "Бот заблокирован — откройте бота в Telegram и подключитесь заново", en: "The bot is blocked — open it in Telegram and connect again" },
+  "Yuborildi": { ru: "Отправлено", en: "Sent" },
 };
 
 module.exports = { MESSAGES };

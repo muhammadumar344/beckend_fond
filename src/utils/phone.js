@@ -35,4 +35,33 @@ function samePhone(a, b) {
   return Boolean(ka) && ka === phoneKey(b);
 }
 
-module.exports = { phoneKey, samePhone, NATIONAL_LEN };
+/**
+ * QIDIRUV uchun naqsh: bazadagi raqam qanday yozilgan bo'lsa ham
+ * topilsin.
+ *
+ * ⚠️ Oddiy `new RegExp(q)` ISHLAMAYDI va bu jonli xato edi:
+ *    direktor `901234567` deb yozadi, bazada esa
+ *    `+998 90 123 45 67` turadi — probellar sabab mos kelmaydi
+ *    va qidiruv "topilmadi" deb turaveradi. Aynan shu sababli
+ *    "telefon bo'yicha topilmayapti" degan shikoyat keldi.
+ *
+ * Yechim: so'rovdagi raqamlar orasiga "raqam bo'lmagan istalgan
+ * narsa" qo'yiladi, ya'ni probel, tire, qavs — hammasi o'tadi.
+ *
+ * ⚠️ OXIRGI 9 TA raqam olinadi (`phoneKey` bilan bir xil qoida):
+ *    `+998901234567` yozgan odam bazadagi `90 123 45 67` ni ham
+ *    topsin — 998 mamlakat kodi, u bazada bo'lmasligi mumkin.
+ *
+ * @param {string} raw  foydalanuvchi yozgan matn
+ * @returns {RegExp|null}  raqam yetarli bo'lmasa `null`
+ */
+function phoneSearchRegex(raw) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  // ⚠️ Ikkitadan kam raqam — bu telefon emas, ism ichidagi son
+  //    bo'lishi mumkin; butun bazani tortib kelmaylik.
+  if (digits.length < 3) return null;
+  const tail = digits.slice(-NATIONAL_LEN);
+  return new RegExp(tail.split("").join("[^0-9]*"));
+}
+
+module.exports = { phoneKey, samePhone, phoneSearchRegex, NATIONAL_LEN };

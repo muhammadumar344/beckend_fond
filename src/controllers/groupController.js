@@ -325,6 +325,9 @@ exports.getGroups = async (req, res) => {
     if (req.query.mine === "true" && req.user.role === "staff") {
       query.assignedTeacher = req.user.id;
     }
+    // ⚠️ Arxivdagi guruhlar odatda ko'rinmaydi. `{ archivedAt: null }`
+    //    maydoni umuman yo'q eski guruhlarni ham topadi.
+    if (req.query.includeArchived !== "1") query.archivedAt = null;
 
     const groups = await Group.find(query)
       .populate("subject", "name color")
@@ -458,7 +461,7 @@ exports.updateGroup = async (req, res) => {
     const ctx = await resolveContext(req);
     requirePermission(ctx, "manageGroups");
     const { groupId } = req.params;
-    const { name, subjectId, assignedTeacherId, price, capacity, force } =
+    const { name, subjectId, assignedTeacherId, price, capacity, force, archived } =
       req.body;
 
     const query = { _id: groupId, teacher: ctx.directorId };
@@ -546,6 +549,13 @@ exports.updateGroup = async (req, res) => {
       } else {
         group.assignedTeacher = null;
       }
+    }
+
+    // ⚠️ ARXIV — o'chirishning o'rniga. `deleteGroup` guruh bilan
+    //    birga davomat, baho va to'lov tarixini ham olib ketadi;
+    //    kurs tugaganda esa aynan o'sha tarix kerak bo'ladi.
+    if (archived !== undefined) {
+      group.archivedAt = archived ? new Date() : null;
     }
 
     await group.save();

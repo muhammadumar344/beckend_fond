@@ -72,6 +72,27 @@ const classSchema = new mongoose.Schema({
     min: 1,
   },
 
+  // ── Arxiv ──────────────────────────────────────────────────
+  //
+  // ⚠️ NEGA `isActive` EMAS, `archivedAt`: o'quv yili tugaganda
+  //    guruhni yopish kerak bo'ladi va "qachon yopilgan" degan
+  //    savol hisobotda darhol chiqadi. Bulean bu javobni
+  //    bermaydi.
+  //
+  // ⚠️ NEGA UMUMAN KERAK: ilgari yagona yo'l `deleteClass` edi va
+  //    u sinf bilan birga BARCHA o'quvchi, to'lov va xarajatni
+  //    o'chirardi. Ya'ni o'tgan yilni "yopish" uchun o'sha
+  //    yilning butun moliyaviy tarixini yo'q qilish kerak edi.
+  //
+  // ⚠️ `null` — faol. Mongo'da `{ archivedAt: null }` maydoni
+  //    umuman yo'q hujjatlarni ham topadi, shuning uchun eski
+  //    sinflar avtomatik faol bo'lib qoladi (sxemadagi standart
+  //    qiymat mavjud hujjatlarga tushmaydi — CLAUDE.md tuzog'i).
+  archivedAt: {
+    type: Date,
+    default: null,
+  },
+
   createdAt: {
     type: Date,
     default: Date.now,

@@ -37,6 +37,10 @@ router.post("/account/delete", onlyTeacher, accountCtrl.requestDeletion);
 
 router.get("/dashboard", onlyTeacher, ctrl.getDashboard);
 router.get("/subscription", onlyTeacher, ctrl.getSubscriptionInfo);
+// Markaz salomatligi — jimgina yo'qotilayotgan narsalar
+// (to'lov varaqasi yaratilmagan guruh, telefonsiz o'quvchi…).
+// ⚠️ Xodim ham ko'radi: ruxsat controller ichida tekshiriladi.
+router.get("/health", allowTeacherOrStaff, ctrl.getCenterHealth);
 router.put("/onboarding", onlyTeacher, ctrl.completeOnboarding);
 
 // ══ REJIM — xato tanlaganlar uchun chiqish yo'li ═════════════
@@ -87,6 +91,16 @@ router.post("/cleanup-previous-year", onlyTeacher, cleanupPreviousYear);
 
 // ══ CLASSES ══════════════════════════════════════════════════
 // ✅ /classes/list AVVAL yozilishi shart — /classes/:id bilan conflict bo'lmasin
+// ⚠️ TEZKOR QIDIRUV IKKALA REJIMDA HAM ISHLAYDI.
+//    Ilgari u faqat `/api/lc/search` da edi va butun `/api/lc/*`
+//    `requireLCMode` bilan qulflangan — ya'ni Fond direktori
+//    Ctrl+K ni bosib, har safar bo'sh ro'yxat ko'rardi. Xato
+//    ham chiqmasdi: qidiruv jimgina 403 olardi.
+//    Controller rejimga bog'liq emas — o'quvchi va sinfni
+//    `ctx.directorId` bo'yicha qidiradi.
+const cardCtrlShared = require("../controllers/studentCardController");
+router.get("/search", allowTeacherOrStaff, cardCtrlShared.search);
+
 router.get("/classes/list", allowTeacherOrStaff, ctrl.getClassesForStaff);
 
 // ✅ TUZATILDI — Director VA Staff (manageGroups huquqi bilan, ichkarida
@@ -106,6 +120,12 @@ router.put(
   onlyTeacher,
   ctrl.updateInitialBalance,
 );
+// ⚠️ Nomni o'zgartirish 2026-08-21 gacha UMUMAN YO'Q edi:
+//    `updateClass` yozilgan, lekin route'ga ulanmagan. Ya'ni
+//    sinf nomida xato bo'lsa (yoki yangi o'quv yili boshlansa)
+//    uni o'chirib qayta yaratishdan boshqa yo'l yo'q edi — u esa
+//    o'quvchilarni ham, to'lov tarixini ham olib ketardi.
+router.put("/classes/:classId", allowTeacherOrStaff, ctrl.updateClass);
 router.delete("/classes/:classId", allowTeacherOrStaff, ctrl.deleteClass);
 
 // ══ STUDENTS — Director VA Staff (manageStudents huquqi bilan) ══
@@ -119,6 +139,21 @@ router.get(
   allowTeacherOrStaff,
   ctrl.getClassStudents,
 );
+// ⚠️ TAHRIRLASH 2026-08-21 gacha UMUMAN YO'Q edi: funksiya
+//    yozilgan, lekin route'ga ulanmagan (va ustiga buzuq edi).
+//    Ya'ni telefonda xato bo'lsa, o'quvchini o'chirib qayta
+//    yaratishdan boshqa yo'l yo'q edi — u esa butun to'lov
+//    tarixini o'chiradi.
+// Excel/CSV import — avval ko'rsatadi (`apply: false`), keyin yozadi.
+// ⚠️ `uploadLimiter`: fayl tanasi katta bo'ladi, serverni bo'g'ib
+//    qo'ymasin (chek rasmlari bilan bir xil himoya).
+router.post(
+  "/classes/:classId/students/import",
+  uploadLimiter,
+  allowTeacherOrStaff,
+  ctrl.importStudents,
+);
+router.put("/students/:studentId", allowTeacherOrStaff, ctrl.updateStudent);
 router.delete("/students/:studentId", allowTeacherOrStaff, ctrl.deleteStudent);
 
 // ══ MINI APP ULANISHI — ota-onani Telegram'ga bog'lash ══════
@@ -144,6 +179,14 @@ router.post(
   allowTeacherOrStaff,
   ctrl.createMonthlyPayments,
 );
+// ⚠️ HAMMA guruhga bir bosishda — unutilgan guruh qolmasin.
+//    Ikki marta bosish xavfsiz: mavjud varaqalar qayta
+//    yaratilmaydi.
+router.post(
+  "/payments/create-monthly-all",
+  allowTeacherOrStaff,
+  ctrl.createMonthlyPaymentsAll,
+);
 router.get(
   "/payments/class/:classId",
   allowTeacherOrStaff,
@@ -155,6 +198,21 @@ router.put(
   allowTeacherOrStaff,
   ctrl.updatePaymentStatus,
 );
+// ⚠️ SUMMANI TAHRIRLASH. Ilgari varaqa guruhning `defaultAmount`
+//    idan kelar va keyin HECH QACHON o'zgarmasdi — ya'ni
+//    chegirma, qisman to'lov va aka-uka uchun boshqa narx
+//    kiritilmasdi, noto'g'ri yozilgan summani ham tuzatib
+//    bo'lmasdi. Yagona yo'l varaqani o'chirib qayta yaratish edi
+//    va u bilan birga to'lov tarixi ham yo'qolardi.
+//
+//    Ya'ni bu ochilish xavf QO'SHMAYDI: bir xil huquqli odam
+//    allaqachon o'chirib qayta yarata olardi. Endi esa
+//    o'zgarish jurnalga tushadi (`payment.amount_changed`) —
+//    kim, qachon, nimadan nimaga.
+//
+// ⚠️ Ruxsat controller ichida: `managePayments`. Filial
+//    cheklovi ham o'sha yerda tekshiriladi.
+router.put("/payments/:paymentId", allowTeacherOrStaff, ctrl.markPayment);
 
 // ══ REMINDER / SMS / EXPORT — faqat Director ════════════════
 router.get("/reminder", onlyTeacher, ctrl.getMonthlyReminder);
@@ -193,6 +251,22 @@ router.get("/telegram/director", onlyTeacher, tgCtrl.getDirectorLink);
 router.post("/telegram/director", onlyTeacher, tgCtrl.createDirectorLink);
 router.delete("/telegram/director", onlyTeacher, tgCtrl.unlinkDirector);
 router.put("/telegram/director/mode", onlyTeacher, tgCtrl.setCashReportMode);
+router.put(
+  "/telegram/director/churn-mode",
+  onlyTeacher,
+  tgCtrl.setChurnDigestMode,
+);
+router.put(
+  "/telegram/director/billing-mode",
+  onlyTeacher,
+  tgCtrl.setBillingAlertMode,
+);
+// "Xabar qanday keladi?" — bugungi haqiqiy ma'lumot bilan
+router.post(
+  "/telegram/director/preview",
+  onlyTeacher,
+  tgCtrl.sendDirectorPreview,
+);
 router.get("/telegram/parents", onlyTeacher, tgCtrl.getParents);
 router.get(
   "/telegram/parents/class/:classId",

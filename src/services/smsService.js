@@ -1,24 +1,50 @@
 // src/services/smsService.js
-// SMS integratsiya hozircha yo'q — Telegram ishlatilmoqda
-// Bu fayl faqat teacherController.js crash bo'lmasligi uchun
+// ════════════════════════════════════════════════════════════
+// SMS YUBORISH — provayder ulanmagan (`config/sms.js` ga qarang).
+//
+// ⚠️ ILGARI BU FAYL "SOXTA MUVAFFAQIYAT" QAYTARARDI: har bir
+//    o'quvchi uchun `status: 'failed'` yozib, xato tashlamasdi.
+//    Controller esa buni `success: true` bilan yuborardi —
+//    Premium sotib olgan direktor "25 tadan 0 tasi yuborildi"
+//    ni ko'rib, sababini hech qachon bilmasdi.
+//
+//    Endi sozlanmagan holat AYTILADI (`configured: false`),
+//    chaqiruvchi 503 qaytaradi.
+//
+// ⚠️ PROVAYDER ULANGANDA shu ikki funksiyaning ICHI yoziladi,
+//    chaqiruvchi kod o'zgarmaydi — Payme/Click bilan bir xil
+//    naqsh.
+// ════════════════════════════════════════════════════════════
+
+const sms = require("../config/sms");
+
+/** Provayder ulanganmi — controller shu bo'yicha 503 qaytaradi */
+const isConfigured = () => sms.configured;
 
 const sendBulkReminders = async (students, className, month, year) => {
-  console.log(`SMS service: ${students.length} ta o'quvchi uchun so'rov keldi (${className}, ${month}/${year})`)
-  console.log('SMS integratsiya ulanmagan — Telegram ishlatilmoqda')
+  if (!sms.configured) {
+    // ⚠️ Bu yerga yetib kelmasligi kerak: controller oldindan
+    //    tekshiradi. Yetib kelsa — halol xato, jim `failed` emas.
+    const err = new Error("SMS xizmati sozlanmagan");
+    err.status = 503;
+    throw err;
+  }
 
-  // Hamma "failed" qaytaradi, lekin xato bermaydi
-  return students.map(s => ({
-    studentId: s._id,
-    name: s.name,
-    phone: s.parentPhone || '',
-    status: 'failed',
-    reason: 'SMS service ulanmagan',
-  }))
-}
+  // TODO(provayder): eskiz/playmobile API chaqiruvi shu yerda.
+  const err = new Error("SMS xizmati sozlanmagan");
+  err.status = 503;
+  throw err;
+};
 
 const sendSingle = async (phone, message) => {
-  console.log(`SMS: ${phone} ga xabar yuborish so'raldi (ulanmagan)`)
-  return { success: false, reason: 'SMS service ulanmagan' }
-}
+  if (!sms.configured) {
+    const err = new Error("SMS xizmati sozlanmagan");
+    err.status = 503;
+    throw err;
+  }
+  const err = new Error("SMS xizmati sozlanmagan");
+  err.status = 503;
+  throw err;
+};
 
-module.exports = { sendBulkReminders, sendSingle }
+module.exports = { isConfigured, sendBulkReminders, sendSingle };

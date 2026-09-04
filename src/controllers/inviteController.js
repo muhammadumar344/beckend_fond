@@ -111,6 +111,11 @@ exports.getStudentLinks = async (req, res) => {
     return res.json({
       success: true,
       links: links.map((l) => ({
+        // ⚠️ `id` SHART. Busiz interfeys qatorni ADRESLAY
+        //    olmaydi va `DELETE /teacher/links/:linkId` hech
+        //    qayerdan chaqirilmasdi — ya'ni noto'g'ri ulangan
+        //    odam bolaning baholarini abadiy ko'rib turardi.
+        id: l._id,
         kind: l.kind,
         verified: l.verifiedVia !== "legacy",
         via: l.verifiedVia,

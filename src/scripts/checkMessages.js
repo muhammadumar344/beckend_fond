@@ -82,12 +82,26 @@ console.log(`Shablonli (\${...})  : ${templateCount}  — tarjima qilinmaydi`);
 console.log(`Ataylab o'tkazilgan : ${SKIP.size}\n`);
 
 if (missing.length) {
-  console.log(`⚠️  Tarjimasiz ${missing.length} ta matn:`);
+  // ⚠️ XATO, OGOHLANTIRISH EMAS (2026-08-21). Ilgari bu yumshoq
+  //    ro'yxat edi va aynan shu sababli qarz yig'ilib borardi:
+  //    26 ta xabar oylab shu ro'yxatda turdi va hech kim
+  //    tuzatmadi. Frontendda `check:i18n` ni xatoga aylantirish
+  //    qarzni bir kunda to'xtatgan edi — bu yerda ham shunday.
+  //
+  //    Yangi xabar yozdingizmi — `utils/messages.js` ga kalitini
+  //    ham qo'shing. Aks holda ruscha interfeysda o'sha xabar
+  //    JIMGINA o'zbekcha chiqadi va buni faqat foydalanuvchi
+  //    ko'radi.
+  console.log(`❌ Tarjimasiz ${missing.length} ta matn:`);
   for (const [text, locs] of missing) {
     console.log(`   "${text}"`);
     console.log(`      ${locs.slice(0, 3).join(", ")}${locs.length > 3 ? ` (+${locs.length - 3})` : ""}`);
   }
   console.log("");
+  console.log("   Yechim: shu matnlarni src/utils/messages.js ga qo'shing.");
+  console.log("   Ataylab tarjimasiz qoldirilishi kerak bo'lsa — SKIP ro'yxatiga.");
+  console.log("");
+  process.exitCode = 1;
 } else {
   console.log("✅ Barcha oddiy matnlar tarjima qilingan\n");
 }

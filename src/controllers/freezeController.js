@@ -6,6 +6,11 @@ const Student        = require('../models/Student')
 const MonthlyPayment = require('../models/MonthlyPayment')
 const Expense        = require('../models/Expense')
 const XLSX           = require('xlsx')
+// ⚠️ Xabar matni allaqachon yozilgan edi, lekin hech qayerdan
+//    chaqirilmasdi: yozilgan paytda direktorga xabar yuboradigan
+//    kanalning o'zi yo'q edi (bot faqat ota-onalar uchun ishlardi).
+const freezeNotify   = require('../services/freezeNotify')
+const { inBackground } = require('../services/notify')
 const {
   Document, Packer, Paragraph, TextRun,
   Table, TableRow, TableCell, WidthType, AlignmentType
@@ -66,6 +71,15 @@ exports.activateFreeze = async (req, res) => {
       frozenCount++
     }
 
+    // ⚠️ FONDA yuboriladi: 200 ta hisob saqlanib, 200 ta
+    //    Telegram xabari ketishi mumkin — admin shuncha
+    //    "Yuklanmoqda" ni kutib turmasin. Xato ham yutiladi:
+    //    Telegram javob bermagani muzlatishni bekor qilmasin.
+    inBackground(freezeNotify.notifyFrozen, {
+      teachers,
+      reason: freeze.reason,
+    })
+
     res.json({
       success: true,
       message: `Freeze yoqildi. ${frozenCount} ta ustoz muzlatildi.`,
@@ -103,6 +117,9 @@ exports.deactivateFreeze = async (req, res) => {
       await t.save()
       restoredCount++
     }
+
+    // Qolgan kunlar bilan xabar — direktor uchun eng muhim raqam
+    inBackground(freezeNotify.notifyRestored, { teachers })
 
     res.json({
       success: true,

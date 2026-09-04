@@ -15,6 +15,7 @@ const { resolveContext, requirePermission } = require("../utils/resolveContext")
 const { freeSlots, toMin, normalizeHours } = require("../utils/supportSlots");
 const { notifyBooking, inBackground } = require("../services/notify");
 const { currentToken, WINDOW_SEC } = require("../services/supportQr");
+const svc = require("../services/supportBooking");
 const {
   MIN_DAYS_AHEAD,
   MAX_DAYS_AHEAD,
@@ -271,18 +272,40 @@ exports.updateBooking = async (req, res) => {
 
     const before = booking.status;
 
-    if (status) {
-      booking.status = status;
-      if (status === "cancelled") {
-        booking.cancelledAt = new Date();
-        booking.cancelledBy = "crm";
+    // ⚠️ BEKOR QILISH QOIDASI SERVISDA. Bu yerda u qo'lda
+    //    takrorlangan edi va bitta shartni yo'qotgan: servis
+    //    faqat FAOL yozuvni (`pending`/`confirmed`) bekor
+    //    qiladi, bu yer esa istalganini. Ya'ni o'quvchi kelib,
+    //    QR skanerlab `done` bo'lgan yozuvni ham "bekor qilindi"
+    //    ga o'tkazish mumkin edi — kelgani haqidagi yozuv
+    //    yo'qolardi.
+    if (status === "cancelled") {
+      const r = await svc.cancelBooking({ bookingId: booking._id, by: "crm" });
+      if (!r.ok) {
+        return res.status(r.status || 400).json({ success: false, error: r.error });
       }
+      if (note !== undefined) {
+        r.booking.note = String(note).slice(0, 300);
+        await r.booking.save();
+      }
+      // ⚠️ Ota-onaga xabar — faqat holat HAQIQATAN o'zgargan bo'lsa
+      if (before !== "cancelled") {
+        inBackground(notifyBooking, {
+          directorId: ctx.directorId,
+          bookingId: booking._id,
+          status: "cancelled",
+        });
+      }
+      return res.json({ success: true, booking: r.booking });
     }
+
+    if (status) booking.status = status;
     if (note !== undefined) booking.note = String(note).slice(0, 300);
     await booking.save();
 
-    // Holat o'zgargandagina xabar — izoh tahriri uchun emas
-    if (status && status !== before && ["confirmed", "cancelled"].includes(status)) {
+    // Holat o'zgargandagina xabar — izoh tahriri uchun emas.
+    // (`cancelled` yuqorida, servis yo'lida hal qilinadi.)
+    if (status && status !== before && status === "confirmed") {
       inBackground(notifyBooking, {
         directorId: ctx.directorId,
         bookingId: booking._id,
@@ -399,8 +422,8 @@ exports.createBooking = async (req, res) => {
       return res.status(404).json({ success: false, error: "O'quvchi topilmadi" });
     }
 
-    const { bookSlot } = require("../services/supportBooking");
-    const result = await bookSlot({
+    // Yozilish qoidalari servisda — CRM va Mini App uchun bitta
+    const result = await svc.bookSlot({
       directorId: ctx.directorId,
       studentId,
       teacherId,

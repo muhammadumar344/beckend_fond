@@ -27,6 +27,7 @@ const CashShift = require("../models/CashShift");
 const CashHandover = require("../models/CashHandover");
 const MonthlyPayment = require("../models/MonthlyPayment");
 const Expense = require("../models/Expense");
+const PaymentClaim = require("../models/PaymentClaim");
 const { dayRange, toObjectId } = require("./cashShift");
 const { todayInTashkent, addDays } = require("../utils/supportWindow");
 
@@ -36,7 +37,7 @@ const { todayInTashkent, addDays } = require("../utils/supportWindow");
 //    almashtiramiz — xabar matni tekshirsa bo'ladigan bo'lib
 //    qolsin.
 const money = (n) =>
-  new Intl.NumberFormat("ru-RU").format(Math.round(n || 0)).replace(/ /g, " ");
+  new Intl.NumberFormat("ru-RU").format(Math.round(n || 0)).replace(/\u00A0/g, " ");
 
 /**
  * ⚠️ SOF FUNKSIYA. Yig'ilgan ma'lumotdan xabar matnini yasaydi.
@@ -49,6 +50,7 @@ const money = (n) =>
  * @param {Array}  d.openDays        [{ name, date, cash }]  — yopilmagan
  * @param {Array}  d.pendingHandovers[{ fromName, toName, amount, days }]
  * @param {Array}  d.disputed        [{ fromName, toName, amount, confirmedAmount }]
+ * @param {object} [d.claims]        { count, amount, oldestDays } — ota-ona kutayotgan to'lovlar
  * @returns {{ hasProblems: boolean, text: string }}
  */
 function buildReport(d) {
@@ -56,12 +58,17 @@ function buildReport(d) {
   const openDays = d.openDays || [];
   const pending = d.pendingHandovers || [];
   const disputed = d.disputed || [];
+  const claims = d.claims || { count: 0, amount: 0, oldestDays: 0 };
   const t = d.totals || {};
 
   const withDiff = closed.filter((c) => c.difference !== 0);
 
   const hasProblems =
-    openDays.length > 0 || withDiff.length > 0 || pending.length > 0 || disputed.length > 0;
+    openDays.length > 0 ||
+    withDiff.length > 0 ||
+    pending.length > 0 ||
+    disputed.length > 0 ||
+    claims.count > 0;
 
   const lines = [];
   lines.push(`*${d.centerName || "Markaz"}* — ${d.date}`);
@@ -126,6 +133,24 @@ function buildReport(d) {
     }
   }
 
+  // ── Ota-ona kutayotgan to'lovlar ──
+  // ⚠️ Bu yerda pul markazniki emas, VAQT ota-onaniki: u
+  //    kartaga o'tkazdi, ilovada "to'ladim" dedi va endi
+  //    kutyapti. Tasdiqlanmaguncha qarzi ochiq turadi va u
+  //    o'zini e'tiborsiz qoldirilgandek his qiladi.
+  //
+  //    Yangi cron yozilmadi — bu ham kassa haqidagi gap va
+  //    xabar allaqachon har kuni ketadi. Ikkinchi xabar
+  //    birinchisining o'qilishini kamaytirardi.
+  if (claims.count) {
+    lines.push("");
+    lines.push(`💳 *Tasdiqlanmagan to'lov: ${claims.count} ta*`);
+    lines.push(`  ${money(claims.amount)} so'm`);
+    if (claims.oldestDays > 0) {
+      lines.push(`  eng eskisi ${claims.oldestDays} kundan beri kutyapti`);
+    }
+  }
+
   if (!hasProblems) {
     lines.push("");
     lines.push("Hammasi yopilgan, farq yo'q.");
@@ -147,7 +172,7 @@ async function collect(director, date) {
   const { from, to } = dayRange(day);
   const dirId = toObjectId(director._id);
 
-  const [payRows, expRow, closed, handovers, oldPayRows, oldShifts] =
+  const [payRows, expRow, closed, handovers, oldPayRows, oldShifts, claimRow] =
     await Promise.all([
       MonthlyPayment.aggregate([
         {
@@ -226,6 +251,20 @@ async function collect(director, date) {
       })
         .select("staff.id date")
         .lean(),
+      // ⚠️ `aggregate` Mongoose sxemasidan o'tmaydi — `dirId`
+      //    allaqachon ObjectId (`toObjectId`), matn bo'lsa
+      //    `$match` jimgina bo'sh qaytarardi.
+      PaymentClaim.aggregate([
+        { $match: { director: dirId, status: "pending" } },
+        {
+          $group: {
+            _id: null,
+            count: { $sum: 1 },
+            amount: { $sum: "$amount" },
+            oldest: { $min: "$createdAt" },
+          },
+        },
+      ]),
     ]);
 
   const totals = { cashIn: 0, card: 0, transfer: 0, total: 0, count: 0 };
@@ -265,10 +304,20 @@ async function collect(director, date) {
       confirmedAmount: h.confirmedAmount,
     }));
 
+  const c = claimRow[0];
+  const claims = {
+    count: c?.count || 0,
+    amount: c?.amount || 0,
+    oldestDays: c?.oldest
+      ? Math.floor((nowMs - new Date(c.oldest).getTime()) / 86400000)
+      : 0,
+  };
+
   return {
     date: day,
     centerName: director.name || "Markaz",
     totals,
+    claims,
     closed: closed.map((c) => ({
       name: c.staff?.name || "",
       countedCash: c.countedCash,

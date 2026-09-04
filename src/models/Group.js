@@ -96,6 +96,11 @@ const groupSchema = new mongoose.Schema({
   },
   capacity: { type: Number, default: null, min: 1 },
 
+  // Arxiv — `Class` dagi bilan bir xil maydon (bitta kolleksiya).
+  // Kurs tugagach guruh yopiladi, lekin davomat, baho va to'lov
+  // tarixi joyida qoladi (`deleteGroup` esa hammasini o'chiradi).
+  archivedAt: { type: Date, default: null },
+
   // `Class` dagi bilan bir xil bo'lishi shart — bitta kolleksiya.
   // `timestamps: true` ATAYLAB ishlatilmadi: u `updatedAt` qo'shib,
   // Class orqali yozilgan hujjatlardan farq qiladigan shakl yasardi.

@@ -253,6 +253,7 @@ haqiqiy `res.json(...)` ni tekshiring:
 | `GET /lc/rooms` | `{ success, rooms }` — har birida `lessonsPerWeek` |
 | `GET /lc/rooms/free` | `{ success, rooms, freeCount }` — har birida `busy`, `busyWith` |
 | `GET /lc/rooms/occupancy` | `{ success, days, rooms, unlinked }` |
+| `GET /teacher/health` | `{ success, health }` — `issues` + `samples` |
 
 ### Xato javoblari — `error` va `message` HAR DOIM teng
 
@@ -329,6 +330,13 @@ Barcha modellarda indeks bor (jami 35 ta). Eng muhimlari:
 Yangi so'rov naqshi qo'shsangiz mos indeks borligini tekshiring —
 `Attendance`, `Grade`, `HomeworkResult` tez o'sadigan kolleksiyalar.
 
+⚠️ **Ro'yxat ustida halqa yurgizib, har bir element uchun so'rov
+yubormang.** Bu loyihada uch joyda shunday edi (admin paneli,
+Fond dashboard'i, Sinflar ro'yxati) va har birida
+`MonthlyPayment.find(...)` sinfning butun tarixini xotiraga
+tortardi. `aggregate` bilan bazada yig'ing; o'quvchilar uchun
+`buildGroupStudentMap` bor (`utils/enrollment.js`).
+
 ## Guruh/sinf ajratish (reja 1.2) — tayyorgarlik
 
 LC guruhlari hali `Class` da saqlanadi. Ajratish uchun **tayyorlangan,
@@ -336,8 +344,14 @@ lekin ishga tushirilmagan**:
 
 - `models/Group.js` — yangi model (hech qayerda import qilinmagan)
 - `src/scripts/analyzeGroupSplit.js` — **faqat o'qiydi**, hisobot beradi
-- `src/scripts/migrateGroups.js` — sukut bo'yicha quruq yurish;
-  yozish uchun `--apply`, orqaga qaytarish uchun `--rollback --apply`
+- `src/scripts/migrateGroups.js` — ⛔ **HOZIR O'ZINI TO'XTATADI**
+  va bu ataylab. U **B varianti** uchun yozilgan (`Group` alohida
+  kolleksiyada), loyihada esa **A varianti** deploy qilingan:
+  `Group` aynan `classes` ga bog'langan. Shu holatda `--apply`
+  o'sha `_id` bilan o'sha kolleksiyaga yozadi, `--rollback` esa
+  **jonli `classes` dan o'chirishga urinadi**. Skript
+  ulanishdan oldin kolleksiya nomlarini solishtirib chiqib
+  ketadi; `test/groupMigration.test.js` buni qulflaydi.
 - `docs/GROUP_MIGRATION.md` — uch xil yondashuv, tavsiya va tartib
 
 Asosiy g'oya: `Group` yozuvlari **aynan o'sha `_id`** bilan yaratiladi,
@@ -346,6 +360,13 @@ kerak emas. Asosiy qiyinchilik — 13 joydagi `populate("class")`;
 batafsili hujjatda.
 
 ⚠️ Skriptlarni ishga tushirishdan oldin bazadan nusxa oling.
+
+⚠️ **`migratedFromClass` `Group` sxemasida YO'Q.** Skript uni
+yozadi va keyin o'sha maydon bo'yicha o'chiradi — Mongoose esa
+uni jimgina tashlab yuboradi. Ya'ni "allaqachon ko'chirilgan"
+ro'yxati doim bo'sh bo'lardi. Maydonni qo'shishdan oldin
+yuqoridagi to'xtatuvchini o'qing: u bo'lmasa `deleteMany`
+markazlarning HAMMA guruhini o'chirib yuborardi.
 
 ## Group va Class — bitta kolleksiya, ikkita model
 
@@ -465,6 +486,99 @@ Telegram'dan nusxa olingan son qidiruvda topilmasdi.
 ⚠️ Telegram **403** = direktor botni bloklagan. Bu xato emas,
 holat: `telegram.chatId` tozalanadi, aks holda har kuni log'ga
 bir xil xato yozilib turardi.
+
+⚠️ **Xabarga tasdiqlanmagan `PaymentClaim` lar ham kiradi**
+(nechta, umumiy summa, eng eskisi necha kun). Bu pul markazda
+turibdi va ota-ona kutyapti — alohida cron emas, shu xabar
+ichida: ikkinchi kunlik xabar birinchisining o'qilishini
+kamaytirardi.
+
+## Haftalik "ketish arafasida" xabari
+
+`cron/churnDigestCron.js` — **dushanba 09:00 Toshkent**. Matn
+`services/churnDigest.js` dagi **sof** `buildDigest()` da,
+`test/churnDigest.test.js` uni qulflaydi. Ro'yxatning o'zi
+`services/churnRisk.js` dan keladi (CRM'dagi `/lc/at-risk` bilan
+bitta manba).
+
+⚠️ **Ota-ona telefoni xabarning o'zida va ALOHIDA qatorda.**
+Telegram raqamni bosiladigan qiladi — direktor xabarni o'qib
+o'sha yerdan qo'ng'iroq qiladi. Markdown belgilari (`*`, `_`)
+orasida qolsa Telegram uni tanimaydi.
+
+⚠️ **Bo'sh hafta — xabar yo'q.** Kassa xabaridagi `problems`
+bilan bir xil qoida: xabar kelsa — ish bor.
+
+⚠️ Ro'yxat **8 tagacha**, qolgani "va yana N ta". Yigirmata ismli
+xabar ro'yxat emas, devor bo'lib qoladi.
+
+## Oy boshidagi "varaqa yaratilmagan" xabari
+
+`cron/billingAlertCron.js` — **oyning 2-sanasi 09:00 Toshkent**.
+Matn `services/billingAlert.js` dagi **sof** `buildAlert()` da,
+`test/billingAlert.test.js` uni qulflaydi.
+
+⚠️ **2-SANA, 1-sana EMAS.** 1-sanada hali hech bir guruhda
+varaqa yo'q — bu unutish emas, tabiiy hol, va xabar butun
+ro'yxatni sanab shovqinga aylanardi. 1-sana — varaqa
+yaratiladigan kun (o'sha kuni 09:00 da `reminderCron`
+ota-onalarga eslatma yuboradi va administratorni turtadi).
+
+⚠️ **IKKALA REJIM UCHUN HAM** — `institutionType` bo'yicha
+filtr yo'q. Ketish xabari faqat LC'da ma'noli edi, varaqani
+unutish esa Fond'da ham xuddi shunday ko'rinmas.
+
+⚠️ **SANOQ AYNAN `services/billing.js` DAGIDEK**
+(`Student.find({ class, isActive: { $ne: false } })`). Tugma
+nima yaratsa, xabar aynan shuni va'da qilishi kerak. Ya'ni
+`Enrollment` orqali qo'shimcha guruhda o'qiydigan bola ikkala
+joyda ham sanalmaydi — bu ochiq savol (HANDOFF §5), lekin uni
+faqat xabarda "tuzatish" ikkalasini bir-biridan ajratardi.
+
+⚠️ **SUMMA CHEGARADAN OSHGANLARNI HAM QO'SHADI.** Ro'yxat 8 ta
+guruh bilan cheklangan, pul esa cheklanmaydi — aks holda xabar
+yo'qotishni kamaytirib ko'rsatardi. Test buni qulflaydi.
+
+⚠️ **Havola rejimga qarab boshqa sahifaga boradi**
+(`/lc/payments` yoki `/teacher/payments`) — bitta manzil yozsak
+yarim foydalanuvchi "sahifa topilmadi" olardi.
+
+⚠️ **Bo'sh ro'yxat — xabar yo'q.** Sozlama frontendda
+`teacher/Payments.vue` da (kassa xabari Kassa'da, ketish xabari
+"Ketish arafasida"da turgani bilan bir xil qoida).
+
+## `POST /teacher/telegram/director/preview`
+
+"Xabar qanday keladi?" — ulanishni tekshirishning yagona halol
+yo'li. Busiz direktor tugmani bosib ertaga 21:00 gacha kutishi
+va xabar kelmasa nima buzilganini bilmasligi kerak edi: bot
+bloklanganmi, rejim o'chiqmi, ulanish uzilganmi — uchalasi ham
+JIM.
+
+⚠️ **Bugungi HAQIQIY ma'lumot yuboriladi**, soxta namuna emas.
+Namuna ulanishni tekshiradi, lekin "menga bu kerakmi?" degan
+savolga javob bermaydi.
+
+## ⚠️ Sxemadagi standart qiymat MAVJUD hujjatlarga tushmaydi
+
+Mongoose standart qiymatni faqat hujjat `save()` qilinganda
+yozadi. `updateOne` / `findOneAndUpdate` yozmaydi — ya'ni yangi
+maydon qo'shsangiz, eski hisoblarda u bazada **umuman yo'q**.
+
+Shu sabab cron va hisobot filtrlarida **"qiymat X ga teng" emas,
+"X emas"** deb yoziladi:
+
+```js
+"cashReport.mode": { $in: ["problems", "daily"] }  // ❌ eski hisob tushmaydi
+"cashReport.mode": { $ne: "off" }                  // ✅ standart ham qamrab olinadi
+```
+
+O'qiyotganda ham shunday: `dir.cashReport?.mode || "problems"`.
+
+Bu haqiqiy bug bo'lgan (2026-08-21 da topildi): kunlik kassa
+xabari `cashReport` maydoni paydo bo'lishidan oldin ochilgan
+hisoblarga **hech qachon kelmagan** — xato bermagani uchun buni
+hech kim sezmagan.
 
 ## Pulni topshirish — kassaning ikkinchi yarmi
 
@@ -599,6 +713,25 @@ uchun `create` va `import` arxivdagi bir xil nomli xonani topsa
 uni **qayta faollashtiradi** — aks holda "allaqachon mavjud"
 deb rad etilardi va ekranda hech qanday o'sha xona ko'rinmasdi.
 
+## Platformaning to'lov kartasi
+
+Direktor tarif uchun pulni shu kartaga o'tkazadi.
+`config/platform.js` → `PLATFORM_CARD`, `PLATFORM_CARD_HOLDER`.
+Javobda `GET /teacher/subscription` → `payTo`.
+
+⚠️ **Frontendda `8600 1234 5678 9012` qotirib yozilgandi** va bu
+haqiqiy karta emas — aynan shu satr ikkita boshqa faylda
+`placeholder` sifatida turadi. Ya'ni Pro sotib olmoqchi bo'lgan
+direktor uni nusxa olib, pulni yo'qqa yuborardi.
+
+⚠️ **Kalit yo'q → `configured: false` va sahifa soxta raqam
+o'rniga ogohlantirish ko'rsatadi.** Payme/Click bilan bir xil
+qoida: yarim sozlangan holatda pul qabul qilishga urinmaymiz.
+
+⚠️ **16 xona tekshiriladi.** Yarim yozilgan raqam ham
+`configured: false` — aks holda u ekranga chiqib, kimdir o'shanga
+o'tkazishga urinardi.
+
 ## To'lov tizimlari — o'chiq turibdi
 
 Payme va Click kodi yozilgan, lekin **kalitlar yo'q → 503**.
@@ -631,6 +764,216 @@ Batafsil: **`docs/CLOUDINARY.md`**
 ⚠️ Cheklovni frontend **o'zi hisoblamaydi** — `GET /teacher/branding`
 javobidagi `logoMaxBytes` ni ishlatadi (CDN yoqiq: 3MB, o'chiq: 300KB).
 
+## O'quvchilarni Excel'dan import qilish
+
+`services/studentImport.js` — **sof** parser (`parseTable`) +
+`readFile` (base64 → jadval). `POST
+/teacher/classes/:classId/students/import`.
+
+⚠️ **`apply` berilmasa faqat KO'RSATADI.** Yozish uchun ikkinchi
+so'rov kerak — `/lc/rooms/import` bilan bir xil qoida.
+
+⚠️ **Chegaradan oshsa HECH NARSA yozilmaydi.** Yarmi tushgan
+ro'yxatda direktor qaysi bola qolganini bilmaydi.
+
+⚠️ **Takror ikki qatlamda**: fayl ichida va bazada. Telefon
+`utils/phone.js` orqali (oxirgi 9 raqam) solishtiriladi —
+`+998 90 123 45 67` va `90 123 45 67` bitta odam.
+
+⚠️ **Bir xil ismli ikki bola ikkalasi ham tushadi** (raqami
+boshqa bo'lsa). Faqat ism bo'yicha solishtirish ikkinchisini
+yo'qotardi.
+
+⚠️ Ustun nomi topilmasa javobda **fayldagi sarlavhalar** qaytadi.
+Quruq "xato" bilan odam faylni tuzata olmaydi.
+
+⚠️ `rollNumber` bazadagi eng kattadan davom etadi, sanoqdan
+emas: o'chirilgan o'quvchidan keyin raqam takrorlanardi.
+
+## Obuna muzlatilganda direktorga xabar
+
+`services/freezeNotify.js` — admin freeze yoqqanda/o'chirganda
+Telegram'ga xabar. Matn `telegramService.js` da yozilgan edi,
+lekin hech qayerdan chaqirilmagan: yozilgan paytda kanalning
+o'zi yo'q edi.
+
+⚠️ **Rejim tanloviga qaramaydi.** `cashReport.mode` /
+`churnDigest.mode` — kunlik shovqin darajasi uchun; obuna
+muzlatilishi esa hisob haqidagi xabar, uni o'chirgan odam ham
+bilishi kerak.
+
+⚠️ **Fonda yuboriladi** (`inBackground`) va har 20 tadan keyin
+tanaffus — 200 ta xabar admin so'rovini kutdirmasin va Telegram
+chegarasiga urilmasin.
+
+## Arxiv — o'chirishning o'rniga
+
+Uch joyda bir xil naqsh bor edi: **ma'lumotni yo'qotish oddiy
+ishning yagona yo'li**. Telefonni tuzatish uchun o'quvchini
+o'chirib qayta yaratish, o'quv yilini yopish uchun sinfni
+o'chirish (u esa barcha o'quvchi, to'lov va xarajatni ham
+o'chiradi).
+
+| Model | Maydon | Ma'nosi |
+|---|---|---|
+| `Student` | `isActive: false` | arxivda |
+| `Class` / `Group` | `archivedAt: Date` | qachon yopilgani |
+
+⚠️ **`Class` da `isActive` YO'Q EDI** va `updateClass` unga
+yozardi — Mongoose jimgina tashlab yuborardi. Arxivlash hech
+qachon ishlamagan.
+
+⚠️ **Filtr `archivedAt: null`** — Mongo'da u maydoni umuman
+yo'q hujjatlarni ham topadi. `$exists: false` yoki `false`
+bilan solishtirsangiz mavjud sinflar ro'yxatdan yo'qoladi
+(sxemadagi standart qiymat mavjud hujjatlarga tushmaydi).
+
+⚠️ **Arxivdagi guruh tarif chegarasini band qilmaydi**
+(`createClass` → `archivedAt: null` bilan sanaydi). Aks holda
+o'tgan yilni yopgan direktor yangi guruh ocholmasdi.
+
+⚠️ Ro'yxatlar arxivdagilarni ko'rsatmaydi; `?includeArchived=1`
+ularni qaytaradi (`getMyClasses`, `getClassesForStaff`,
+`getGroups`, `getClassStudents` → `?includeInactive=1`).
+
+## Oylik to'lov varaqasi — QO'LDA yaratiladi
+
+Bu tizimdagi eng qimmat "jim" xato: varaqa har guruh uchun
+alohida, qo'lda yaratiladi (`POST /teacher/payments/create-monthly`).
+Administrator bitta guruhni unutsa — o'sha oy o'sha guruhdan pul
+**umuman so'ralmaydi**. Xato yo'q, belgi yo'q; oy oxirida faqat
+"nega tushum kam?" qoladi.
+
+`services/billing.js` — `pickMissing` (sof), `ensureBillsForClass`,
+`ensureBillsForClasses`. `POST /teacher/payments/create-monthly-all`
+hamma faol guruhga bir bosishda yaratadi.
+
+⚠️ **Arxivdagi o'quvchiga varaqa yaratilmaydi**
+(`isActive: { $ne: false }`). Ilgari `Student.find({ class })`
+edi va arxiv paydo bo'lgach bu bug bo'ldi: ketgan bolaga har oy
+yangi qarz yozilib boraverardi.
+
+⚠️ **`{ $ne: false }`, `true` emas** — eski hujjatlarda maydon
+umuman yo'q.
+
+⚠️ **Takror yaratilmaydi.** Mavjud varaqalar bitta so'rov bilan
+olinadi (`pickMissing`), ya'ni tugmani ikki marta bosish
+xavfsiz va N+1 yo'q.
+
+## Markaz salomatligi — `GET /teacher/health`
+
+`services/centerHealth.js` → sof `buildHealth()`,
+`test/centerHealth.test.js` qulflaydi. To'rtta "jim yo'qotish"
+sanaladi: shu oy varaqasi yo'q guruh, telefoni yo'q o'quvchi,
+jadvalsiz guruh, ustozsiz guruh (oxirgi ikkitasi faqat LC).
+
+⚠️ **O'quvchisi yo'q guruh TEKSHIRILMAYDI.** Yangi ochilgan
+guruhda jadval ham, ustoz ham, varaqa ham bo'lmasligi tabiiy.
+Uni qo'shsak kartochka birinchi kundanoq "muammo" bilan to'lib
+ketardi va direktor unga qaramay qo'yardi.
+
+⚠️ **Sanoq + 5 tagacha misol**, to'liq ro'yxat emas — ro'yxat
+o'sha sahifalarda allaqachon bor.
+
+⚠️ So'rovlar `archivedAt: null` bilan cheklangan.
+
+## O'quvchini o'chirish — bog'liq yozuvlar ham o'chadi
+
+`utils/studentPurge.js` — `accountPurge` bilan bir xil naqsh.
+Ilgari faqat `Student` va `MonthlyPayment` o'chardi, qolgani
+bazada egasiz qolardi: `Attendance` (davomat foizi abadiy
+buziladi), `Grade`, `HomeworkResult`, `Enrollment`,
+`StudentLink`, `TelegramParent`, `PaymentClaim`,
+`SupportBooking`, `InviteCode`.
+
+⚠️ **Yangi model `Student` ga `ref` qo'ysa, ro'yxatga ham
+qo'shing.** `test/studentPurge.test.js` `src/models/` papkasini
+o'zi skanerlaydi va yiqiladi.
+
+⚠️ **Odatdagi yo'l baribir ARXIV** (`isActive: false`) —
+o'chirish to'lov tarixini ham olib ketadi.
+
+## `npm run check:dead` — yozilgan-u ulanmagan kod
+
+Bu loyihada shu xato **yetti marta** takrorlandi va hech biri
+xato bermaydi: funksiya shunchaki yo'q bo'lib turadi. Skript
+ikki narsani qaraydi: controller eksporti route'ga ulanganmi va
+servis funksiyasi umuman chaqiriladimi.
+
+⚠️ **Konstantalar tekshirilmaydi.** Birinchi variant 44 ta nom
+qaytardi va bunday ro'yxatga hech kim qaramaydi — guardrail
+o'zi shovqinga aylanardi.
+
+⚠️ **Eksport qatorining o'zi "ishlatilgan" deb sanalmaydi**,
+lekin eksport blokidagi QIYMAT sanaladi
+(`requireSchoolMode: requireMode("school")`).
+
+⚠️ Ataylab qoldirilganlar `ALLOW` da — izoh bilan. `getStudents`
+u yerda ogohlantirish bilan: u buzuq (`Student.find({ teacher })`
+— bunday maydon yo'q), route'ga ulansa bo'sh ro'yxat qaytaradi.
+
+## Xabar kimga boradi — `utils/notifyTargets.js`
+
+Bog'lanishning **ikkita** manbai bor va ular aralashmaydi:
+
+| Manba | Kim |
+|---|---|
+| `TelegramParent` | eski bot ro'yxati, **isbotsiz** |
+| `StudentLink` | yangi — raqam tasdiqlangan yoki kod bilan |
+
+⚠️ **Yangi ota-onalar FAQAT ikkinchisiga tushadi.** Shuning
+uchun xabar yuboradigan har qanday kod ro'yxatni shu yerdan
+oladi, modelga bevosita bormaydi:
+
+```js
+const targets = await collectTargets({ directorId, studentIds });
+const byStudent = groupByStudent(targets);   // Map<id, Target[]>
+await markNotified(target);                  // to'g'ri jadvalga yozadi
+```
+
+⚠️ **Bitta bolada bir nechta qabul qiluvchi bo'lishi mumkin**
+(ota, ona, o'quvchining o'zi). Eski `byStudent[id] = p` naqshi
+bittasini ustiga yozib yuborardi — `groupByStudent` MASSIV
+qaytaradi.
+
+⚠️ Bu xato besh joyda takrorlangan (eslatma cron'i, CRM
+ro'yxati, tanlanganlarga yuborish, uy vazifasi reytingi, to'lov
+tasdiqlash). Hech biri xato bermaydi — xabar shunchaki
+bormaydi. `test/notifyTargets.test.js` endi kodning o'zini
+tekshiradi: xabar yuboradigan faylda `TelegramParent.find`
+paydo bo'lsa test yiqiladi.
+
+## SMS — provayder ulanmagan
+
+`config/sms.js` → `SMS_PROVIDER`, `SMS_EMAIL`, `SMS_PASSWORD`,
+`SMS_SENDER`. To'rttasi ham bo'lmasa `configured: false`.
+
+⚠️ **Eski `smsService` SOXTA MUVAFFAQIYAT qaytarardi**: har bir
+o'quvchi uchun jimgina `status: 'failed'`, endpoint esa
+`success: true`. "SMS eslatma" Premium tarifda sotiladi — ya'ni
+pul to'lagan direktor "0 yuborildi" ni ko'rib, sababini
+bilmasdi.
+
+Endi Payme/Click bilan bir xil qoida: kalit yo'q → **503**.
+`GET /teacher/subscription` → `channels.sms.configured`, sahifa
+buni **sotib olishdan oldin** ko'rsatadi.
+
+## Tarif bayroqlari — YO tekshiriladi, YO ro'yxatda
+
+`PLAN_FEATURES` dagi bayroqning o'zi hech narsani to'xtatmaydi.
+`hasFeature(...)` yozilmasa, tarifda "yo'q" deb turgan
+xususiyat ochiq qolaveradi va **hech qanday xato chiqmaydi**
+(`canAddStaff` / `canOpenBranch` bilan bir xil naqsh).
+
+`test/planFeatures.test.js` shuni qulflaydi: har bir bayroq yo
+tekshirilishi kerak, yo `UNGATED` ro'yxatida **izoh bilan**
+turishi kerak.
+
+⚠️ Hozir `UNGATED` da oltita bor (`homework`, `salaries`,
+`roles`, `branch_stats`, `reports`, `white_label`) — ular Free
+hisobda ochiq. Yopish **mahsulot qarori**: bugun ishlatayotgan
+markazlardan imkoniyatni tortib olish demakdir.
+
 ## Hisobni o'chirish — 30 kunlik muhlat
 
 Direktor `POST /teacher/account/delete` (parol + `O'CHIRISH` so'zi)
@@ -658,7 +1001,66 @@ qo'shing** — aks holda o'chirilgan direktorning hujjatlari bazada
 egasiz qoladi. `test/accountPurge.test.js` buni ushlaydi (modellar
 papkasini o'zi skanerlaydi).
 
-## Tarif limitlari — `effectivePlan`
+## Tarif limitlari — YAGONA MANBA `planHelper`
+
+Narx, chegara va funksiyalar **faqat** `utils/planHelper.js` da.
+Boshqa joyda jadval yozilmaydi — na controllerda, na frontendda.
+
+Bu qoida ikkita haqiqiy zarardan keyin yozildi (2026-08-21):
+
+1. **`branchController` o'z jadvalini tutardi** (`free: 1, pro: 3,
+   premium: 10`). Natijada Premium LC'ga 9999 ta filial va'da
+   qilinardi, kod esa 10 tada to'xtatardi — eng ko'p to'lagan
+   mijoz tushunarsiz devorga urilardi.
+2. **`Subscription.vue` narxni o'zi yozib turardi** (29 000 /
+   59 000 — Fond raqamlari). Sahifa LC menyusida ham bor, ya'ni
+   markaz direktori Pro'ni 29 000 deb ko'rib o'shancha
+   o'tkazardi; so'rov esa `priceFor` bo'yicha 199 000 bo'lib
+   tushardi va admin uni rad etardi.
+
+Frontend katalogni `GET /teacher/subscription` dan oladi:
+
+```js
+{ mode, plans: [{ id, price, limits, features }], usage, limits }
+```
+
+`usage` — hozirgi sanoq (guruh, o'quvchi, xodim, filial, ochiq
+lid). Interfeys chegarani **bosishdan oldin** ko'rsatishi uchun;
+`src/composables/usePlanLimits.js` shuni o'qiydi.
+
+⚠️ O'quvchi sanog'i `countUniqueStudents` orqali — ikki guruhda
+o'qiydigan bola ikki marta sanalmasin.
+
+### Qaysi chegara qayerda tekshiriladi
+
+| Chegara | Joy |
+|---|---|
+| `classes` | `teacherController.createClass` → `canOpenNewClass` |
+| `students` | `teacherController.addStudent`, `enrollmentController`, `leadController` → `canAddStudent` |
+| `staff` | `staffController.createStaff` → `canAddStaff` |
+| `branches` | `branchController.createBranch` → `canOpenBranch` |
+| `leads` | `leadController.createLead` → `limitsFor(...).leads` |
+
+⚠️ `canAddStaff` va `canOpenBranch` 2026-08-21 gacha **yozilgan-u
+hech qayerdan chaqirilmagan** edi — ya'ni Free hisob cheksiz
+xodim qo'sha olardi. `test/planHelper.test.js` endi ulanishning
+o'zini ham tekshiradi.
+
+⚠️ **Lidlarda faqat OCHIQ lidlar sanaladi** (`won`/`lost` emas)
+va **markaz bo'yicha**, filial bo'yicha emas.
+
+⚠️ Chegaraga urilgan javob: `403` + `requiresUpgrade: true` +
+`limit: { max, current, plan }`. **Raqam matn ichida emas** —
+shablonli xabar tarjima qilinmaydi va ruscha interfeysda
+o'zbekcha chiqib qolardi.
+
+⚠️ **Fond filiallari 1 / 3 / 10** — bu `branchController` dan
+ko'chirilgan ISHLAB TURGAN qiymat. Jadvaldagi eski `0 / 0 / 5`
+hech qachon qo'llanmagan; uni "tiklash" bugun filiali bor
+direktordan imkoniyatni tortib olardi. Chegarani pasaytirish —
+mahsulot qarori.
+
+## Sinf tarifi — `effectivePlan`
 
 `Class.plan` — sinf ochilgandagi tarifning nusxasi. O'quvchi limiti
 endi **undan va direktorning hozirgi tarifidan kattarog'i** bo'yicha
@@ -710,8 +1112,13 @@ npm run check:messages   # tarjimasiz qolgan xabarlarni ko'rsatadi
 ```
 
 ⚠️ Kodda xabar matnini o'zgartirsangiz `utils/messages.js` dagi kalitni
-ham yangilang. Aks holda o'sha xabar **jimgina** o'zbekcha chiqaveradi —
-xato bermaydi. `check:messages` aynan shuni topadi.
+ham yangilang. Aks holda o'sha xabar **jimgina** o'zbekcha chiqaveradi.
+`check:messages` aynan shuni topadi va 2026-08-21 dan beri
+**exit 1** qaytaradi (ilgari yumshoq ro'yxat edi va shu sababli
+26 ta xabar oylab tarjimasiz turdi — frontendda aynan shu
+qattiqlashtirish qarzni to'xtatgan edi).
+
+`npm run check` — `npm test` va `check:messages` birga.
 
 ⚠️ `X-Lang` `server.js` dagi CORS `allowedHeaders` ro'yxatida bo'lishi
 shart. Bo'lmasa brauzer sarlavhani umuman yubormaydi va hamma narsa
@@ -928,6 +1335,9 @@ qildi — foydalanuvchi qaytadan so'rasa bo'ldi.
 | `cron/reminderCron.js` | 1-sana 09:00 | Ota-onalarga Telegram eslatma |
 | `cron/accountCleanupCron.js` | har kuni 03:30 | Muhlati o'tgan hisoblarni o'chirish |
 | `cron/supportCron.js` | har 5 daqiqa | Kelmagan o'quvchini belgilash + 3 kun blok |
+| `cron/cashReportCron.js` | har kuni 21:00 | Kunlik kassa xabari direktorga |
+| `cron/churnDigestCron.js` | dushanba 09:00 | Ketish arafasidagi o'quvchilar direktorga |
+| `cron/billingAlertCron.js` | 2-sana 09:00 | Varaqa yaratilmagan guruhlar direktorga |
 
 ⚠️ `startReminderCron` yozilgan edi, lekin **hech qayerdan
 chaqirilmagan** — ya'ni Pro/Premium da sotilayotgan "oylik eslatma"
@@ -936,8 +1346,24 @@ qo'shsangiz `server.js` dagi shu blokka qo'shishni unutmang.
 
 ## Ma'lum texnik qarzlar
 
-- `markPayment` (teacherController) eksport qilingan, lekin hech qaysi route'ga
-  ulanmagan — o'lik kod.
+- `markPayment` (teacherController) eksport qilingan, lekin hech qaysi
+  route'ga ulanmagan. ⚠️ **O'chirishdan oldin o'ylang:** u
+  `updatePaymentStatus` ning kengroq varianti — SUMMANI ham
+  o'zgartira oladi va jurnalga yozadi. Hozir noto'g'ri yozilgan
+  summani tuzatishning boshqa yo'li yo'q (varaqa
+  `defaultAmount` dan keladi; chegirma, qisman to'lov,
+  aka-uka narxi — hech biri kiritilmaydi). Ya'ni bu "keraksiz"
+  emas, **qaror kutayotgan** kod — HANDOFF §4.2 ga qarang.
+- **"Yozilgan-u ulanmagan" kodni vaqti-vaqti bilan qidiring.** Bu loyihada
+  besh marta takrorlandi: `startReminderCron`, `manageExpenses`,
+  `canAddStaff`/`canOpenBranch`, `updateStudent`/`updateClass`,
+  `sendFreezeNotification`. Hech biri xato bermaydi — funksiya
+  shunchaki **yo'q** bo'lib turadi. Eng oson tekshiruv:
+  `module.exports` dagi nomni boshqa fayllarda qidirib ko'ring.
 - ~~`StaffManagement.vue` taklif qiladigan ruxsatlar backend bilan mos
   emas~~ — **2026-08-20 da yopildi**, pastdagi bo'limga qarang.
-- README.md eskirgan (loyihaning eng birinchi versiyasini tasvirlaydi).
+- ~~README.md eskirgan~~ — **2026-08-27 da yangilandi.** Endi u faqat
+  kirish beradi va `HANDOFF.md` / `CLAUDE.md` ga yo'naltiradi.
+  ⚠️ Unda endpoint ro'yxati **ataylab yo'q**: eski README aynan
+  o'sha ro'yxatni takrorlagani uchun eskirib qolgan edi (hamma
+  manzil noto'g'ri bo'lib ketgandi).

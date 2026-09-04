@@ -5,7 +5,11 @@ const HomeworkResult = require("../models/HomeworkResult");
 const Class = require("../models/Class");
 const Student = require("../models/Student");
 const { getGroupStudents } = require("../utils/enrollment");
-const TelegramParent = require("../models/TelegramParent");
+const {
+  collectTargets,
+  groupByStudent,
+  markNotified,
+} = require("../utils/notifyTargets");
 const { sendHomeworkReport } = require("../services/telegramService");
 const {
   resolveContext,
@@ -435,45 +439,45 @@ exports.notifyParents = async (req, res) => {
         .json({ success: false, error: "Yuboriladigan ma'lumot yo'q" });
     }
 
-    // Faqat Telegram'ga ulangan va faol ota-onalar
-    const connected = await TelegramParent.find({
-      teacherId: ctx.directorId,
-      isActive: true,
-    });
-
-    const byStudent = {};
-    connected.forEach((p) => {
-      byStudent[String(p.studentId)] = p;
-    });
+    // ⚠️ Faqat Telegram'ga ulangan va faol qabul qiluvchilar.
+    //    Ro'yxat IKKALA manbadan (`utils/notifyTargets.js`) — bu
+    //    yer ilgari faqat eski `TelegramParent` ni o'qirdi, ya'ni
+    //    Mini App orqali bog'langan ota-ona reytingni HECH QACHON
+    //    olmasdi va `skipped` bo'lib sanalardi.
+    const targets = await collectTargets({ directorId: ctx.directorId });
+    const byStudent = groupByStudent(targets);
 
     let sent = 0;
     let skipped = 0;
 
     for (const s of leaderboard) {
-      const parent = byStudent[String(s.studentId)];
-      if (!parent) {
+      const receivers = byStudent.get(String(s.studentId));
+      if (!receivers?.length) {
         skipped++;
         continue;
       }
 
-      const ok = await sendHomeworkReport(parent.telegramChatId, {
-        studentName: s.studentName,
-        className: s.className,
-        period: period || defaultPeriodLabel(),
-        done: s.done,
-        late: s.late,
-        missed: s.missed,
-        points: s.points,
-        maxPoints: summary.maxPossiblePoints,
-        percent: s.percent,
-        rank: s.rank,
-        totalStudents: summary.studentCount,
-      });
+      // ⚠️ Otasi ham, onasi ham ulangan bo'lsa — ikkalasiga ham.
+      //    Eski kod bittasini tanlab qolganini tashlab yuborardi.
+      for (const t of receivers) {
+        const ok = await sendHomeworkReport(t.chatId, {
+          studentName: s.studentName,
+          className: s.className,
+          period: period || defaultPeriodLabel(),
+          done: s.done,
+          late: s.late,
+          missed: s.missed,
+          points: s.points,
+          maxPoints: summary.maxPossiblePoints,
+          percent: s.percent,
+          rank: s.rank,
+          totalStudents: summary.studentCount,
+        });
 
-      if (ok) {
-        sent++;
-        parent.lastNotifiedAt = new Date();
-        await parent.save();
+        if (ok) {
+          sent++;
+          await markNotified(t);
+        }
       }
     }
 
