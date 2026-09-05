@@ -4,6 +4,17 @@ const TelegramBot = require("node-telegram-bot-api");
 let bot = null;
 let isRestarting = false; // ✅ YANGI: bir vaqtda bir nechta restart bo'lishini oldini olish
 
+// 409 (boshqa nusxa polling qilyapti) necha marta ketma-ket keldi.
+// Deploy paytida eski instansiya bir necha o'n soniya tirik qoladi —
+// shuning uchun darrov taslim bo'lmaymiz, lekin cheksiz ham urinmaymiz.
+let conflictCount = 0;
+let lastConflictAt = 0;
+const MAX_CONFLICT_RETRY = 10; // ~30 soniya (3s × 10)
+const CONFLICT_FORGET_MS = 5 * 60 * 1000; // 5 daqiqa jim tursa — unutamiz
+
+// Buyruqlar ro'yxati jarayon davomida bir marta yuboriladi
+let commandsSent = false;
+
 // ⚠️ TOKEN FAQAT ENV DAN. Ilgari shu yerda jonli token zaxira qiymat
 //    sifatida YOZIB QO'YILGAN edi — ya'ni repozitoriyni ko'ra olgan
 //    har kim botni to'liq boshqara olardi: xabar yuborish, o'qish,
@@ -259,11 +270,59 @@ const _attachHandlers = () => {
       return;
     }
 
+    // ⚠️ 409 = shu tokenni BOSHQA jarayon ham polling qilyapti.
+    //
+    //    Ilgari bu yerda cheksiz halqa bor edi: har 3 soniyada
+    //    qayta urinish → `_attachHandlers()` → Telegram'ga yana
+    //    ikkita `setMyCommands`. Jonli logda bu har ~13 soniyada
+    //    to'liq "ishga tushdi" bloki bo'lib takrorlanardi va
+    //    tashqaridan SERVER QAYTA ISHGA TUSHAYOTGANDEK ko'rinardi.
+    //    Ya'ni haqiqiy sabab (ikkinchi nusxa) log ichida ko'milib
+    //    ketardi.
+    //
+    //    Endi: deploy paytidagi qoplanish (~30s) uchun bir necha
+    //    marta urinamiz, keyin 401 bilan bir xil qoida — to'xtaymiz
+    //    va SABABNI aytamiz. Qayta urinishning foydasi yo'q:
+    //    ikkinchi nusxa o'zi yopilmaguncha 409 ketavermaydi.
     if (code === 409) {
-      console.warn("⚠️  Boshqa polling sessiya bor (boshqa joyda shu bot ishlamoqda).");
-      console.warn("⚠️  Agar bu local development bo'lsa — alohida test bot token ishlating!");
+      // ⚠️ Hisoblagich polling BOSHLANGANDA nolga tushirilmaydi va
+      //    bu ataylab: 409 aynan polling boshlangandan KEYIN keladi,
+      //    ya'ni u yerda nollasak sanoq hech qachon oshmasdi va
+      //    halqa yana cheksiz bo'lardi.
+      //
+      //    O'rniga VAQT bo'yicha unutamiz: bot bir necha daqiqa
+      //    tinch ishlagan bo'lsa, keyingi 409 — yangi hodisa
+      //    (masalan ertangi deploy), eskisining davomi emas.
+      const now = Date.now();
+      if (now - lastConflictAt > CONFLICT_FORGET_MS) conflictCount = 0;
+      lastConflictAt = now;
+
+      conflictCount += 1;
       bot.stopPolling();
-      setTimeout(() => startPolling(), 3000); // ✅ 2s → 3s (kamroq tezkor retry)
+
+      if (conflictCount > MAX_CONFLICT_RETRY) {
+        console.error(
+          "\n❌ BOT TO'XTATILDI — shu tokenni boshqa jarayon polling qilyapti (409).\n" +
+            `   ${MAX_CONFLICT_RETRY} marta urinildi, har safar o'sha xato.\n` +
+            "   Qayta urinishning foydasi yo'q: ikkinchi nusxa yopilmaguncha\n" +
+            "   Telegram bizga yangilanish bermaydi.\n\n" +
+            "   Sabablari (ehtimollik bo'yicha):\n" +
+            "   1. Server LOKAL ko'tarilgan va o'sha .env dagi PRODUCTION\n" +
+            "      tokenni ishlatyapti → lokalda alohida test bot oching\n" +
+            "      (@BotFather → /newbot) va uni .env ga qo'ying.\n" +
+            "   2. Render'da eski instansiya hali o'chmagan → Manual\n" +
+            "      Deploy → 'Clear build cache & deploy'.\n\n" +
+            "   Kim polling qilayotganini ko'rish:\n" +
+            "   https://api.telegram.org/bot<TOKEN>/getWebhookInfo\n\n" +
+            "   ⚠️ CRM va API ISHLAYVERADI — faqat Telegram bot jim.\n",
+        );
+        return;
+      }
+
+      console.warn(
+        `⚠️  Boshqa polling sessiya bor (409) — urinish ${conflictCount}/${MAX_CONFLICT_RETRY}.`,
+      );
+      setTimeout(() => startPolling(), 3000);
       return;
     }
 
@@ -315,11 +374,22 @@ const _attachHandlers = () => {
       { command: "reset", description: "Отключиться и начать сначала" },
     ],
   };
-  bot
-    .setMyCommands(commands.uz)
-    .then(() => bot.setMyCommands(commands.ru, { language_code: "ru" }))
-    .then(() => console.log("✅ Buyruqlar ro'yxati o'rnatildi (uz, ru)"))
-    .catch((e) => console.warn("⚠️  setMyCommands:", e.message));
+  // ⚠️ JARAYON UCHUN BIR MARTA. Ro'yxat Telegram tomonida
+  //    saqlanadi va o'zgarmaydi, `_attachHandlers()` esa har bir
+  //    qayta ulanishda chaqiriladi — ya'ni busiz har 13 soniyada
+  //    ikkita foydasiz API chaqiruvi ketardi (Telegram
+  //    `setMyCommands` ni cheklaydi ham).
+  if (!commandsSent) {
+    commandsSent = true;
+    bot
+      .setMyCommands(commands.uz)
+      .then(() => bot.setMyCommands(commands.ru, { language_code: "ru" }))
+      .then(() => console.log("✅ Buyruqlar ro'yxati o'rnatildi (uz, ru)"))
+      .catch((e) => {
+        commandsSent = false; // yiqildi — keyingi ulanishda qayta urinsin
+        console.warn("⚠️  setMyCommands:", e.message);
+      });
+  }
 
   console.log("✅ Barcha handlerlari o'rnatildi");
 };
