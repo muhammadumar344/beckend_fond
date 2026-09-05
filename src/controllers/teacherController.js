@@ -1805,12 +1805,59 @@ const markPayment = async (req, res) => {
 //    `req.user.id` — bu Staff._id; uni `teacher` maydoniga
 //    yozsak xarajat egasiz qolardi va hech qaysi hisobotda
 //    ko'rinmasdi.
+// ── CHEK SURATI ─────────────────────────────────────────────
+//
+// ⚠️ Telefon surati katta bo'ladi, shuning uchun chegara logotipnikidan
+//    kattaroq. Yuklashda 1600px gacha kichrayadi — 512px da chekdagi
+//    raqamlarni o'qib bo'lmasdi, ya'ni surat o'z vazifasini
+//    bajarmasdi.
+const RECEIPT_MAX_BYTES = 5 * 1024 * 1024; // 5MB
+const RECEIPT_MAX_SIDE = 1600;
+
+/**
+ * Chek suratini CDN ga yuklaydi.
+ * Xato bo'lsa `status` bilan otadi — chaqiruvchi uni foydalanuvchiga
+ * tushunarli qilib qaytaradi.
+ */
+async function uploadReceipt(dataUri, publicId) {
+  if (!cloudinary.enabled()) {
+    throw Object.assign(
+      new Error("Chek surati hozircha yoqilmagan"),
+      { status: 503 },
+    );
+  }
+  if (typeof dataUri !== "string" || !dataUri.startsWith("data:image/")) {
+    throw Object.assign(new Error("Chek rasm bo'lishi kerak"), { status: 400 });
+  }
+  // base64 uzunligidan taxminiy bayt hajmi (logotip bilan bir xil hisob)
+  if (Math.round((dataUri.length * 3) / 4) > RECEIPT_MAX_BYTES) {
+    throw Object.assign(
+      new Error("Chek hajmi 5MB dan oshmasligi kerak"),
+      { status: 400 },
+    );
+  }
+  try {
+    const up = await cloudinary.uploadImage(dataUri, {
+      folder: cloudinaryCfg.folders.receipts,
+      publicId,
+      maxSide: RECEIPT_MAX_SIDE,
+    });
+    return { url: up.url, publicId: up.publicId };
+  } catch (err) {
+    console.error("Chek yuklash xatosi:", cloudinary.errorText(err));
+    throw Object.assign(
+      new Error("Chekni yuklab bo'lmadi — chek suratisiz ham saqlashingiz mumkin"),
+      { status: 502 },
+    );
+  }
+}
+
 const addExpense = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
     requirePermission(ctx, "manageExpenses");
 
-    const { classId, reason, amount, month, year, description, paidFrom, spentDate } =
+    const { classId, reason, amount, month, year, description, paidFrom, spentDate, receipt } =
       req.body;
 
     if (!classId || !reason || amount === undefined || !month || !year) {
@@ -1840,6 +1887,18 @@ const addExpense = async (req, res) => {
     // ko'ra ko'rsatilmagan bo'lgani yaxshi.
     const source = ["cash", "card", "bank"].includes(paidFrom) ? paidFrom : null;
 
+    // ⚠️ SAQLASHDAN OLDIN yuklanadi. Aks holda xarajat bazaga
+    //    tushib, surat yiqilsa — foydalanuvchi xato ko'radi-yu,
+    //    yozuv allaqachon yaratilgan bo'lardi va u ikkinchi marta
+    //    bosib takror yozuv yasardi.
+    let shot = null;
+    if (receipt) {
+      shot = await uploadReceipt(
+        receipt,
+        `expense-${ctx.directorId}-${Date.now()}`,
+      );
+    }
+
     const expense = new Expense({
       class: classId,
       teacher: ctx.directorId,
@@ -1849,6 +1908,8 @@ const addExpense = async (req, res) => {
       year: Number(year),
       description: (description || "").trim(),
       paidFrom: source,
+      receipt: shot?.url || "",
+      receiptPublicId: shot?.publicId || "",
       spentDate: spentDate ? new Date(spentDate) : new Date(),
       paidBy: {
         id: ctx.isDirector ? ctx.directorId : ctx.staffId,
@@ -1883,6 +1944,80 @@ const addExpense = async (req, res) => {
   }
 };
 
+// ── PUT /api/teacher/expenses/:expenseId/receipt ────────────
+//
+// ⚠️ ALOHIDA ENDPOINT KERAK. Chek ko'pincha keyinroq topiladi:
+//    xarajat kechqurun kiritiladi, chek esa cho'ntakda qoladi.
+//    Busiz yagona yo'l — yozuvni o'chirib qaytadan yaratish, ya'ni
+//    jurnalda soxta "o'chirildi/yaratildi" juftligi paydo bo'lardi
+//    (arxiv qoidasi bilan bir xil sabab).
+//
+// Body: { receipt: "data:image/..." }  yoki  { receipt: null } — olib tashlash
+const setExpenseReceipt = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageExpenses");
+
+    const expense = await Expense.findOne({
+      _id: req.params.expenseId,
+      teacher: ctx.directorId,
+    }).populate("class", "name branch");
+    if (!expense) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Xarajat topilmadi yoki ruxsat yo'q" });
+    }
+    if (
+      ctx.branchFilter &&
+      expense.class?.branch &&
+      String(expense.class.branch) !== ctx.branchFilter
+    ) {
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+    }
+
+    const { receipt } = req.body || {};
+    const staleShot = expense.receiptPublicId || "";
+
+    if (receipt === null || receipt === "") {
+      expense.receipt = "";
+      expense.receiptPublicId = "";
+    } else {
+      const shot = await uploadReceipt(
+        receipt,
+        `expense-${ctx.directorId}-${expense._id}`,
+      );
+      expense.receipt = shot.url;
+      expense.receiptPublicId = shot.publicId;
+    }
+    await expense.save();
+
+    // ⚠️ Eskisini SAQLANGANDAN keyin o'chiramiz — logotip bilan
+    //    bir xil qoida: o'chirib bo'lib saqlash yiqilsa, foydalanuvchi
+    //    cheksiz va tiklab bo'lmaydigan holatda qolardi.
+    if (staleShot && staleShot !== expense.receiptPublicId) {
+      await cloudinary.destroyImage(staleShot);
+    }
+
+    // ⚠️ Jurnalga yoziladi: chek — xarajatning isboti, uni jimgina
+    //    almashtirib qo'yish mumkin bo'lmasin.
+    audit(req, ctx, {
+      action: "expense.updated",
+      entity: "Expense",
+      entityId: expense._id,
+      entityLabel: `${expense.reason} — ${expense.class?.name || ""}`,
+      changes: [
+        { field: "chek", from: staleShot ? "bor" : "yo'q", to: expense.receipt ? "bor" : "yo'q" },
+      ],
+    });
+
+    return res.json({ success: true, expense });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
+  }
+};
+
 const getExpenses = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
@@ -1909,7 +2044,15 @@ const getExpenses = async (req, res) => {
       .sort({ spentDate: -1, createdAt: -1 });
     const total = expenses.reduce((sum, e) => sum + e.amount, 0);
 
-    return res.json({ success: true, expenses, total });
+    // ⚠️ Interfeys O'ZI o'ylab topmasin: kalit yo'q bo'lsa
+    //    "Chek qo'shish" tugmasi umuman chiqmasligi kerak
+    //    (`logoMaxBytes` bilan bir xil qoida).
+    return res.json({
+      success: true,
+      expenses,
+      total,
+      receiptEnabled: cloudinary.enabled(),
+    });
   } catch (err) {
     return res
       .status(err.status || 500)
@@ -1956,7 +2099,12 @@ const deleteExpense = async (req, res) => {
       ],
     });
 
+    const staleShot = expense.receiptPublicId || "";
     await Expense.findByIdAndDelete(expenseId);
+    // ⚠️ Yozuv o'chgandan KEYIN. Teskarisi bo'lsa, o'chirish
+    //    xatosi yozuvni ham, rasmni ham yarim holatda qoldirardi.
+    //    Bu chaqiruv hech qachon otmaydi (`destroyImage` izohi).
+    if (staleShot) await cloudinary.destroyImage(staleShot);
     return res.json({ success: true, message: "Xarajat o'chirildi" });
   } catch (err) {
     return res
@@ -2997,6 +3145,7 @@ module.exports = {
 
   addExpense,
   getExpenses,
+  setExpenseReceipt,
   deleteExpense,
 
   getMonthlyReminder,

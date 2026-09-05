@@ -236,6 +236,12 @@ router.get("/export/:classId", onlyTeacher, ctrl.exportPayments);
 //    o'zi hech narsani cheklamaydi.
 router.post("/expenses", allowTeacherOrStaff, ctrl.addExpense);
 router.get("/expenses", allowTeacherOrStaff, ctrl.getExpenses);
+// Chek surati — keyinroq biriktirish yoki olib tashlash
+router.put(
+  "/expenses/:expenseId/receipt",
+  allowTeacherOrStaff,
+  ctrl.setExpenseReceipt,
+);
 router.delete("/expenses/:expenseId", allowTeacherOrStaff, ctrl.deleteExpense);
 
 // ══ TELEGRAM — faqat Director ════════════════════════════════

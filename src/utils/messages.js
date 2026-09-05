@@ -288,6 +288,10 @@ const MESSAGES = {
   "Muassasa nomi majburiy": { ru: "Название учреждения обязательно", en: "Institution name is required" },
 
   "Logotip hajmi 3MB dan oshmasligi kerak": { ru: "Размер логотипа не должен превышать 3МБ", en: "The logo must be under 3MB" },
+  "Chek surati hozircha yoqilmagan": { ru: "Фото чека пока не включено", en: "Receipt photos are not enabled yet" },
+  "Chek rasm bo'lishi kerak": { ru: "Чек должен быть изображением", en: "The receipt must be an image" },
+  "Chek hajmi 5MB dan oshmasligi kerak": { ru: "Размер чека не должен превышать 5МБ", en: "The receipt must be under 5MB" },
+  "Chekni yuklab bo'lmadi — chek suratisiz ham saqlashingiz mumkin": { ru: "Не удалось загрузить чек — можно сохранить и без фото", en: "The receipt could not be uploaded — you can save without it" },
   "Logotipni yuklab bo'lmadi, birozdan keyin urinib ko'ring": { ru: "Не удалось загрузить логотип, попробуйте позже", en: "Could not upload the logo, please try again shortly" },
   "Rasm hajmi 5MB dan oshmasligi kerak": { ru: "Размер изображения не должен превышать 5МБ", en: "The image must be under 5MB" },
   "Chekni yuklab bo'lmadi, birozdan keyin urinib ko'ring": { ru: "Не удалось загрузить чек, попробуйте позже", en: "Could not upload the receipt, please try again shortly" },
