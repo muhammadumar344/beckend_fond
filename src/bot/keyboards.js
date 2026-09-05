@@ -56,6 +56,34 @@ const mainKeyboard = (lang, url) => {
   return { inline_keyboard: rows };
 };
 
+/**
+ * Sinf ro'yxati — ota-ona farzandini tanlaydi.
+ *
+ * ⚠️ ESKI, OLIB TASHLANGAN KLAVIATURA BILAN ADASHTIRMANG (fayl
+ *    boshidagi izoh). U yerda tanlashning O'ZI bog'lanish edi;
+ *    bu yerda tanlash faqat SO'ROV yaratadi — yozuv
+ *    `isActive: false` bo'lib turadi va sinf rahbari
+ *    tasdiqlamaguncha hech narsa ochilmaydi.
+ *
+ * ⚠️ Ikki ustun: bitta ustunda 30 ta bola ekranni to'ldirib
+ *    yuboradi va ota-ona pastga surib charchaydi.
+ *
+ * ⚠️ `callback_data` 64 baytdan oshmasligi kerak (Telegram
+ *    cheklovi) — `pick_` + 24 belgili ObjectId = 29 bayt.
+ */
+const rosterKeyboard = (students) => {
+  const rows = [];
+  for (let i = 0; i < students.length; i += 2) {
+    rows.push(
+      students.slice(i, i + 2).map((s) => ({
+        text: String(s.name || "—").slice(0, 40),
+        callback_data: `pick_${s._id}`,
+      })),
+    );
+  }
+  return { inline_keyboard: rows };
+};
+
 /** "Rostdan uzamizmi?" — tasodifan bosib yuborishga qarshi */
 const confirmResetKeyboard = (lang) => ({
   inline_keyboard: [
@@ -70,5 +98,6 @@ module.exports = {
   phoneKeyboard,
   removeKeyboard,
   mainKeyboard,
+  rosterKeyboard,
   confirmResetKeyboard,
 };

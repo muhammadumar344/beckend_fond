@@ -8,6 +8,7 @@
 //   phone  — Telegram raqami bazadagi ota-ona raqami bilan mos
 //   code   — xodim bergan bir martalik kod ishlatilgan
 //   legacy — eski `TelegramParent` yozuvi, HECH QANDAY isbotsiz
+//   approved — sinf havolasi + sinf rahbarining tasdig'i
 //
 // ⚠️ `legacy` ataylab cheklangan. Eski bot'da o'qituvchi emailini
 //    bilgan har kim ro'yxatdan istalgan bolani tanlab, "ota-onasi"
@@ -22,7 +23,14 @@
 // ════════════════════════════════════════════════════════════
 
 /** Isbotlangan (to'liq huquqli) bog'lanish turlari */
-const VERIFIED = new Set(["phone", "code"]);
+//
+// ⚠️ `approved` shu yerda: sinf havolasi orqali kelgan ota-onani
+//    sinf rahbari QO'LDA tasdiqlagan. Bu kod bilan bir daraja —
+//    ikkalasida ham "ha, bu o'sha bolaning otasi" degan qarorni
+//    odam qabul qiladi. Havolaning O'ZI hech narsa ochmaydi:
+//    tasdiqlanmagan so'rov `isActive: false` bo'lib turadi va
+//    `canSee` uni birinchi qatorda to'xtatadi.
+const VERIFIED = new Set(["phone", "code", "approved"]);
 
 /** Bo'limlar → qaysi isbot darajasi yetadi */
 const SECTIONS = {

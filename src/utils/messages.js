@@ -49,6 +49,11 @@ const MESSAGES = {
   "Foydalanuvchi topilmadi": { ru: "Пользователь не найден", en: "User not found" },
   "Lid topilmadi": { ru: "Лид не найден", en: "Lead not found" },
   "So'rov topilmadi": { ru: "Заявка не найдена", en: "Request not found" },
+  "Qaror noto'g'ri": { ru: "Неверное решение", en: "Invalid decision" },
+  "Bu so'rov allaqachon ko'rib chiqilgan": {
+    ru: "Эта заявка уже рассмотрена",
+    en: "This request has already been reviewed",
+  },
   "Rol topilmadi": { ru: "Роль не найдена", en: "Role not found" },
   "Yangi rol topilmadi": { ru: "Новая роль не найдена", en: "New role not found" },
   "Maosh yozuvi topilmadi": { ru: "Запись о зарплате не найдена", en: "Salary record not found" },

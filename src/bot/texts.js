@@ -43,6 +43,43 @@ const UZ = {
     "2️⃣ Markazga murojaat qilib, raqamingizni yangilashni so'rang",
   linkFailed: "⚠️ Bog'lashda xatolik. O'quv markaziga murojaat qiling.",
 
+  // ── Sinf havolasi (`?start=cls_<token>`) ──────────────────
+  //
+  // ⚠️ Matn HAVOLA HECH NARSA OCHMAYDI degan ma'noni yashirmaydi:
+  //    ota-ona baribir raqamini yuboradi. Aks holda u "bosdim,
+  //    ochilishi kerak edi" deb kutib qolardi.
+  clsWelcome: (cls, center) =>
+    `👋 *${cls}* — ${center || "o'quv markazi"}\n\n` +
+    "Farzandingiz haqidagi ma'lumotlarni shu yerdan kuzatasiz.\n\n" +
+    "▶️ Pastdagi tugma bilan *raqamingizni yuboring* — u sinf " +
+    "ro'yxati bilan solishtiriladi.\n\n" +
+    "_Raqamingiz ro'yxatda bo'lmasa, farzandingizni ro'yxatdan " +
+    "tanlaysiz va sinf rahbari tasdiqlaydi._",
+  clsNotFound:
+    "🔗 Havola ishlamayapti — bekor qilingan yoki to'liq " +
+    "ko'chirilmagan bo'lishi mumkin.\n\n" +
+    "Sinf rahbaridan yangi havola so'rang yoki /start bosib " +
+    "raqamingizni yuboring.",
+  clsPickTitle: (cls, phone) =>
+    `🔍 *${phone}* raqami *${cls}* ro'yxatida topilmadi.\n\n` +
+    "Farzandingizni ro'yxatdan tanlang — sinf rahbari tasdiqlagach " +
+    "ma'lumotlar ochiladi.",
+  clsPickEmpty: "Bu sinfda hozircha o'quvchi yo'q.",
+  clsPending: (name) =>
+    `📨 *${name}* uchun so'rov yuborildi.\n\n` +
+    "Sinf rahbari tasdiqlagach shu yerga xabar keladi. " +
+    "Odatda bir necha soat ichida.",
+  clsAlreadyPending: (name) =>
+    `⏳ *${name}* uchun so'rov allaqachon yuborilgan — sinf rahbari ` +
+    "hali ko'rmagan. Iltimos, kuting.",
+  clsApproved: (name) =>
+    `✅ *${name}* — sinf rahbari sizni tasdiqladi!\n\n` +
+    "Endi ma'lumotlarni ko'rishingiz mumkin. /start bosing.",
+  clsRejected: (name) =>
+    `❌ *${name}* uchun so'rovingiz tasdiqlanmadi.\n\n` +
+    "Xatolik deb o'ylasangiz o'quv markaziga murojaat qiling — " +
+    "ular sizga bir martalik kod berishi mumkin.",
+
   // ── Kod ───────────────────────────────────────────────────
   codeBad: "❌ Kod noto'g'ri yoki muddati o'tgan.",
   codeHint:
@@ -161,6 +198,38 @@ const RU = {
     "1️⃣ Попросите в центре *одноразовый код* и напишите его сюда\n" +
     "2️⃣ Обратитесь в центр, чтобы обновили ваш номер",
   linkFailed: "⚠️ Ошибка при подключении. Обратитесь в учебный центр.",
+
+  clsWelcome: (cls, center) =>
+    `👋 *${cls}* — ${center || "учебный центр"}\n\n` +
+    "Здесь вы будете следить за успеваемостью ребёнка.\n\n" +
+    "▶️ Отправьте *свой номер* кнопкой ниже — он сверяется со " +
+    "списком класса.\n\n" +
+    "_Если номера в списке нет, вы выберете ребёнка из списка, " +
+    "а классный руководитель подтвердит._",
+  clsNotFound:
+    "🔗 Ссылка не работает — её могли отозвать или скопировать " +
+    "не полностью.\n\n" +
+    "Попросите новую у классного руководителя или нажмите /start " +
+    "и отправьте свой номер.",
+  clsPickTitle: (cls, phone) =>
+    `🔍 Номер *${phone}* не найден в списке класса *${cls}*.\n\n` +
+    "Выберите своего ребёнка — после подтверждения классным " +
+    "руководителем данные откроются.",
+  clsPickEmpty: "В этом классе пока нет учеников.",
+  clsPending: (name) =>
+    `📨 Запрос по ученику *${name}* отправлен.\n\n` +
+    "Когда классный руководитель подтвердит, придёт сообщение сюда. " +
+    "Обычно в течение нескольких часов.",
+  clsAlreadyPending: (name) =>
+    `⏳ Запрос по ученику *${name}* уже отправлен — классный ` +
+    "руководитель его ещё не смотрел. Пожалуйста, подождите.",
+  clsApproved: (name) =>
+    `✅ *${name}* — классный руководитель вас подтвердил!\n\n` +
+    "Теперь данные доступны. Нажмите /start.",
+  clsRejected: (name) =>
+    `❌ Запрос по ученику *${name}* не подтверждён.\n\n` +
+    "Если это ошибка — обратитесь в учебный центр, там могут выдать " +
+    "одноразовый код.",
 
   codeBad: "❌ Код неверный или просрочен.",
   codeHint:

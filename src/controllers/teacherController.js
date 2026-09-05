@@ -17,6 +17,7 @@ const Branch = require("../models/Branch");
 const Lead = require("../models/Lead");
 const PaymentClaim = require("../models/PaymentClaim");
 const crypto = require("crypto");
+const StudentLink = require("../models/StudentLink");
 const cloudinary = require("../services/cloudinary");
 const platform = require("../config/platform");
 const studentImport = require("../services/studentImport");
@@ -47,7 +48,10 @@ const {
   effectivePlan,
 } = require("../utils/planHelper");
 const smsService = require("../services/smsService");
-const { sendPaymentConfirmation } = require("../services/telegramService");
+const { sendPaymentConfirmation, sendMessage } = require("../services/telegramService");
+const { inBackground } = require("../services/notify");
+// Bot matnlari — tasdiqlash xabari ota-onaga BOT tilida ketadi
+const { t: botText } = require("../bot/texts");
 const {
   resolveContext,
   requirePermission,
@@ -2080,6 +2084,192 @@ const shareClass = async (req, res) => {
   }
 };
 
+// ── OTA-ONANI BOTGA ULASH: HAVOLA + QR ─────────────────────
+//
+// `POST   /api/teacher/classes/:classId/parent-link`  — yaratadi
+// `DELETE /api/teacher/classes/:classId/parent-link`  — bekor qiladi
+//
+// Sinf rahbari bitta havola oladi va sinf guruhiga tashlaydi.
+// Ota-ona bosadi → bot ochiladi → bot SINFNI biladi → raqam
+// so'raydi. QR ham shu tokendan yasaladi (frontend chizadi).
+//
+// ⚠️ TOKEN O'ZI HECH NARSA OCHMAYDI — u faqat "qaysi sinf"
+//    degan savolga javob beradi. Havola guruhga tashlanadi,
+//    ya'ni tarqaydi; agar u bilan ro'yxatdan istalgan bolani
+//    tanlab "ota-onasi" bo'lib qo'yish mumkin bo'lsa, guruhga
+//    kirgan har kim istalgan bolaning baholarini ochardi. Eski
+//    botda aynan shunday bo'lgan (CLAUDE.md — `legacy`).
+const parentLinkClass = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    if (!ctx.isDirector) {
+      return res.status(403).json({ success: false, error: "Faqat direktor uchun" });
+    }
+
+    const cls = await Class.findOne({
+      _id: req.params.classId,
+      teacher: ctx.directorId,
+    });
+    if (!cls) {
+      return res.status(404).json({ success: false, error: "Sinf topilmadi" });
+    }
+
+    if (req.method === "DELETE") {
+      cls.parentToken = null;
+      await cls.save();
+      audit(req, ctx, {
+        action: "class.parentLinkOff",
+        entity: "Class",
+        entityId: cls._id,
+        entityLabel: cls.name,
+      });
+      return res.json({ success: true, token: null });
+    }
+
+    // ⚠️ `publicToken` dan qisqaroq (12 bayt → 16 belgi): bu token
+    //    Telegram `?start=` parametriga tushadi va u 64 belgi bilan
+    //    cheklangan. `cls_` prefiksi ham shu yerga sig'ishi kerak.
+    cls.parentToken = crypto.randomBytes(12).toString("base64url");
+    await cls.save();
+
+    audit(req, ctx, {
+      action: "class.parentLinkOn",
+      entity: "Class",
+      entityId: cls._id,
+      entityLabel: cls.name,
+    });
+
+    return res.json({ success: true, token: cls.parentToken });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
+  }
+};
+
+// ── GET /api/teacher/parent-requests ───────────────────────
+// Tasdiq kutayotgan ota-onalar. Raqami ro'yxatda topilmagan
+// odam sinf ro'yxatidan farzandini tanlagan — endi sinf rahbari
+// "ha, bu o'sha bolaning otasi" deb tasdiqlashi kerak.
+const getParentRequests = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageStudents");
+
+    const classIds = await Class.find({
+      teacher: ctx.directorId,
+      ...(ctx.branchFilter ? { branch: ctx.branchFilter } : {}),
+    }).distinct("_id");
+
+    const requests = await StudentLink.find({
+      status: "pending",
+      requestedClass: { $in: classIds },
+    })
+      .populate("student", "name parentPhone")
+      .populate("requestedClass", "name")
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    res.json({
+      success: true,
+      requests: requests.map((r) => ({
+        id: r._id,
+        studentName: r.student?.name || "—",
+        parentPhone: r.student?.parentPhone || "",
+        className: r.requestedClass?.name || "",
+        // ⚠️ Ota-onaning O'ZI yuborgan raqami ham ko'rsatiladi:
+        //    sinf rahbari aynan shu bo'yicha qaror qiladi
+        //    ("bu raqam menda bor" yoki "tanimayman").
+        phone: r.phoneKey || "",
+        username: r.telegramUsername || "",
+        createdAt: r.createdAt,
+      })),
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
+// ── PUT /api/teacher/parent-requests/:linkId ───────────────
+// Body: { decision: 'approved' | 'rejected' }
+const reviewParentRequest = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageStudents");
+
+    const { decision } = req.body || {};
+    if (!["approved", "rejected"].includes(decision)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Qaror noto'g'ri" });
+    }
+
+    const link = await StudentLink.findById(req.params.linkId).populate(
+      "requestedClass",
+      "teacher branch name",
+    );
+    // ⚠️ Boshqa markazning so'rovini tasdiqlab bo'lmasin
+    if (!link || String(link.requestedClass?.teacher) !== String(ctx.directorId)) {
+      return res.status(404).json({ success: false, error: "So'rov topilmadi" });
+    }
+    if (
+      ctx.branchFilter &&
+      link.requestedClass?.branch &&
+      String(link.requestedClass.branch) !== ctx.branchFilter
+    ) {
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+    }
+    if (link.status !== "pending") {
+      return res
+        .status(400)
+        .json({ success: false, error: "Bu so'rov allaqachon ko'rib chiqilgan" });
+    }
+
+    link.status = decision;
+    // ⚠️ `isActive` FAQAT tasdiqlanganda ochiladi. Butun kod shu
+    //    maydon bo'yicha filtrlaydi, ya'ni rad etilgan so'rov
+    //    hech qayerga chiqmaydi.
+    link.isActive = decision === "approved";
+    await link.save();
+
+    audit(req, ctx, {
+      action: decision === "approved" ? "parentLink.approved" : "parentLink.rejected",
+      entity: "StudentLink",
+      entityId: link._id,
+      entityLabel: link.requestedClass?.name || "",
+    });
+
+    // ⚠️ OTA-ONAGA XABAR SHART. U botda "tasdiqlangach xabar
+    //    keladi" degan va'dani o'qigan; xabarsiz qolsa har kuni
+    //    /start bosib tekshirib turardi va oxiri tashlab ketardi.
+    //
+    // ⚠️ Fonda yuboriladi — Telegram javob bermagani sinf
+    //    rahbarining tugmasini muzlatib qo'ymasin (davomat
+    //    xabarnomasi bilan bir xil qoida).
+    if (link.telegramChatId) {
+      const student = await Student.findById(link.student)
+        .select("name")
+        .lean();
+      // Ism Markdown belgilarini buzmasin — `Nodira_A` bo'lsa
+      // Telegram xabarni umuman yubormasdi (bot/handlers.js → md).
+      const name = String(student?.name || "").replace(/[*_`[\]]/g, " ");
+      const text = botText(
+        link.tgLang || "uz",
+        decision === "approved" ? "clsApproved" : "clsRejected",
+        name,
+      );
+      // ⚠️ `inBackground(fn, args)` argumentni YOYMAYDI — bitta
+      //    qiymat uzatadi. Shuning uchun yopilma.
+      inBackground(() => sendMessage(link.telegramChatId, text));
+    }
+
+    res.json({ success: true, status: link.status });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
 const getExpenses = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
@@ -3206,6 +3396,9 @@ module.exports = {
   markPayment,
 
   shareClass,
+  parentLinkClass,
+  getParentRequests,
+  reviewParentRequest,
   addExpense,
   getExpenses,
   setExpenseReceipt,

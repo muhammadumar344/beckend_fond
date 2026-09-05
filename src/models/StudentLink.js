@@ -50,14 +50,56 @@ const studentLinkSchema = new mongoose.Schema(
     },
 
     // Qanday isbotlangani — ruxsat darajasi shunga bog'liq
+    //
+    // ⚠️ `approved` — sinf havolasi orqali kelgan va sinf rahbari
+    //    QO'LDA tasdiqlagan bog'lanish. Kod bilan bir darajada:
+    //    ikkalasida ham qaror odamniki, farqi shundaki kodni
+    //    xodim OLDINDAN beradi, bu yerda esa KEYIN tasdiqlaydi.
     verifiedVia: {
       type: String,
-      enum: ["phone", "code", "legacy"],
+      enum: ["phone", "code", "legacy", "approved"],
       required: true,
     },
 
     // Solishtirishda ishlatilgan raqam (utils/phone.js kaliti)
     phoneKey: { type: String, default: "" },
+
+    // ⚠️ Ota-onaning Telegram tili. Odatda kerak emas — bot har
+    //    xabarda `from.language_code` ni oladi. Lekin TASDIQLASH
+    //    xabari CRM'dan yuboriladi: u yerda ota-ona umuman
+    //    ishtirok etmaydi, ya'ni tilni so'raydigan joy yo'q.
+    //    Saqlamasak, ruscha gapiradigan ota-ona kutgan javobini
+    //    o'zbekcha olardi.
+    tgLang: { type: String, default: "" },
+
+    // ⚠️ TASDIQ KUTAYOTGAN BOG'LANISH.
+    //
+    //    Raqami ro'yxatda yo'q ota-ona sinf ro'yxatidan farzandini
+    //    tanlaydi — lekin TANLASHNING O'ZI HECH NARSA OCHMAYDI.
+    //    Yozuv `isActive: false` bilan yaratiladi va sinf rahbari
+    //    tasdiqlagandan keyingina ochiladi.
+    //
+    // ⚠️ Xavfsizlik ANIQ SHU YERDAN kelib chiqadi: butun kod
+    //    allaqachon `isActive: true` bo'yicha filtrlaydi (Mini App
+    //    ruxsati, xabar yuborish, ro'yxatlar). Ya'ni yangi joyda
+    //    "pending ni ham chiqarib yuborma" deb eslab qolish shart
+    //    emas — unutilgani yopiq qoladi.
+    //
+    //    `status` faqat SINF RAHBARIGA ro'yxat ko'rsatish uchun:
+    //    `isActive: false` o'zi "uzilgan" degani ham bo'lishi
+    //    mumkin (/reset), ikkalasini ajratish kerak.
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected", null],
+      default: null,
+    },
+    // Qaysi sinf havolasi orqali kelgan — tasdiqlash ro'yxati shu
+    // bo'yicha guruhlanadi
+    requestedClass: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Class",
+      default: null,
+    },
 
     isActive: { type: Boolean, default: true },
     // Mini App'ni oxirgi marta qachon ochgan

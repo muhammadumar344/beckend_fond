@@ -116,6 +116,23 @@ const classSchema = new mongoose.Schema({
     index: { unique: true, sparse: true },
   },
 
+  // ⚠️ OTA-ONANI BOTGA ULASH tokeni. `publicToken` DAN ALOHIDA
+  //    va bu ataylab — ikkalasining xavf darajasi boshqa:
+  //      `publicToken` → pulni ko'rsatadi, ISM yo'q
+  //      `parentToken` → shaxsni aniqlash oqimini boshlaydi
+  //    Bittasini bekor qilish ikkinchisiga tegmasligi kerak.
+  //
+  // ⚠️ TOKENNING O'ZI HECH NARSA OCHMAYDI. U faqat "qaysi sinf"
+  //    degan savolga javob beradi; kirish baribir telefon raqami
+  //    yoki sinf rahbarining tasdig'i bilan ochiladi. Aks holda
+  //    guruhga tarqagan havola bilan har kim istalgan bolani
+  //    ochib olardi — eski botdagi aynan o'sha teshik.
+  parentToken: {
+    type: String,
+    default: null,
+    index: { unique: true, sparse: true },
+  },
+
   createdAt: {
     type: Date,
     default: Date.now,

@@ -240,6 +240,18 @@ router.get("/expenses", allowTeacherOrStaff, ctrl.getExpenses);
 router.post("/classes/:classId/share", onlyTeacher, ctrl.shareClass);
 router.delete("/classes/:classId/share", onlyTeacher, ctrl.shareClass);
 
+// Ota-onani botga ulash havolasi (QR ham shu tokendan)
+router.post("/classes/:classId/parent-link", onlyTeacher, ctrl.parentLinkClass);
+router.delete("/classes/:classId/parent-link", onlyTeacher, ctrl.parentLinkClass);
+
+// Tasdiq kutayotgan ota-onalar — raqami ro'yxatda topilmaganlar
+router.get("/parent-requests", allowTeacherOrStaff, ctrl.getParentRequests);
+router.put(
+  "/parent-requests/:linkId",
+  allowTeacherOrStaff,
+  ctrl.reviewParentRequest,
+);
+
 // Chek surati — keyinroq biriktirish yoki olib tashlash
 router.put(
   "/expenses/:expenseId/receipt",
