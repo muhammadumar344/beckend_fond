@@ -236,6 +236,10 @@ router.get("/export/:classId", onlyTeacher, ctrl.exportPayments);
 //    o'zi hech narsani cheklamaydi.
 router.post("/expenses", allowTeacherOrStaff, ctrl.addExpense);
 router.get("/expenses", allowTeacherOrStaff, ctrl.getExpenses);
+// Ota-onalar uchun ochiq havola — yaratish / bekor qilish
+router.post("/classes/:classId/share", onlyTeacher, ctrl.shareClass);
+router.delete("/classes/:classId/share", onlyTeacher, ctrl.shareClass);
+
 // Chek surati — keyinroq biriktirish yoki olib tashlash
 router.put(
   "/expenses/:expenseId/receipt",

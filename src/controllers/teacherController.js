@@ -16,6 +16,7 @@ const Branch = require("../models/Branch");
 // Tarif katalogidagi "ochiq lidlar" hisobi uchun
 const Lead = require("../models/Lead");
 const PaymentClaim = require("../models/PaymentClaim");
+const crypto = require("crypto");
 const cloudinary = require("../services/cloudinary");
 const platform = require("../config/platform");
 const studentImport = require("../services/studentImport");
@@ -2018,6 +2019,67 @@ const setExpenseReceipt = async (req, res) => {
   }
 };
 
+// ── OTA-ONALAR UCHUN OCHIQ HAVOLA ──────────────────────────
+//
+// `POST   /api/teacher/classes/:classId/share` — yaratadi yoki yangilaydi
+// `DELETE /api/teacher/classes/:classId/share` — bekor qiladi
+//
+// ⚠️ QAYTA BOSISH TOKENNI ALMASHTIRADI va bu ataylab: havola
+//    guruhda qolib ketadi, sinf rahbari uni "bekor qilish"ning
+//    yagona yo'li shu. Eski havola darhol 404 beradi.
+//
+// ⚠️ Faqat DIREKTOR. Bu markazning moliyasini tashqariga ochish
+//    — xodim qaroriga qoldiriladigan ish emas.
+const shareClass = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    if (!ctx.isDirector) {
+      return res.status(403).json({ success: false, error: "Faqat direktor uchun" });
+    }
+
+    const cls = await Class.findOne({
+      _id: req.params.classId,
+      teacher: ctx.directorId,
+    });
+    if (!cls) {
+      return res.status(404).json({ success: false, error: "Sinf topilmadi" });
+    }
+
+    if (req.method === "DELETE") {
+      cls.publicToken = null;
+      await cls.save();
+      audit(req, ctx, {
+        action: "class.shareOff",
+        entity: "Class",
+        entityId: cls._id,
+        entityLabel: cls.name,
+      });
+      return res.json({ success: true, token: null });
+    }
+
+    // 24 bayt → 32 belgi. `base64url` — manzilga tushadigan
+    // belgilar (`+/=` yo'q), ya'ni havola sindirilmaydi.
+    cls.publicToken = crypto.randomBytes(24).toString("base64url");
+    await cls.save();
+
+    // ⚠️ Jurnalga yoziladi: sinf moliyasini tashqariga ochish —
+    //    orqaga qaytariladigan, lekin izsiz qolmasligi kerak
+    //    bo'lgan qaror.
+    audit(req, ctx, {
+      action: "class.shareOn",
+      entity: "Class",
+      entityId: cls._id,
+      entityLabel: cls.name,
+    });
+
+    return res.json({ success: true, token: cls.publicToken });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
+  }
+};
+
 const getExpenses = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
@@ -3143,6 +3205,7 @@ module.exports = {
   updatePaymentStatus,
   markPayment,
 
+  shareClass,
   addExpense,
   getExpenses,
   setExpenseReceipt,

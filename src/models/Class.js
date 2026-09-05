@@ -93,6 +93,29 @@ const classSchema = new mongoose.Schema({
     default: null,
   },
 
+  // ⚠️ OTA-ONALAR UCHUN OCHIQ HAVOLA.
+  //    Sinf fondining butun muammosi ishonchda: pul
+  //    ota-onalarniki, uni sinf rahbari yig'adi va har yili
+  //    "qayerga ketdi?" degan gap chiqadi. Bu token bilan u
+  //    bitta havola olib guruhga tashlaydi — ota-ona hech
+  //    narsa o'rnatmaydi, ro'yxatdan o'tmaydi, botga
+  //    ulanmaydi.
+  //
+  // ⚠️ ISM VA QARZDOR CHIQMAYDI. Sahifa faqat PULNI ko'rsatadi:
+  //    qancha yig'ildi, nimaga sarflandi, qancha qoldi. Kim
+  //    to'lamaganini ro'yxat qilib qo'yish — bolani sinf oldida
+  //    sharmanda qilish, ya'ni foydadan ko'ra zarari ko'p.
+  //
+  // ⚠️ `sparse` SHART: token faqat havola ochgan sinflarda
+  //    bo'ladi, qolganlarida maydon umuman yo'q. Sparse
+  //    bo'lmasa `null` qiymatlar bir-biriga urilib, ikkinchi
+  //    sinf ochilmay qolardi.
+  publicToken: {
+    type: String,
+    default: null,
+    index: { unique: true, sparse: true },
+  },
+
   createdAt: {
     type: Date,
     default: Date.now,

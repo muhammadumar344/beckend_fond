@@ -23,6 +23,7 @@ const MESSAGES = {
   "Server xatosi": { ru: "Ошибка сервера", en: "Server error" },
   "Ichki server xatosi": { ru: "Внутренняя ошибка сервера", en: "Internal server error" },
   "Topilmadi": { ru: "Не найдено", en: "Not found" },
+  "Havola topilmadi": { ru: "Ссылка не найдена", en: "Link not found" },
   "Faqat direktor uchun": { ru: "Только для директора", en: "Directors only" },
   "Faqat xodimlar uchun": { ru: "Только для сотрудников", en: "Staff only" },
   "Noma'lum foydalanuvchi roli": { ru: "Неизвестная роль пользователя", en: "Unknown user role" },
