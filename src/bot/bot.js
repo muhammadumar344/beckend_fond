@@ -396,4 +396,27 @@ const _attachHandlers = () => {
 
 const getBot = () => bot;
 
-module.exports = { initBot, getBot, BOT_TOKEN };
+// ── Bot foydalanuvchi nomi ───────────────────────────────────
+//
+// ⚠️ KESHLANADI. `getMe()` — Telegram'ga tarmoq so'rovi; sinf
+//    havolasi tugmasi esa har bosilganda chaqirilardi va bot
+//    sekin javob berganda tugma osilib turardi. Nom o'zgarmaydi
+//    (o'zgarsa server qayta ko'tariladi).
+//
+// ⚠️ Bot yo'q bo'lsa BO'SH qaytadi, xato TASHLAMAYDI: token
+//    baribir yaratilishi kerak — direktor keyinroq nusxa oladi.
+let cachedUsername = "";
+
+async function botUsername() {
+  if (cachedUsername) return cachedUsername;
+  if (!bot) return "";
+  try {
+    const info = await bot.getMe();
+    cachedUsername = info?.username || "";
+  } catch (e) {
+    console.error("[bot] getMe xatosi:", e.message);
+  }
+  return cachedUsername;
+}
+
+module.exports = { initBot, getBot, botUsername, BOT_TOKEN };

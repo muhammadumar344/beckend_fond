@@ -241,6 +241,7 @@ router.post("/classes/:classId/share", onlyTeacher, ctrl.shareClass);
 router.delete("/classes/:classId/share", onlyTeacher, ctrl.shareClass);
 
 // Ota-onani botga ulash havolasi (QR ham shu tokendan)
+router.get("/classes/:classId/parent-link", onlyTeacher, ctrl.parentLinkClass);
 router.post("/classes/:classId/parent-link", onlyTeacher, ctrl.parentLinkClass);
 router.delete("/classes/:classId/parent-link", onlyTeacher, ctrl.parentLinkClass);
 

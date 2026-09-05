@@ -52,6 +52,7 @@ const { sendPaymentConfirmation, sendMessage } = require("../services/telegramSe
 const { inBackground } = require("../services/notify");
 // Bot matnlari — tasdiqlash xabari ota-onaga BOT tilida ketadi
 const { t: botText } = require("../bot/texts");
+const { botUsername } = require("../bot/bot");
 const {
   resolveContext,
   requirePermission,
@@ -2049,6 +2050,22 @@ const shareClass = async (req, res) => {
       return res.status(404).json({ success: false, error: "Sinf topilmadi" });
     }
 
+    // ⚠️ GET — FAQAT O'QIYDI. Modal ochilganda mavjud havola
+    //    ko'rsatilishi kerak; buning uchun POST yuborsak token
+    //    ALMASHIB ketardi va devorga chop etib osilgan QR
+    //    "havolani ko'rmoqchi bo'lgan" har bosishda o'lardi.
+    if (req.method === "GET") {
+      const uname = cls.parentToken ? await botUsername() : "";
+      return res.json({
+        success: true,
+        token: cls.parentToken || null,
+        link:
+          uname && cls.parentToken
+            ? `https://t.me/${uname}?start=cls_${cls.parentToken}`
+            : "",
+      });
+    }
+
     if (req.method === "DELETE") {
       cls.publicToken = null;
       await cls.save();
@@ -2123,7 +2140,7 @@ const parentLinkClass = async (req, res) => {
         entityId: cls._id,
         entityLabel: cls.name,
       });
-      return res.json({ success: true, token: null });
+      return res.json({ success: true, token: null, link: "" });
     }
 
     // ⚠️ `publicToken` dan qisqaroq (12 bayt → 16 belgi): bu token
@@ -2139,7 +2156,16 @@ const parentLinkClass = async (req, res) => {
       entityLabel: cls.name,
     });
 
-    return res.json({ success: true, token: cls.parentToken });
+    // ⚠️ TO'LIQ HAVOLA BACKENDDAN. Bot nomini frontendga yozib
+    //    qo'ysak, botni almashtirgan kunda hamma sinf havolasi
+    //    jimgina o'lik bo'lib qolardi (platforma kartasi bilan
+    //    bir xil qoida — yagona manba).
+    const uname = await botUsername();
+    return res.json({
+      success: true,
+      token: cls.parentToken,
+      link: uname ? `https://t.me/${uname}?start=cls_${cls.parentToken}` : "",
+    });
   } catch (err) {
     return res
       .status(err.status || 500)
