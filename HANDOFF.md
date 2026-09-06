@@ -182,6 +182,70 @@ matn topildi — jumladan xodim yaratilganda chiqadigan
 
 ---
 
+---
+
+### Shu bilan birga — jonli saytdagi ikkita bug (2026-09-06)
+
+**1. Telegram sahifasidagi yo'riqnoma sahifani YIQITARDI.**
+
+Muhammadumar: *"buttoni bossam ekranda hech narsa yoq kom kok"*.
+Reproduce qilindi. Sabab — `tg_step1` ichida `@SchoolfondsBot`.
+
+⚠️ **vue-i18n `@` dan keyingi harfni "linked message" deb
+   o'qiydi** (`@:kalit` sintaksisi), xabarni kompilyatsiya qila
+   olmaydi va BUTUN KOMPONENT yiqiladi. Bu CLAUDE.md da yozilgan
+   tuzoq — ikkinchi marta takrorlandi.
+
+⚠️ **Xato faqat yo'riqnoma OCHILGANDA chiqadi**: xabar birinchi
+   marta ko'rsatilganda kompilyatsiya qilinadi. Sahifa ochilganda
+   hammasi joyida ko'rinadi. Ochilmagan akkordeon ichidagi matn
+   oylab jim yotishi mumkin.
+
+Yechim — parametr: `$t(s, { bot: botTag })`, bot nomi esa
+serverdan (`getMe`, keshlanadi).
+
+✅ **`check:i18n` endi buni ushlaydi** — xabar ichidagi `@` xato.
+Bomba qaytarib qo'yib sinaldi.
+
+Yo'l-yo'lakay: 3–5-qadamlar **allaqachon o'chirilgan** oqimni
+o'rgatardi ("o'qituvchi emailini kiriting → sinfni tanlang →
+bolani tanlang"). U oqim xavfsizlik sababli olib tashlangan edi.
+Va `supportEmail: 'support@schoolfund.uz'` — hech qayerda
+ishlatilmaydi, domeni ham xato, ishlatilsa o'sha sahifani
+yiqitardi. O'chirildi.
+
+**2. Telefonda jadval — ma'lumot ko'rinmasdi.**
+
+*"table lardagi malumot jipslashib bazi malumotlar korinmayabti
+faqat kattaroq ekranda korinyabti"*. 430px da o'lchandi:
+To'lovlar jadvalida ekranga faqat "#", "Ismi" va "Summa"
+sig'ardi. **"Holati" va BELGILASH TUGMASI** — direktorning
+telefondagi asosiy ishi — o'ngda qolardi, surish mumkinligini
+bildiradigan belgi esa yo'q edi.
+
+⚠️ **Gorizontal surishning o'zi yechim emas.** Avvalgi roundda
+   "o'ragich suriladi" deb yopilgan deb hisoblangan edi — lekin
+   surishni SEZDIRADIGAN narsa bo'lmasa, u "ma'lumot chiqmayapti"
+   bo'lib ko'rinadi.
+
+Endi ≤620px da qator **kartochkaga** aylanadi (hech narsa
+yashirilmaydi): `teacher/Payments`, `teacher/Expenses`,
+`teacher/ClassDetail` (ikkala jadval), `lc/Students`.
+
+⚠️ Maydonlar `grid-template-areas` bilan ANIQ yoziladi.
+Avtomatik joylashuvda "Sana" ustuni jimgina yo'qolib qolgan edi.
+
+Kartochkaga aylantirib bo'lmaydiganlar (31 ta kun ustuni bor
+davomat/baho jadvali) uchun `style.css` da **`.x-scroll`**:
+chetda soya turadi va faqat o'sha tomonda ko'rinmagan ustun
+bo'lsa paydo bo'ladi. JS yo'q — `background-attachment: local`.
+
+⚠️ `check:solo` **buni topmasdi**: `dist/_tbl.html` faqat
+QIRQILGAN (surib bo'lmaydigan) elementni sanaydi, surilib
+ketadigani esa "toza" bo'lib chiqadi. Ya'ni tekshiruv "ma'lumot
+yo'qolmaydi" ni kafolatlaydi, "qulay" ni emas — surат olib
+qarash baribir kerak.
+
 ### Undan oldingi ish — "Fond rejimi tozalandi + DEPLOY" (2026-09-04)
 
 **Ikkala PR `main` ga qo'shildi** (frontend #1, backend #1) — ya'ni
