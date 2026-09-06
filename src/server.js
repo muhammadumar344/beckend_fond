@@ -170,6 +170,16 @@ try {
   console.warn('⚠️  routes/payments topilmadi yoki xato:', e.message || e);
 }
 
+// ⚠️ OCHIQ (login'siz) route'lar — ota-onalar uchun hisobot
+//    havolasi. Alohida router: bu yerga hech qachon `auth`
+//    qo'yilmaydi va bu ataylab (routes/public.js izohiga qarang).
+try {
+  app.use('/api/public', require('./routes/public'));
+  console.log('✅ /api/public router mounted');
+} catch (e) {
+  console.warn('⚠️  routes/public topilmadi yoki xato:', e.message || e);
+}
+
 try {
   app.use('/api/admin', require('./routes/admin'));
   console.log('✅ /api/admin router mounted');

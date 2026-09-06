@@ -236,6 +236,29 @@ router.get("/export/:classId", onlyTeacher, ctrl.exportPayments);
 //    o'zi hech narsani cheklamaydi.
 router.post("/expenses", allowTeacherOrStaff, ctrl.addExpense);
 router.get("/expenses", allowTeacherOrStaff, ctrl.getExpenses);
+// Ota-onalar uchun ochiq havola — yaratish / bekor qilish
+router.post("/classes/:classId/share", onlyTeacher, ctrl.shareClass);
+router.delete("/classes/:classId/share", onlyTeacher, ctrl.shareClass);
+
+// Ota-onani botga ulash havolasi (QR ham shu tokendan)
+router.get("/classes/:classId/parent-link", onlyTeacher, ctrl.parentLinkClass);
+router.post("/classes/:classId/parent-link", onlyTeacher, ctrl.parentLinkClass);
+router.delete("/classes/:classId/parent-link", onlyTeacher, ctrl.parentLinkClass);
+
+// Tasdiq kutayotgan ota-onalar — raqami ro'yxatda topilmaganlar
+router.get("/parent-requests", allowTeacherOrStaff, ctrl.getParentRequests);
+router.put(
+  "/parent-requests/:linkId",
+  allowTeacherOrStaff,
+  ctrl.reviewParentRequest,
+);
+
+// Chek surati — keyinroq biriktirish yoki olib tashlash
+router.put(
+  "/expenses/:expenseId/receipt",
+  allowTeacherOrStaff,
+  ctrl.setExpenseReceipt,
+);
 router.delete("/expenses/:expenseId", allowTeacherOrStaff, ctrl.deleteExpense);
 
 // ══ TELEGRAM — faqat Director ════════════════════════════════
@@ -397,5 +420,23 @@ router.delete(
   requireLCMode,
   gradeCtrl.deleteGrade,
 );
+
+// ─── "TO'LADIM" — OTA-ONA YUBORADI, XODIM TASDIQLAYDI ───────────────────────
+//
+// ⚠️ `/api/lc/*` DA EMAS, SHU YERDA — va bu ataylab. U yerda butun
+//    router `requireLCMode` bilan qulflangan, Fond direktori esa
+//    403 olardi. Fondda bu oqim LC'dagidan ham keragiroq: sinf
+//    rahbari 30 ta to'lovni qo'lda belgilaydi.
+//
+// ⚠️ PUL BIZDAN O'TMAYDI. Ota-ona to'g'ridan-to'g'ri kartaga
+//    o'tkazadi; bu yerda faqat "to'ladim" so'rovi tasdiqlanadi.
+//    Boshqa odamlarning pulini ushlab turish alohida litsenziya
+//    talab qiladi.
+const claimCtrl = require("../controllers/paymentClaimController");
+
+router.get("/payment-claims", allowTeacherOrStaff, claimCtrl.list);
+router.put("/payment-claims/:claimId", allowTeacherOrStaff, claimCtrl.review);
+router.get("/payment-details", allowTeacherOrStaff, claimCtrl.getDetails);
+router.put("/payment-details", allowTeacherOrStaff, claimCtrl.updateDetails);
 
 module.exports = router;

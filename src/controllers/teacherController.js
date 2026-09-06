@@ -15,6 +15,9 @@ const Staff = require("../models/Staff");
 const Branch = require("../models/Branch");
 // Tarif katalogidagi "ochiq lidlar" hisobi uchun
 const Lead = require("../models/Lead");
+const PaymentClaim = require("../models/PaymentClaim");
+const crypto = require("crypto");
+const StudentLink = require("../models/StudentLink");
 const cloudinary = require("../services/cloudinary");
 const platform = require("../config/platform");
 const studentImport = require("../services/studentImport");
@@ -45,7 +48,11 @@ const {
   effectivePlan,
 } = require("../utils/planHelper");
 const smsService = require("../services/smsService");
-const { sendPaymentConfirmation } = require("../services/telegramService");
+const { sendPaymentConfirmation, sendMessage } = require("../services/telegramService");
+const { inBackground } = require("../services/notify");
+// Bot matnlari — tasdiqlash xabari ota-onaga BOT tilida ketadi
+const { t: botText } = require("../bot/texts");
+const { botUsername } = require("../bot/bot");
 const {
   resolveContext,
   requirePermission,
@@ -500,6 +507,27 @@ const getBranding = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Teacher topilmadi" });
     }
+    // ⚠️ KUTAYOTGAN "TO'LADIM" SONI SHU YERDA — alohida so'rov EMAS.
+    //    Belgi yon menyuda, ya'ni HAR BIR sahifada kerak. Buning
+    //    uchun alohida endpoint qo'ysak, har sahifa ochilishida
+    //    ortiqcha so'rov ketardi; ro'yxatning o'zini so'rasak esa
+    //    bitta raqam uchun 100 tagacha yozuv tortilardi.
+    //    Bu chaqiruv sidebar uchun allaqachon ketyapti va
+    //    `countDocuments` indeksdan o'qiydi (director+status).
+    //
+    //    Xato bo'lsa 0 qaytadi: logotip belgi tufayli
+    //    ko'rinmay qolmasin.
+    let pendingClaims = 0;
+    try {
+      pendingClaims = await PaymentClaim.countDocuments({
+        director: ctx.directorId,
+        status: "pending",
+        ...(ctx.branchFilter ? { branch: ctx.branchFilter } : {}),
+      });
+    } catch (e) {
+      console.error("getBranding pendingClaims:", e.message);
+    }
+
     return res.json({
       success: true,
       branding: {
@@ -508,6 +536,7 @@ const getBranding = async (req, res) => {
         institutionName: director.institutionName || "",
         institutionType: director.institutionType || null,
       },
+      pendingClaims,
       // Interfeys cheklovni O'ZI o'ylab topmasligi uchun shu yerdan
       // aytiladi: CDN yoqilgan bo'lsa 3MB, bo'lmasa 300KB.
       logoMaxBytes: cloudinary.enabled()
@@ -1782,12 +1811,59 @@ const markPayment = async (req, res) => {
 //    `req.user.id` — bu Staff._id; uni `teacher` maydoniga
 //    yozsak xarajat egasiz qolardi va hech qaysi hisobotda
 //    ko'rinmasdi.
+// ── CHEK SURATI ─────────────────────────────────────────────
+//
+// ⚠️ Telefon surati katta bo'ladi, shuning uchun chegara logotipnikidan
+//    kattaroq. Yuklashda 1600px gacha kichrayadi — 512px da chekdagi
+//    raqamlarni o'qib bo'lmasdi, ya'ni surat o'z vazifasini
+//    bajarmasdi.
+const RECEIPT_MAX_BYTES = 5 * 1024 * 1024; // 5MB
+const RECEIPT_MAX_SIDE = 1600;
+
+/**
+ * Chek suratini CDN ga yuklaydi.
+ * Xato bo'lsa `status` bilan otadi — chaqiruvchi uni foydalanuvchiga
+ * tushunarli qilib qaytaradi.
+ */
+async function uploadReceipt(dataUri, publicId) {
+  if (!cloudinary.enabled()) {
+    throw Object.assign(
+      new Error("Chek surati hozircha yoqilmagan"),
+      { status: 503 },
+    );
+  }
+  if (typeof dataUri !== "string" || !dataUri.startsWith("data:image/")) {
+    throw Object.assign(new Error("Chek rasm bo'lishi kerak"), { status: 400 });
+  }
+  // base64 uzunligidan taxminiy bayt hajmi (logotip bilan bir xil hisob)
+  if (Math.round((dataUri.length * 3) / 4) > RECEIPT_MAX_BYTES) {
+    throw Object.assign(
+      new Error("Chek hajmi 5MB dan oshmasligi kerak"),
+      { status: 400 },
+    );
+  }
+  try {
+    const up = await cloudinary.uploadImage(dataUri, {
+      folder: cloudinaryCfg.folders.receipts,
+      publicId,
+      maxSide: RECEIPT_MAX_SIDE,
+    });
+    return { url: up.url, publicId: up.publicId };
+  } catch (err) {
+    console.error("Chek yuklash xatosi:", cloudinary.errorText(err));
+    throw Object.assign(
+      new Error("Chekni yuklab bo'lmadi — chek suratisiz ham saqlashingiz mumkin"),
+      { status: 502 },
+    );
+  }
+}
+
 const addExpense = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
     requirePermission(ctx, "manageExpenses");
 
-    const { classId, reason, amount, month, year, description, paidFrom, spentDate } =
+    const { classId, reason, amount, month, year, description, paidFrom, spentDate, receipt } =
       req.body;
 
     if (!classId || !reason || amount === undefined || !month || !year) {
@@ -1817,6 +1893,18 @@ const addExpense = async (req, res) => {
     // ko'ra ko'rsatilmagan bo'lgani yaxshi.
     const source = ["cash", "card", "bank"].includes(paidFrom) ? paidFrom : null;
 
+    // ⚠️ SAQLASHDAN OLDIN yuklanadi. Aks holda xarajat bazaga
+    //    tushib, surat yiqilsa — foydalanuvchi xato ko'radi-yu,
+    //    yozuv allaqachon yaratilgan bo'lardi va u ikkinchi marta
+    //    bosib takror yozuv yasardi.
+    let shot = null;
+    if (receipt) {
+      shot = await uploadReceipt(
+        receipt,
+        `expense-${ctx.directorId}-${Date.now()}`,
+      );
+    }
+
     const expense = new Expense({
       class: classId,
       teacher: ctx.directorId,
@@ -1826,6 +1914,8 @@ const addExpense = async (req, res) => {
       year: Number(year),
       description: (description || "").trim(),
       paidFrom: source,
+      receipt: shot?.url || "",
+      receiptPublicId: shot?.publicId || "",
       spentDate: spentDate ? new Date(spentDate) : new Date(),
       paidBy: {
         id: ctx.isDirector ? ctx.directorId : ctx.staffId,
@@ -1860,6 +1950,352 @@ const addExpense = async (req, res) => {
   }
 };
 
+// ── PUT /api/teacher/expenses/:expenseId/receipt ────────────
+//
+// ⚠️ ALOHIDA ENDPOINT KERAK. Chek ko'pincha keyinroq topiladi:
+//    xarajat kechqurun kiritiladi, chek esa cho'ntakda qoladi.
+//    Busiz yagona yo'l — yozuvni o'chirib qaytadan yaratish, ya'ni
+//    jurnalda soxta "o'chirildi/yaratildi" juftligi paydo bo'lardi
+//    (arxiv qoidasi bilan bir xil sabab).
+//
+// Body: { receipt: "data:image/..." }  yoki  { receipt: null } — olib tashlash
+const setExpenseReceipt = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageExpenses");
+
+    const expense = await Expense.findOne({
+      _id: req.params.expenseId,
+      teacher: ctx.directorId,
+    }).populate("class", "name branch");
+    if (!expense) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Xarajat topilmadi yoki ruxsat yo'q" });
+    }
+    if (
+      ctx.branchFilter &&
+      expense.class?.branch &&
+      String(expense.class.branch) !== ctx.branchFilter
+    ) {
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+    }
+
+    const { receipt } = req.body || {};
+    const staleShot = expense.receiptPublicId || "";
+
+    if (receipt === null || receipt === "") {
+      expense.receipt = "";
+      expense.receiptPublicId = "";
+    } else {
+      const shot = await uploadReceipt(
+        receipt,
+        `expense-${ctx.directorId}-${expense._id}`,
+      );
+      expense.receipt = shot.url;
+      expense.receiptPublicId = shot.publicId;
+    }
+    await expense.save();
+
+    // ⚠️ Eskisini SAQLANGANDAN keyin o'chiramiz — logotip bilan
+    //    bir xil qoida: o'chirib bo'lib saqlash yiqilsa, foydalanuvchi
+    //    cheksiz va tiklab bo'lmaydigan holatda qolardi.
+    if (staleShot && staleShot !== expense.receiptPublicId) {
+      await cloudinary.destroyImage(staleShot);
+    }
+
+    // ⚠️ Jurnalga yoziladi: chek — xarajatning isboti, uni jimgina
+    //    almashtirib qo'yish mumkin bo'lmasin.
+    audit(req, ctx, {
+      action: "expense.updated",
+      entity: "Expense",
+      entityId: expense._id,
+      entityLabel: `${expense.reason} — ${expense.class?.name || ""}`,
+      changes: [
+        { field: "chek", from: staleShot ? "bor" : "yo'q", to: expense.receipt ? "bor" : "yo'q" },
+      ],
+    });
+
+    return res.json({ success: true, expense });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
+  }
+};
+
+// ── OTA-ONALAR UCHUN OCHIQ HAVOLA ──────────────────────────
+//
+// `POST   /api/teacher/classes/:classId/share` — yaratadi yoki yangilaydi
+// `DELETE /api/teacher/classes/:classId/share` — bekor qiladi
+//
+// ⚠️ QAYTA BOSISH TOKENNI ALMASHTIRADI va bu ataylab: havola
+//    guruhda qolib ketadi, sinf rahbari uni "bekor qilish"ning
+//    yagona yo'li shu. Eski havola darhol 404 beradi.
+//
+// ⚠️ Faqat DIREKTOR. Bu markazning moliyasini tashqariga ochish
+//    — xodim qaroriga qoldiriladigan ish emas.
+const shareClass = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    if (!ctx.isDirector) {
+      return res.status(403).json({ success: false, error: "Faqat direktor uchun" });
+    }
+
+    const cls = await Class.findOne({
+      _id: req.params.classId,
+      teacher: ctx.directorId,
+    });
+    if (!cls) {
+      return res.status(404).json({ success: false, error: "Sinf topilmadi" });
+    }
+
+    // ⚠️ GET — FAQAT O'QIYDI. Modal ochilganda mavjud havola
+    //    ko'rsatilishi kerak; buning uchun POST yuborsak token
+    //    ALMASHIB ketardi va devorga chop etib osilgan QR
+    //    "havolani ko'rmoqchi bo'lgan" har bosishda o'lardi.
+    if (req.method === "GET") {
+      const uname = cls.parentToken ? await botUsername() : "";
+      return res.json({
+        success: true,
+        token: cls.parentToken || null,
+        link:
+          uname && cls.parentToken
+            ? `https://t.me/${uname}?start=cls_${cls.parentToken}`
+            : "",
+      });
+    }
+
+    if (req.method === "DELETE") {
+      cls.publicToken = null;
+      await cls.save();
+      audit(req, ctx, {
+        action: "class.shareOff",
+        entity: "Class",
+        entityId: cls._id,
+        entityLabel: cls.name,
+      });
+      return res.json({ success: true, token: null });
+    }
+
+    // 24 bayt → 32 belgi. `base64url` — manzilga tushadigan
+    // belgilar (`+/=` yo'q), ya'ni havola sindirilmaydi.
+    cls.publicToken = crypto.randomBytes(24).toString("base64url");
+    await cls.save();
+
+    // ⚠️ Jurnalga yoziladi: sinf moliyasini tashqariga ochish —
+    //    orqaga qaytariladigan, lekin izsiz qolmasligi kerak
+    //    bo'lgan qaror.
+    audit(req, ctx, {
+      action: "class.shareOn",
+      entity: "Class",
+      entityId: cls._id,
+      entityLabel: cls.name,
+    });
+
+    return res.json({ success: true, token: cls.publicToken });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
+  }
+};
+
+// ── OTA-ONANI BOTGA ULASH: HAVOLA + QR ─────────────────────
+//
+// `POST   /api/teacher/classes/:classId/parent-link`  — yaratadi
+// `DELETE /api/teacher/classes/:classId/parent-link`  — bekor qiladi
+//
+// Sinf rahbari bitta havola oladi va sinf guruhiga tashlaydi.
+// Ota-ona bosadi → bot ochiladi → bot SINFNI biladi → raqam
+// so'raydi. QR ham shu tokendan yasaladi (frontend chizadi).
+//
+// ⚠️ TOKEN O'ZI HECH NARSA OCHMAYDI — u faqat "qaysi sinf"
+//    degan savolga javob beradi. Havola guruhga tashlanadi,
+//    ya'ni tarqaydi; agar u bilan ro'yxatdan istalgan bolani
+//    tanlab "ota-onasi" bo'lib qo'yish mumkin bo'lsa, guruhga
+//    kirgan har kim istalgan bolaning baholarini ochardi. Eski
+//    botda aynan shunday bo'lgan (CLAUDE.md — `legacy`).
+const parentLinkClass = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    if (!ctx.isDirector) {
+      return res.status(403).json({ success: false, error: "Faqat direktor uchun" });
+    }
+
+    const cls = await Class.findOne({
+      _id: req.params.classId,
+      teacher: ctx.directorId,
+    });
+    if (!cls) {
+      return res.status(404).json({ success: false, error: "Sinf topilmadi" });
+    }
+
+    if (req.method === "DELETE") {
+      cls.parentToken = null;
+      await cls.save();
+      audit(req, ctx, {
+        action: "class.parentLinkOff",
+        entity: "Class",
+        entityId: cls._id,
+        entityLabel: cls.name,
+      });
+      return res.json({ success: true, token: null, link: "" });
+    }
+
+    // ⚠️ `publicToken` dan qisqaroq (12 bayt → 16 belgi): bu token
+    //    Telegram `?start=` parametriga tushadi va u 64 belgi bilan
+    //    cheklangan. `cls_` prefiksi ham shu yerga sig'ishi kerak.
+    cls.parentToken = crypto.randomBytes(12).toString("base64url");
+    await cls.save();
+
+    audit(req, ctx, {
+      action: "class.parentLinkOn",
+      entity: "Class",
+      entityId: cls._id,
+      entityLabel: cls.name,
+    });
+
+    // ⚠️ TO'LIQ HAVOLA BACKENDDAN. Bot nomini frontendga yozib
+    //    qo'ysak, botni almashtirgan kunda hamma sinf havolasi
+    //    jimgina o'lik bo'lib qolardi (platforma kartasi bilan
+    //    bir xil qoida — yagona manba).
+    const uname = await botUsername();
+    return res.json({
+      success: true,
+      token: cls.parentToken,
+      link: uname ? `https://t.me/${uname}?start=cls_${cls.parentToken}` : "",
+    });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ success: false, error: err.message });
+  }
+};
+
+// ── GET /api/teacher/parent-requests ───────────────────────
+// Tasdiq kutayotgan ota-onalar. Raqami ro'yxatda topilmagan
+// odam sinf ro'yxatidan farzandini tanlagan — endi sinf rahbari
+// "ha, bu o'sha bolaning otasi" deb tasdiqlashi kerak.
+const getParentRequests = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageStudents");
+
+    const classIds = await Class.find({
+      teacher: ctx.directorId,
+      ...(ctx.branchFilter ? { branch: ctx.branchFilter } : {}),
+    }).distinct("_id");
+
+    const requests = await StudentLink.find({
+      status: "pending",
+      requestedClass: { $in: classIds },
+    })
+      .populate("student", "name parentPhone")
+      .populate("requestedClass", "name")
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    res.json({
+      success: true,
+      requests: requests.map((r) => ({
+        id: r._id,
+        studentName: r.student?.name || "—",
+        parentPhone: r.student?.parentPhone || "",
+        className: r.requestedClass?.name || "",
+        // ⚠️ Ota-onaning O'ZI yuborgan raqami ham ko'rsatiladi:
+        //    sinf rahbari aynan shu bo'yicha qaror qiladi
+        //    ("bu raqam menda bor" yoki "tanimayman").
+        phone: r.phoneKey || "",
+        username: r.telegramUsername || "",
+        createdAt: r.createdAt,
+      })),
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
+// ── PUT /api/teacher/parent-requests/:linkId ───────────────
+// Body: { decision: 'approved' | 'rejected' }
+const reviewParentRequest = async (req, res) => {
+  try {
+    const ctx = await resolveContext(req);
+    requirePermission(ctx, "manageStudents");
+
+    const { decision } = req.body || {};
+    if (!["approved", "rejected"].includes(decision)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Qaror noto'g'ri" });
+    }
+
+    const link = await StudentLink.findById(req.params.linkId).populate(
+      "requestedClass",
+      "teacher branch name",
+    );
+    // ⚠️ Boshqa markazning so'rovini tasdiqlab bo'lmasin
+    if (!link || String(link.requestedClass?.teacher) !== String(ctx.directorId)) {
+      return res.status(404).json({ success: false, error: "So'rov topilmadi" });
+    }
+    if (
+      ctx.branchFilter &&
+      link.requestedClass?.branch &&
+      String(link.requestedClass.branch) !== ctx.branchFilter
+    ) {
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+    }
+    if (link.status !== "pending") {
+      return res
+        .status(400)
+        .json({ success: false, error: "Bu so'rov allaqachon ko'rib chiqilgan" });
+    }
+
+    link.status = decision;
+    // ⚠️ `isActive` FAQAT tasdiqlanganda ochiladi. Butun kod shu
+    //    maydon bo'yicha filtrlaydi, ya'ni rad etilgan so'rov
+    //    hech qayerga chiqmaydi.
+    link.isActive = decision === "approved";
+    await link.save();
+
+    audit(req, ctx, {
+      action: decision === "approved" ? "parentLink.approved" : "parentLink.rejected",
+      entity: "StudentLink",
+      entityId: link._id,
+      entityLabel: link.requestedClass?.name || "",
+    });
+
+    // ⚠️ OTA-ONAGA XABAR SHART. U botda "tasdiqlangach xabar
+    //    keladi" degan va'dani o'qigan; xabarsiz qolsa har kuni
+    //    /start bosib tekshirib turardi va oxiri tashlab ketardi.
+    //
+    // ⚠️ Fonda yuboriladi — Telegram javob bermagani sinf
+    //    rahbarining tugmasini muzlatib qo'ymasin (davomat
+    //    xabarnomasi bilan bir xil qoida).
+    if (link.telegramChatId) {
+      const student = await Student.findById(link.student)
+        .select("name")
+        .lean();
+      // Ism Markdown belgilarini buzmasin — `Nodira_A` bo'lsa
+      // Telegram xabarni umuman yubormasdi (bot/handlers.js → md).
+      const name = String(student?.name || "").replace(/[*_`[\]]/g, " ");
+      const text = botText(
+        link.tgLang || "uz",
+        decision === "approved" ? "clsApproved" : "clsRejected",
+        name,
+      );
+      // ⚠️ `inBackground(fn, args)` argumentni YOYMAYDI — bitta
+      //    qiymat uzatadi. Shuning uchun yopilma.
+      inBackground(() => sendMessage(link.telegramChatId, text));
+    }
+
+    res.json({ success: true, status: link.status });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+};
+
 const getExpenses = async (req, res) => {
   try {
     const ctx = await resolveContext(req);
@@ -1886,7 +2322,15 @@ const getExpenses = async (req, res) => {
       .sort({ spentDate: -1, createdAt: -1 });
     const total = expenses.reduce((sum, e) => sum + e.amount, 0);
 
-    return res.json({ success: true, expenses, total });
+    // ⚠️ Interfeys O'ZI o'ylab topmasin: kalit yo'q bo'lsa
+    //    "Chek qo'shish" tugmasi umuman chiqmasligi kerak
+    //    (`logoMaxBytes` bilan bir xil qoida).
+    return res.json({
+      success: true,
+      expenses,
+      total,
+      receiptEnabled: cloudinary.enabled(),
+    });
   } catch (err) {
     return res
       .status(err.status || 500)
@@ -1933,7 +2377,12 @@ const deleteExpense = async (req, res) => {
       ],
     });
 
+    const staleShot = expense.receiptPublicId || "";
     await Expense.findByIdAndDelete(expenseId);
+    // ⚠️ Yozuv o'chgandan KEYIN. Teskarisi bo'lsa, o'chirish
+    //    xatosi yozuvni ham, rasmni ham yarim holatda qoldirardi.
+    //    Bu chaqiruv hech qachon otmaydi (`destroyImage` izohi).
+    if (staleShot) await cloudinary.destroyImage(staleShot);
     return res.json({ success: true, message: "Xarajat o'chirildi" });
   } catch (err) {
     return res
@@ -2972,8 +3421,13 @@ module.exports = {
   updatePaymentStatus,
   markPayment,
 
+  shareClass,
+  parentLinkClass,
+  getParentRequests,
+  reviewParentRequest,
   addExpense,
   getExpenses,
+  setExpenseReceipt,
   deleteExpense,
 
   getMonthlyReminder,

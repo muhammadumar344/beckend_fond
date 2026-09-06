@@ -32,6 +32,7 @@ const {
   phoneKeyboard,
   removeKeyboard,
   mainKeyboard,
+  rosterKeyboard,
   confirmResetKeyboard,
 } = require('./keyboards')
 
@@ -45,6 +46,61 @@ const MD = { parse_mode: 'Markdown' }
 //    Kod bilan bolaning baholari ochiladi, demak u parolga teng.
 const CODE_WINDOW_MS = 60 * 60 * 1000
 const CODE_MAX = 10
+
+// ── SINF HAVOLASI ─────────────────────────────────────────────
+//
+// Sinf rahbari CRM'da havola oladi va sinf guruhiga tashlaydi
+// (QR ham shu havolaning surati). Ota-ona bosadi →
+// `t.me/bot?start=cls_<token>` → bot QAYSI SINF ekanini biladi.
+//
+// ⚠️ HAVOLANING O'ZI HECH NARSA OCHMAYDI. Guruhga tashlangan
+//    havola tarqaydi; agar u bilan ro'yxatdan istalgan bolani
+//    tanlab "ota-onasi" bo'lib qo'yish mumkin bo'lsa, guruhga
+//    kirgan har kim istalgan bolaning baholarini ochardi —
+//    eski botdagi aynan o'sha teshik (CLAUDE.md → `legacy`).
+//
+//    Shuning uchun tartib: RAQAM BIRINCHI. Mos kelsa darrov
+//    ulanadi; kelmasa ro'yxatdan tanlaydi va bu TASDIQ
+//    KUTADIGAN so'rov bo'lib qoladi.
+//
+// ⚠️ Tanlangan sinf XOTIRADA saqlanadi, bazada emas: bu bir
+//    necha daqiqalik holat va uni saqlash o'sib boradigan,
+//    tozalanishi kerak bo'ladigan yana bitta kolleksiya degani.
+//    Server qayta ko'tarilsa holat yo'qoladi va oqim ESKI yo'lga
+//    tushadi (raqam butun baza bo'ylab qidiriladi) — ya'ni
+//    ishlamay qolmaydi, faqat ro'yxat taklif qilinmaydi.
+const CLASS_TTL_MS = 30 * 60 * 1000
+const classOfChat = new Map()
+
+const rememberClass = (chatId, classId) => {
+  classOfChat.set(String(chatId), { id: String(classId), at: Date.now() })
+  // Eskirganlarini shu yerda tozalaymiz — alohida timer kerak emas
+  // (bir nechta ota-ona uchun Map hech qachon katta bo'lmaydi).
+  for (const [k, v] of classOfChat) {
+    if (Date.now() - v.at > CLASS_TTL_MS) classOfChat.delete(k)
+  }
+}
+
+const classOf = (chatId) => {
+  const v = classOfChat.get(String(chatId))
+  if (!v) return null
+  if (Date.now() - v.at > CLASS_TTL_MS) {
+    classOfChat.delete(String(chatId))
+    return null
+  }
+  return v.id
+}
+
+/**
+ * Markdown uchun xavfli belgilarni yumshatish.
+ *
+ * ⚠️ Ism yoki sinf nomida `_` bo'lsa (`Nodira_A`, `9_A`) Telegram
+ *    xabarni UMUMAN yubormaydi — 400 qaytaradi va ota-ona hech
+ *    narsa ko'rmaydi. Xato loglarda qoladi, oqim esa jimgina
+ *    to'xtaydi. Shuning uchun har bir DINAMIK qiymat shu yerdan
+ *    o'tadi.
+ */
+const md = (v) => String(v || '').replace(/([*_`\[\]])/g, ' ')
 
 /**
  * Mini App manzili.
@@ -169,6 +225,152 @@ const handleDirectorLink = async (bot, msg, token) => {
   }
 }
 
+// ── Sinf havolasi orqali kelgan odam ──────────────────────────
+async function handleClassLink(bot, msg, token) {
+  const chatId = msg.chat.id
+  const lang = langOf(msg.from)
+
+  // ⚠️ Arxivlangan sinf ochilmaydi: o'quv yili yopilgach havola
+  //    ham o'lishi kerak (ochiq hisobot havolasi bilan bir xil
+  //    qoida — `publicReportController`).
+  const cls = await Class.findOne({ parentToken: token, archivedAt: null })
+    .select('name teacher')
+    .lean()
+
+  if (!cls) {
+    await bot.sendMessage(chatId, t(lang, 'clsNotFound'), MD)
+    return
+  }
+
+  // Bloklangan yoki o'chirilayotgan markazning havolasi ham
+  // ishlamasin — aks holda hisob yopilgandan keyin ham yangi
+  // ota-onalar ulanaverardi.
+  const dir = await Teacher.findById(cls.teacher)
+    .select('name isActive deletionScheduledFor')
+    .lean()
+  if (!dir || dir.isActive === false || dir.deletionScheduledFor) {
+    await bot.sendMessage(chatId, t(lang, 'clsNotFound'), MD)
+    return
+  }
+
+  rememberClass(chatId, cls._id)
+
+  await bot.sendMessage(
+    chatId,
+    t(lang, 'clsWelcome', md(cls.name), md(dir.name)),
+    { ...MD, reply_markup: phoneKeyboard(lang) },
+  )
+}
+
+/** Raqam topilmaganda — sinf ro'yxati */
+async function sendRoster(bot, chatId, lang, classId, phone) {
+  // ⚠️ Token QAYTA o'qiladi: ota-ona havolani bosgandan keyin
+  //    sinf rahbari uni bekor qilgan bo'lishi mumkin.
+  const cls = await Class.findOne({ _id: classId, archivedAt: null })
+    .select('name parentToken')
+    .lean()
+  if (!cls || !cls.parentToken) {
+    await bot.sendMessage(chatId, t(lang, 'clsNotFound'), MD)
+    return
+  }
+
+  const students = await Student.find({
+    class: classId,
+    isActive: { $ne: false },
+  })
+    .select('name')
+    .sort({ rollNumber: 1 })
+    .limit(120)
+    .lean()
+
+  if (!students.length) {
+    await bot.sendMessage(chatId, t(lang, 'clsPickEmpty'), MD)
+    return
+  }
+
+  // Raqam klaviaturasi endi xalaqit beradi — ro'yxat inline
+  // tugmalarda, pastda esa "raqam yuborish" turib qolardi.
+  await bot.sendMessage(chatId, t(lang, 'clsPickTitle', md(cls.name), md(phone)), {
+    ...MD,
+    reply_markup: removeKeyboard(),
+  })
+  await bot.sendMessage(chatId, '👇', {
+    reply_markup: rosterKeyboard(students),
+  })
+}
+
+/** Ro'yxatdan bola tanlandi → TASDIQ KUTADIGAN so'rov */
+async function handlePick(bot, query, studentId) {
+  const chatId = query.message?.chat?.id
+  const lang = langOf(query.from)
+  if (!chatId || !/^[a-f0-9]{24}$/i.test(studentId)) return
+
+  const student = await Student.findOne({
+    _id: studentId,
+    isActive: { $ne: false },
+  })
+    .select('name class')
+    .lean()
+  if (!student) {
+    await bot.sendMessage(chatId, t(lang, 'clsNotFound'), MD)
+    return
+  }
+
+  // ⚠️ TOKEN SHU YERDA HAM TEKSHIRILADI. Tugma yozishmada qolib
+  //    ketadi va oylardan keyin ham bosilishi mumkin; havola
+  //    bekor qilingan bo'lsa eski tugma ham o'lishi kerak.
+  //    Ya'ni "bekor qilish" rostdan bekor qiladi.
+  const cls = await Class.findOne({ _id: student.class, archivedAt: null })
+    .select('name teacher parentToken')
+    .lean()
+  if (!cls || !cls.parentToken) {
+    await bot.sendMessage(chatId, t(lang, 'clsNotFound'), MD)
+    return
+  }
+
+  const existing = await StudentLink.findOne({
+    telegramUserId: String(query.from.id),
+    student: student._id,
+  }).lean()
+
+  if (existing?.isActive) {
+    const type = await typeOfDirector(cls.teacher)
+    await sendLinked(bot, chatId, lang, [student.name], type)
+    return
+  }
+  if (existing?.status === 'pending') {
+    await bot.sendMessage(chatId, t(lang, 'clsAlreadyPending', md(student.name)), MD)
+    return
+  }
+
+  // ⚠️ `isActive: false` — ATAYLAB. Butun kod shu maydon bo'yicha
+  //    filtrlaydi (Mini App ruxsati, xabar yuborish, ro'yxatlar),
+  //    ya'ni tasdiqlanmagan so'rov hech qayerga chiqmaydi va buni
+  //    har bir yangi joyda alohida eslab qolish shart emas.
+  await StudentLink.updateOne(
+    { telegramUserId: String(query.from.id), student: student._id },
+    {
+      $set: {
+        director: cls.teacher,
+        telegramChatId: String(chatId),
+        telegramUsername: query.from.username || '',
+        kind: 'parent',
+        verifiedVia: 'approved',
+        status: 'pending',
+        requestedClass: cls._id,
+        // Tasdiqlash xabari CRM'dan keladi — u yerda til
+        // noma'lum, shuning uchun shu yerda saqlab qo'yamiz.
+        tgLang: lang,
+        isActive: false,
+      },
+    },
+    { upsert: true },
+  )
+
+  console.log(`[bot] tasdiq kutmoqda: ${query.from.id} → ${student._id}`)
+  await bot.sendMessage(chatId, t(lang, 'clsPending', md(student.name)), MD)
+}
+
 // ── /start ────────────────────────────────────────────────────
 //
 // ⚠️ /start HECH QACHON BOSHI BERK KO'CHA BO'LMASLIGI KERAK.
@@ -192,6 +394,16 @@ const handleStart = async (bot, msg) => {
     const payload = String(msg.text || '').split(/\s+/)[1] || ''
     if (payload.startsWith('dir_')) {
       await handleDirectorLink(bot, msg, payload.slice(4))
+      return
+    }
+
+    // ⚠️ Sinf havolasi BOG'LANGANLIK TEKSHIRUVIDAN OLDIN turadi.
+    //    Ikkinchi farzandi boshqa sinfda o'qiydigan ota-ona
+    //    yangi havolani bosadi — agar bu yerda "siz allaqachon
+    //    bog'langansiz" deb to'xtatsak, ikkinchi bolani umuman
+    //    qo'sha olmasdi.
+    if (payload.startsWith('cls_')) {
+      await handleClassLink(bot, msg, payload.slice(4))
       return
     }
 
@@ -321,9 +533,17 @@ const handleContact = async (bot, msg) => {
     // Bazadagi raqamlar turli ko'rinishda yozilgan bo'lishi mumkin
     // (`+998 90 …`, `90 …`), shuning uchun oxirgi 9 raqam bo'yicha
     // solishtiramiz — utils/phone.js dagi izoh.
+    // ⚠️ Sinf havolasi orqali kelgan bo'lsa QIDIRUV O'SHA SINF
+    //    BILAN CHEKLANADI. Sabab: bitta raqam ikki markazda
+    //    bo'lishi mumkin (aka-uka boshqa maktabda), va havolani
+    //    bosgan odam aynan shu sinfga ulanmoqchi. Cheklamasak,
+    //    u tanlamagan sinfga ham jimgina ulanib qolardi.
+    const linkClassId = classOf(chatId)
+
     const candidates = await Student.find({
       parentPhone: { $regex: `${key}$` },
       isActive: { $ne: false },
+      ...(linkClassId ? { class: linkClassId } : {}),
     })
       .select('name class parentPhone')
       .lean()
@@ -331,6 +551,13 @@ const handleContact = async (bot, msg) => {
     const matched = candidates.filter((s) => phoneKey(s.parentPhone) === key)
 
     if (!matched.length) {
+      // Sinf ma'lum bo'lsa — boshi berk ko'cha emas: ro'yxatdan
+      // tanlaydi va sinf rahbari tasdiqlaydi.
+      if (linkClassId) {
+        await sendRoster(bot, chatId, lang, linkClassId, contact.phone_number)
+        return
+      }
+
       // ⚠️ Klaviatura QOLDIRILADI: raqamini yangilatgan ota-ona
       //    darrov qayta urinib ko'rishi kerak, /start yozishga
       //    majbur bo'lmasin.
@@ -486,6 +713,21 @@ const handleCallbackQuery = async (bot, query) => {
   if (!chatId) return
 
   try {
+    // ⚠️ Ro'yxatdan tanlash `switch` dan OLDIN: `query.data` da
+    //    o'quvchi ID'si bor, ya'ni aniq mos kelmaydi.
+    if (String(query.data || '').startsWith('pick_')) {
+      // Tugmalarni olib tashlaymiz — ikkinchi bolani ham tanlab
+      // yubormasin (bir necha farzandi bo'lsa qayta havola bosadi)
+      try {
+        await bot.editMessageReplyMarkup(
+          { inline_keyboard: [] },
+          { chat_id: chatId, message_id: query.message.message_id },
+        )
+      } catch (_) {}
+      await handlePick(bot, query, query.data.slice(5))
+      return
+    }
+
     switch (query.data) {
       case 'help':
         await handleHelp(bot, chatId, lang)

@@ -68,7 +68,185 @@ Bular har bir sessiyada kuchda. **O'qimasdan ish boshlamang.**
 
 ## 3. Hozirgi holat
 
-### Oxirgi tugagan ish — "Fond rejimi tozalandi + DEPLOY" (2026-09-04)
+### Oxirgi tugagan ish — "Ota-onani botga ulash + responsive" (2026-09-05)
+
+Branch: `claude/handoff-tasks-review-x4cfch` (ikkala repoda),
+**hali `main` ga qo'shilmagan.** Unda beshta ish bor: to'rttasi
+avvalgi roundlardan (§ pastda), beshinchisi shu kungi.
+
+**1. Ota-onani botga ulash — HAVOLA + QR.**
+
+Muhammadumar aytdi: "qr code bazi paytlari muammo tugdiradi shu
+uchun biz link yaratib berishimiz kerak". Sinf rahbari Sinflar
+sahifasida Telegram tugmasini bosadi va bitta havola oladi:
+
+```
+havola/QR → /start cls_<token> → bot QAYSI SINF ekanini biladi
+   ├─ raqam sinf ro'yxatida bor  → DARROV ulanadi
+   └─ raqam topilmadi            → sinf ro'yxati ko'rsatiladi
+                                   → bolani tanlaydi
+                                   → status: pending, isActive: false
+                                   → sinf rahbari tasdiqlaydi
+```
+
+⚠️ **Havolaning O'ZI hech narsa ochmaydi va bu qaror ataylab.**
+Havola sinf guruhiga tashlanadi, ya'ni tarqaydi. Agar u bilan
+ro'yxatdan istalgan bolani tanlab "ota-onasi" bo'lib qo'yish
+mumkin bo'lsa, guruhga kirgan har kim begona bolaning
+baholarini ochardi — eski botdagi aynan o'sha teshik
+(CLAUDE.md → `legacy`). Shuning uchun tartib: **raqam
+birinchi**, ro'yxat esa faqat tasdiq kutadigan so'rov yaratadi.
+
+⚠️ Tasdiqlanmagan yozuv `isActive: false` bo'lib turadi — butun
+kod allaqachon shu maydon bo'yicha filtrlaydi (Mini App
+ruxsati, xabar yuborish, ro'yxatlar), ya'ni har bir yangi joyda
+"pending ni chiqarma" deb eslab qolish shart emas.
+
+⚠️ Token tugma bosilganda QAYTA tekshiriladi: tugma yozishmada
+qolib ketadi, havola bekor qilinsa eski tugma ham o'lishi kerak.
+
+⚠️ Modal ochilganda **GET** yuboriladi, POST emas — POST token
+yasaydi, ya'ni "havolani ko'rmoqchi" bo'lgan har bosish devorga
+chop etilgan QR ni o'ldirardi.
+
+⚠️ Tasdiq ro'yxati **Sinflar sahifasining o'zida**, alohida menyu
+qilinmadi: so'rov kuniga bir-ikkita keladi va savol aynan shu
+yerda tug'iladi. Menyuda yana bitta qator bo'lsa, direktor unga
+oyda bir marta kirardi va ota-onalar kutib qolardi.
+
+Yangi: `Class.parentToken`, `StudentLink.status/requestedClass/
+tgLang`, `verifiedVia: "approved"` (kod bilan bir daraja),
+3 ta endpoint, `components/ParentLinkModal.vue`,
+`test/parentLink.test.js` (14 ta).
+
+**2. Tezkor qidiruvdan o'quvchining qatoriga.**
+
+"tezkor qidruvda oquvchi chiqanda ustiga bossa … osha bolani
+topib berishi kerak … va belgilayman". Ilgari natijaga
+bosilganda faqat sinf sahifasi ochilardi va administrator 30
+qator ichidan bolani yana ko'z bilan qidirardi. Endi
+`?student=` bilan boradi: to'lovlar tabi ochiladi, qator
+ajratib ko'rsatiladi (4 soniya) va o'sha yerda belgilanadi.
+Varaqa hali yaratilmagan bo'lsa o'quvchilar ro'yxatiga
+qaytadi — bo'sh ekran "topilmadi" bo'lib ko'rinmasin.
+
+**3. Telefonda qidiruv ochilganda sidebar yopiladi.** Tugma
+drawer ichida turadi, oyna esa ustiga ochilardi.
+
+**4. Qirqilgan jadvallar.**
+
+Uchta jadval o'ragichida `overflow: hidden` turardi va o'ngdagi
+ustunlar UMUMAN ko'rinmasdi, surish ham mumkin emasdi:
+`admin/Teachers` (Tarif, Amal), `lc/Grades` (oyning ikkinchi
+yarmi — 31 ta kun ustuni har qanday ekranda kengroq),
+`lc/Attendance`. Payments / Expenses / ClassDetail da surish
+faqat ≤768px da ochilardi — endi har doim.
+
+⚠️ **`grid-template-columns` dagi `1fr` ustuni o'z matnidan tor
+bo'lolmaydi.** Uzun ismli o'quvchi `lc/Students` qatorini 130px
+ga kengaytirib, qator o'z fonidan chiqib ketardi — sarlavha
+bilan ustunlar bir-biriga to'g'ri kelmasdi. Yechim
+`minmax(0, 1fr)`. Xuddi shu xato `staff/Dashboard` tezkor
+havolalarida ham bor edi.
+
+O'lchov usuli: `dist/_tbl.html` — sahifani kerakli kenglikdagi
+iframe'da ochib, `scrollWidth > clientWidth` bo'lgan va
+surilmaydigan elementlarni sanaydi. 430px va 360px da Fond,
+LC, xodim va admin panelining hamma sahifasi tekshirildi.
+
+⚠️ Bitta "xato" ataylab qoldirildi: `lc/Dashboard` dagi
+`.sc-link { margin-right: -0.45rem }` — u kartochkaning
+padding'i ichiga tushadi, sahifa surilmaydi.
+
+**5. `{{ }}` ichidagi matn ikki tekshiruv orasidan o'tib ketardi.**
+
+`check:i18n` shablonni qaraydi, lekin `{{ ... }}` ni TOZALAB
+boshlaydi; `check:uztext` esa faqat `<script>` ni. Ya'ni
+`{{ mode === 'chart' ? 'Jadval' : 'Grafik' }}` ikkalasidan ham
+o'tardi — va **33 ta matn** aynan shunday to'plangan edi:
+Profil, Kirish, Ro'yxatdan o'tish, admin paneli, xodim
+maoshlari, rol shablonlari. Ruscha interfeysdagi odam ularni
+o'zbekcha ko'rardi.
+
+`check:uztext` ga ikkinchi bo'lim qo'shildi: `{{ }}` ichidagi
+**chiqish holatidagi** satr (`? '…' : '…'`, `|| '…'`).
+`$t(...)` ichidagi kalitlar va mahsulot nomlari chetlab
+o'tiladi — soxta xato beradigan guardrail'ga hech kim
+qaramaydi.
+
+`check:i18n` ning bitta so'z qoidasi ham tuzatildi: oxiridagi
+tinish belgisi olib tashlanadi, aks holda
+`<span>Yuklanmoqda...</span>` undan o'tib ketardi. Yana 6 ta
+matn topildi — jumladan xodim yaratilganda chiqadigan
+"Parol:" (ikki joyda).
+
+---
+
+---
+
+### Shu bilan birga — jonli saytdagi ikkita bug (2026-09-06)
+
+**1. Telegram sahifasidagi yo'riqnoma sahifani YIQITARDI.**
+
+Muhammadumar: *"buttoni bossam ekranda hech narsa yoq kom kok"*.
+Reproduce qilindi. Sabab — `tg_step1` ichida `@SchoolfondsBot`.
+
+⚠️ **vue-i18n `@` dan keyingi harfni "linked message" deb
+   o'qiydi** (`@:kalit` sintaksisi), xabarni kompilyatsiya qila
+   olmaydi va BUTUN KOMPONENT yiqiladi. Bu CLAUDE.md da yozilgan
+   tuzoq — ikkinchi marta takrorlandi.
+
+⚠️ **Xato faqat yo'riqnoma OCHILGANDA chiqadi**: xabar birinchi
+   marta ko'rsatilganda kompilyatsiya qilinadi. Sahifa ochilganda
+   hammasi joyida ko'rinadi. Ochilmagan akkordeon ichidagi matn
+   oylab jim yotishi mumkin.
+
+Yechim — parametr: `$t(s, { bot: botTag })`, bot nomi esa
+serverdan (`getMe`, keshlanadi).
+
+✅ **`check:i18n` endi buni ushlaydi** — xabar ichidagi `@` xato.
+Bomba qaytarib qo'yib sinaldi.
+
+Yo'l-yo'lakay: 3–5-qadamlar **allaqachon o'chirilgan** oqimni
+o'rgatardi ("o'qituvchi emailini kiriting → sinfni tanlang →
+bolani tanlang"). U oqim xavfsizlik sababli olib tashlangan edi.
+Va `supportEmail: 'support@schoolfund.uz'` — hech qayerda
+ishlatilmaydi, domeni ham xato, ishlatilsa o'sha sahifani
+yiqitardi. O'chirildi.
+
+**2. Telefonda jadval — ma'lumot ko'rinmasdi.**
+
+*"table lardagi malumot jipslashib bazi malumotlar korinmayabti
+faqat kattaroq ekranda korinyabti"*. 430px da o'lchandi:
+To'lovlar jadvalida ekranga faqat "#", "Ismi" va "Summa"
+sig'ardi. **"Holati" va BELGILASH TUGMASI** — direktorning
+telefondagi asosiy ishi — o'ngda qolardi, surish mumkinligini
+bildiradigan belgi esa yo'q edi.
+
+⚠️ **Gorizontal surishning o'zi yechim emas.** Avvalgi roundda
+   "o'ragich suriladi" deb yopilgan deb hisoblangan edi — lekin
+   surishni SEZDIRADIGAN narsa bo'lmasa, u "ma'lumot chiqmayapti"
+   bo'lib ko'rinadi.
+
+Endi ≤620px da qator **kartochkaga** aylanadi (hech narsa
+yashirilmaydi): `teacher/Payments`, `teacher/Expenses`,
+`teacher/ClassDetail` (ikkala jadval), `lc/Students`.
+
+⚠️ Maydonlar `grid-template-areas` bilan ANIQ yoziladi.
+Avtomatik joylashuvda "Sana" ustuni jimgina yo'qolib qolgan edi.
+
+Kartochkaga aylantirib bo'lmaydiganlar (31 ta kun ustuni bor
+davomat/baho jadvali) uchun `style.css` da **`.x-scroll`**:
+chetda soya turadi va faqat o'sha tomonda ko'rinmagan ustun
+bo'lsa paydo bo'ladi. JS yo'q — `background-attachment: local`.
+
+⚠️ `check:solo` **buni topmasdi**: `dist/_tbl.html` faqat
+QIRQILGAN (surib bo'lmaydigan) elementni sanaydi, surilib
+ketadigani esa "toza" bo'lib chiqadi. Ya'ni tekshiruv "ma'lumot
+yo'qolmaydi" ni kafolatlaydi, "qulay" ni emas — surат olib
+qarash baribir kerak.
+
+### Undan oldingi ish — "Fond rejimi tozalandi + DEPLOY" (2026-09-04)
 
 **Ikkala PR `main` ga qo'shildi** (frontend #1, backend #1) — ya'ni
 72 ta commit jonli saytga chiqdi: Netlify `schoolfonds.uz` ni,

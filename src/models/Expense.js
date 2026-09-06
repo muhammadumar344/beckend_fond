@@ -48,6 +48,22 @@ const expenseSchema = new mongoose.Schema({
   //    bilan bir xil sabab.
   spentDate: { type: Date, default: Date.now },
 
+  // ⚠️ CHEK SURATI — XARAJATNING YAGONA ISBOTI.
+  //    "Marker 120 000" — bu gap. Sinf fondida esa pul ota-onalarniki
+  //    va eng ko'p beriladigan savol bitta: "pulimiz qayerga ketdi?".
+  //    Surat bo'lmasa javob har doim o'qituvchining so'zi bo'lib
+  //    qolaveradi.
+  //
+  // ⚠️ FAQAT CLOUDINARY ORQALI, base64 ZAXIRASI YO'Q — logotipdan
+  //    farqi shu. Logotip bitta hisobga bitta va kichik, chek esa
+  //    har oy o'nlab: bazaga base64 bo'lib yozilsa, `Expense.find()`
+  //    har safar o'sha rasmlarni ham xotiraga tortardi va xarajatlar
+  //    sahifasi asta-sekin sekinlashib borardi. Kalit yo'q bo'lsa
+  //    tugma umuman ko'rsatilmaydi (Payme/SMS bilan bir xil qoida:
+  //    yarim ishlaydigan holat yasamaymiz).
+  receipt: { type: String, default: "" },
+  receiptPublicId: { type: String, default: "" },
+
   // Kassadan pulni kim oldi. Ism NUSXA qilib saqlanadi — xodim
   // ishdan ketsa ham o'tgan smenalar egasiz qolmaydi
   // (`MonthlyPayment.receivedBy` bilan bir xil qolip).

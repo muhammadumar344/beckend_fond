@@ -187,16 +187,14 @@ router.get("/staff-attendance/month", allowTeacherOrStaff, staffAttCtrl.getMonth
 
 // ─── OTA-ONA TO'LOVLARI ─────────────────────────────────────────────────────
 //
-// ⚠️ PUL BIZDAN O'TMAYDI. Ota-ona markazning kartasiga
-//    to'g'ridan-to'g'ri o'tkazadi; bu yerda faqat "to'ladim"
-//    so'rovi tasdiqlanadi. Boshqa odamlarning pulini ushlab
-//    turish alohida litsenziya talab qiladi.
-const claimCtrl = require("../controllers/paymentClaimController");
-
-router.get("/payment-claims", allowTeacherOrStaff, claimCtrl.list);
-router.put("/payment-claims/:claimId", allowTeacherOrStaff, claimCtrl.review);
-router.get("/payment-details", allowTeacherOrStaff, claimCtrl.getDetails);
-router.put("/payment-details", allowTeacherOrStaff, claimCtrl.updateDetails);
+// ⚠️ "TO'LADIM" ROUTE'LARI BU YERDAN KO'CHIRILDI → routes/teacher.js.
+//    Sabab: butun `/api/lc/*` `requireLCMode` bilan qulflangan, ya'ni
+//    Fond direktori ularga 403 olardi. Natijasi jim edi — Fond
+//    ota-onasi ilovada karta raqamini umuman ko'rmasdi (`payTo`
+//    bo'sh → tugma chiqmaydi), agar qandaydir yo'l bilan da'vo
+//    yuborsa ham u bazada yotardi va o'qituvchi UNI HECH QACHON
+//    KO'RMASDI. Oqim ikkala rejim uchun ham bir xil, controller
+//    ichida rejimga bog'liq hech narsa yo'q.
 
 // ─── KETISH ARAFASIDAGI O'QUVCHILAR ─────────────────────────────────────────
 //
