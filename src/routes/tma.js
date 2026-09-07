@@ -33,6 +33,9 @@ router.post("/redeem", redeemLimiter, ctrl.redeemCode);
 router.get("/student/:studentId/grades", ctrl.getGrades);
 router.get("/student/:studentId/attendance", ctrl.getAttendance);
 router.get("/student/:studentId/payments", ctrl.getPayments);
+// Sinf fondi — "pul qayerga ketdi?". Faqat Fond rejimida
+// (tekshiruv controller ichida).
+router.get("/student/:studentId/fund", ctrl.getClassFund);
 
 // ⚠️ Cheklov SHART: bu tugma xodimga ish yaratadi. Cheklovsiz
 //    bitta odam yuzlab "to'ladim" yuborib, tasdiqlash ro'yxatini

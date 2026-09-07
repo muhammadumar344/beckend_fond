@@ -115,6 +115,69 @@ test("so'rovlar ro'yxati faqat o'z sinflaridan olinadi", () => {
   assert.match(body, /status:\s*["']pending["']/, "hamma yozuv chiqadi");
 });
 
+test("GET faqat O'QIYDI — token almashtirmaydi", () => {
+  // ⚠️ BU BLOK BIR MARTA NOTO'G'RI FUNKSIYAGA TUSHIB QOLGAN edi
+  //    (`shareClass` ga) va `parentLinkClass` da GET quyidagi
+  //    POST yo'liga o'tib ketardi: direktor havolani KO'RISH
+  //    uchun oynani ochsa, token almashib, guruhga tashlangan
+  //    havola va chop etilgan QR o'sha daqiqada o'lardi.
+  const fn = controller.slice(controller.indexOf("const parentLinkClass"));
+  const body = fn.slice(0, fn.indexOf("\n};"));
+  const getBlock = body.slice(body.indexOf('req.method === "GET"'));
+  const getEnd = getBlock.slice(0, getBlock.indexOf("\n    }"));
+
+  assert.ok(body.includes('req.method === "GET"'), "GET bloki yo'q");
+  assert.ok(!/randomBytes/.test(getEnd), "GET token yasayapti");
+  assert.ok(!/\.save\(\)/.test(getEnd), "GET bazaga yozyapti");
+});
+
+test("POST idempotent — mavjud token qaytadi", () => {
+  // Token nusxasi qog'ozda, sinf guruhida va o'ttizta ota-onaning
+  // yozishmasida yotadi. Tasodifan almashtirish — hammasini bir
+  // vaqtda o'chirish demakdir.
+  const fn = controller.slice(controller.indexOf("const parentLinkClass"));
+  const body = fn.slice(0, fn.indexOf("\n};"));
+
+  assert.match(body, /rotate/, "almashtirish bayrog'i yo'q");
+  assert.match(
+    body,
+    /if \(cls\.parentToken && !rotate\)/,
+    "mavjud token borligida ham yangisi yasaladi",
+  );
+  // Yangi token faqat shu shartdan KEYIN yasalishi kerak
+  assert.ok(
+    body.indexOf("if (cls.parentToken && !rotate)") < body.indexOf("randomBytes"),
+    "token idempotent tekshiruvdan OLDIN yasalyapti",
+  );
+});
+
+test("ochiq hisobot havolasi ham idempotent", () => {
+  // Aynan bir xil xavf: `/h/<token>` sinf guruhida yotadi.
+  const fn = controller.slice(controller.indexOf("const shareClass"));
+  const body = fn.slice(0, fn.indexOf("\n};"));
+  assert.match(body, /if \(cls\.publicToken && req\.query\.rotate !== "1"\)/);
+});
+
+test("bekor qilishda maydon O'CHIRILADI, `null` yozilmaydi", () => {
+  // ⚠️ Indeks `unique + sparse`. Sparse faqat MAYDONI YO'Q
+  //    hujjatni tashlaydi; `null` indekslanadi va ikkinchi sinf
+  //    o'sha `null` ga urilib, `E11000` bilan ochilmay qolardi.
+  const fn = controller.slice(controller.indexOf("const parentLinkClass"));
+  const body = fn.slice(0, fn.indexOf("\n};"));
+  assert.match(body, /cls\.parentToken = undefined/);
+  assert.ok(!/cls\.parentToken = null/.test(body), "`null` yozilyapti");
+
+  const Class = require("../src/models/Class");
+  for (const f of ["publicToken", "parentToken"]) {
+    const path = Class.schema.path(f);
+    assert.equal(
+      path.defaultValue,
+      undefined,
+      `${f} standart qiymati \`undefined\` bo'lishi kerak`,
+    );
+  }
+});
+
 test("havolani yaratish faqat direktorga ochiq", () => {
   const fn = controller.slice(controller.indexOf("const parentLinkClass"));
   const body = fn.slice(0, fn.indexOf("\n};"));
