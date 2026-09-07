@@ -35,6 +35,12 @@ const VERIFIED = new Set(["phone", "code", "approved"]);
 /** Bo'limlar → qaysi isbot darajasi yetadi */
 const SECTIONS = {
   payments: () => true, // hammaga — eski eslatma shu asosda ishlagan
+  // ⚠️ SINF FONDI HAMMAGA OCHIQ va bu ataylab: javobda shaxsiy
+  //    ma'lumot UMUMAN yo'q — faqat sanoq va pul (ochiq havola
+  //    `/h/<token>` bilan aynan bir xil shakl, `publicReport`).
+  //    Ya'ni `legacy` bog'lanish ham ko'ra oladi: bu ma'lumot
+  //    baribir tokenli havola orqali ochiq turibdi.
+  fund: () => true,
   grades: (via) => VERIFIED.has(via),
   attendance: (via) => VERIFIED.has(via),
   homework: (via) => VERIFIED.has(via),

@@ -33,6 +33,8 @@ const { listSupportStaff } = require("../services/supportStaff");
 const { bookSlot } = require("../services/supportBooking");
 const { create: createClaim } = require("../services/paymentClaim");
 const { verifyPayload } = require("../services/supportQr");
+const Expense = require("../models/Expense");
+const { buildPublicReport } = require("../services/publicReport");
 
 /** Bog'lanishni topadi va bo'limga ruxsatni tekshiradi */
 function requireLink(req, res, studentId, section) {
@@ -97,8 +99,15 @@ exports.getMe = async (req, res) => {
       //    ko'rsatilmaydi. Aks holda ota-ona tabni bosib, bo'sh
       //    ekranga tushardi va "nima uchun ishlamayapti?" deb
       //    markazga qo'ng'iroq qilardi.
+      // ⚠️ "Sinf fondi" faqat FOND rejimida. O'quv markazining
+      //    xarajati — biznes ma'lumoti, ota-onaniki emas: u yerda
+      //    ota-ona xizmat uchun to'laydi, jamg'armaga qatnashmaydi.
+      //    (`booking` bilan bir xil naqsh — tab umuman
+      //    ko'rsatilmaydi, bosib bo'sh ekranga tushmaydi.)
       const sections = visibleSections(l).filter(
-        (s) => s !== "booking" || d?.supportEnabled,
+        (s) =>
+          (s !== "booking" || d?.supportEnabled) &&
+          (s !== "fund" || d?.institutionType !== "learning_center"),
       );
 
       return {
@@ -288,6 +297,83 @@ exports.getPayments = async (req, res) => {
     });
   } catch (err) {
     console.error("[tma] getPayments", err);
+    res.status(500).json({ success: false, error: "Server xatosi" });
+  }
+};
+
+// ── GET /api/tma/student/:studentId/fund ─────────────────────
+//
+// SINF FONDI — "pul qayerga ketdi?".
+//
+// ⚠️ FOND rejimida ota-ona pulni O'ZI beradi va sinf jamg'armasi
+//    ham o'zinikidir. Ilgari u faqat "men to'ladimmi?" ni ko'rar,
+//    "yig'ilgan pul nimaga sarflandi?" degan savolga esa javob
+//    yo'q edi — sinf fondining butun muammosi aynan shu ishonchda.
+//
+// ⚠️ LC'DA KO'RSATILMAYDI. O'quv markazining xarajati — biznes
+//    ma'lumoti, ota-onaniki emas. U yerda ota-ona xizmat uchun
+//    to'laydi, jamg'armaga qatnashmaydi.
+//
+// ⚠️ Javob `services/publicReport.js` orqali yasaladi — ochiq
+//    havola bilan BITTA manba. Ya'ni bu yerda ham ISM chiqmaydi
+//    (na to'laganlar, na qarzdorlar), va kelajakda formulani
+//    ikki joyda o'zgartirish kerak bo'lmaydi.
+exports.getClassFund = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const link = requireLink(req, res, studentId, "fund");
+    if (!link) return;
+
+    const student = await Student.findById(studentId).select("class").lean();
+    if (!student?.class) {
+      return res.status(404).json({ success: false, error: "Sinf topilmadi" });
+    }
+
+    const [cls, director] = await Promise.all([
+      Class.findOne({ _id: student.class, archivedAt: null })
+        .select("name initialBalance")
+        .lean(),
+      Teacher.findById(link.director)
+        .select("institutionName institutionType")
+        .lean(),
+    ]);
+    if (!cls) {
+      return res.status(404).json({ success: false, error: "Sinf topilmadi" });
+    }
+
+    // ⚠️ Interfeys bo'limni yashiradi, lekin so'rovni qo'lda
+    //    yuborish mumkin — cheklov SHU YERDA ham turishi shart
+    //    (`supportEnabled` bilan bir xil qoida).
+    if (director?.institutionType === "learning_center") {
+      return res.status(403).json({ success: false, error: "Ruxsat yo'q" });
+    }
+
+    const now = new Date();
+    const month = Number(req.query.month) || now.getMonth() + 1;
+    const year = Number(req.query.year) || now.getFullYear();
+
+    const [payments, expenses] = await Promise.all([
+      MonthlyPayment.find({ class: cls._id, month, year })
+        .select("amount status")
+        .lean(),
+      Expense.find({ class: cls._id, month, year })
+        .select("reason amount spentDate createdAt receipt")
+        .lean(),
+    ]);
+
+    res.json({
+      success: true,
+      report: buildPublicReport({
+        cls,
+        centerName: director?.institutionName || "",
+        payments,
+        expenses,
+        month,
+        year,
+      }),
+    });
+  } catch (err) {
+    console.error("[tma] getClassFund", err);
     res.status(500).json({ success: false, error: "Server xatosi" });
   }
 };

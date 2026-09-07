@@ -110,9 +110,17 @@ const classSchema = new mongoose.Schema({
   //    bo'ladi, qolganlarida maydon umuman yo'q. Sparse
   //    bo'lmasa `null` qiymatlar bir-biriga urilib, ikkinchi
   //    sinf ochilmay qolardi.
+  //
+  // ⚠️ `default: null` EMAS — `undefined`. MongoDB'ning `sparse`
+  //    indeksi faqat MAYDONI YO'Q hujjatni tashlab ketadi;
+  //    `null` esa oddiy qiymat kabi INDEKSLANADI. `default: null`
+  //    bo'lsa har bir yangi sinfga aniq `null` yozilardi va
+  //    IKKINCHI sinf yaratilganda `E11000 duplicate key` chiqib,
+  //    sinf umuman ochilmasdi. Xato yaratish paytida chiqadi,
+  //    ya'ni token bilan hech qanday bog'liq ko'rinmaydi.
   publicToken: {
     type: String,
-    default: null,
+    default: undefined,
     index: { unique: true, sparse: true },
   },
 
@@ -127,9 +135,11 @@ const classSchema = new mongoose.Schema({
   //    yoki sinf rahbarining tasdig'i bilan ochiladi. Aks holda
   //    guruhga tarqagan havola bilan har kim istalgan bolani
   //    ochib olardi — eski botdagi aynan o'sha teshik.
+  //
+  // ⚠️ `publicToken` bilan bir xil sabab: `default: undefined`.
   parentToken: {
     type: String,
-    default: null,
+    default: undefined,
     index: { unique: true, sparse: true },
   },
 

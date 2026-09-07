@@ -2050,24 +2050,8 @@ const shareClass = async (req, res) => {
       return res.status(404).json({ success: false, error: "Sinf topilmadi" });
     }
 
-    // ⚠️ GET — FAQAT O'QIYDI. Modal ochilganda mavjud havola
-    //    ko'rsatilishi kerak; buning uchun POST yuborsak token
-    //    ALMASHIB ketardi va devorga chop etib osilgan QR
-    //    "havolani ko'rmoqchi bo'lgan" har bosishda o'lardi.
-    if (req.method === "GET") {
-      const uname = cls.parentToken ? await botUsername() : "";
-      return res.json({
-        success: true,
-        token: cls.parentToken || null,
-        link:
-          uname && cls.parentToken
-            ? `https://t.me/${uname}?start=cls_${cls.parentToken}`
-            : "",
-      });
-    }
-
     if (req.method === "DELETE") {
-      cls.publicToken = null;
+      cls.publicToken = undefined;
       await cls.save();
       audit(req, ctx, {
         action: "class.shareOff",
@@ -2078,8 +2062,17 @@ const shareClass = async (req, res) => {
       return res.json({ success: true, token: null });
     }
 
+    // ⚠️ POST IDEMPOTENT — botga ulash havolasi bilan bir xil
+    //    qoida. Bu token ham sinf guruhida yotadi; oynani ochish
+    //    yoki tugmani ikki marta bosish uni o'ldirmasligi kerak.
+    //    Almashtirish faqat ataylab: `?rotate=1`.
+    if (cls.publicToken && req.query.rotate !== "1") {
+      return res.json({ success: true, token: cls.publicToken, rotated: false });
+    }
+
     // 24 bayt → 32 belgi. `base64url` — manzilga tushadigan
     // belgilar (`+/=` yo'q), ya'ni havola sindirilmaydi.
+    const wasShared = Boolean(cls.publicToken);
     cls.publicToken = crypto.randomBytes(24).toString("base64url");
     await cls.save();
 
@@ -2087,13 +2080,13 @@ const shareClass = async (req, res) => {
     //    orqaga qaytariladigan, lekin izsiz qolmasligi kerak
     //    bo'lgan qaror.
     audit(req, ctx, {
-      action: "class.shareOn",
+      action: wasShared ? "class.shareNew" : "class.shareOn",
       entity: "Class",
       entityId: cls._id,
       entityLabel: cls.name,
     });
 
-    return res.json({ success: true, token: cls.publicToken });
+    return res.json({ success: true, token: cls.publicToken, rotated: wasShared });
   } catch (err) {
     return res
       .status(err.status || 500)
@@ -2131,8 +2124,39 @@ const parentLinkClass = async (req, res) => {
       return res.status(404).json({ success: false, error: "Sinf topilmadi" });
     }
 
+    // ⚠️ TO'LIQ HAVOLA BACKENDDAN. Bot nomini frontendga yozib
+    //    qo'ysak, botni almashtirgan kunda hamma sinf havolasi
+    //    jimgina o'lik bo'lib qolardi (platforma kartasi bilan
+    //    bir xil qoida — yagona manba).
+    const linkOf = async (token) => {
+      if (!token) return "";
+      const uname = await botUsername();
+      return uname ? `https://t.me/${uname}?start=cls_${token}` : "";
+    };
+
+    // ⚠️ GET — FAQAT O'QIYDI, hech narsa yozmaydi.
+    //
+    //    BU BLOK BIR MARTA NOTO'G'RI FUNKSIYAGA TUSHIB QOLGAN edi
+    //    (`shareClass` ga) va natijada `parentLinkClass` da GET
+    //    quyidagi POST yo'liga o'tib ketardi: direktor havolani
+    //    KO'RISH uchun oynani ochsa, token almashib, guruhga
+    //    tashlangan havola va devorga chop etilgan QR o'sha
+    //    daqiqada o'lardi. Tashqaridan bu "havola bir necha
+    //    soatdan keyin ishlamay qoldi" bo'lib ko'rinadi.
+    if (req.method === "GET") {
+      return res.json({
+        success: true,
+        token: cls.parentToken || null,
+        link: await linkOf(cls.parentToken),
+      });
+    }
+
     if (req.method === "DELETE") {
-      cls.parentToken = null;
+      // ⚠️ `null` EMAS, `undefined`: indeks `unique + sparse`,
+      //    sparse esa faqat MAYDONI YO'Q hujjatni tashlab
+      //    ketadi — `null` esa indekslanadi va ikkinchi sinf
+      //    o'sha `null` ga urilib qolardi.
+      cls.parentToken = undefined;
       await cls.save();
       audit(req, ctx, {
         action: "class.parentLinkOff",
@@ -2143,28 +2167,45 @@ const parentLinkClass = async (req, res) => {
       return res.json({ success: true, token: null, link: "" });
     }
 
+    // ⚠️ POST IDEMPOTENT: token bor bo'lsa O'SHA qaytadi.
+    //
+    //    Almashtirish faqat ATAYLAB so'ralganda (`?rotate=1` —
+    //    "O'zgartirish" tugmasi). Sabab: bu tokenning nusxasi
+    //    qog'ozda, sinf guruhida va o'ttizta ota-onaning
+    //    yozishmasida yotadi. Uni tasodifan almashtirish —
+    //    hammasini bir vaqtda o'chirish demakdir. Xato tomoni
+    //    xavfsiz bo'lishi kerak: adashib bosilgan tugma hech
+    //    narsa buzmasin.
+    const rotate = req.query.rotate === "1";
+
+    if (cls.parentToken && !rotate) {
+      return res.json({
+        success: true,
+        token: cls.parentToken,
+        link: await linkOf(cls.parentToken),
+        rotated: false,
+      });
+    }
+
     // ⚠️ `publicToken` dan qisqaroq (12 bayt → 16 belgi): bu token
     //    Telegram `?start=` parametriga tushadi va u 64 belgi bilan
     //    cheklangan. `cls_` prefiksi ham shu yerga sig'ishi kerak.
+    const wasSet = Boolean(cls.parentToken);
     cls.parentToken = crypto.randomBytes(12).toString("base64url");
     await cls.save();
 
     audit(req, ctx, {
-      action: "class.parentLinkOn",
+      action: wasSet ? "class.parentLinkNew" : "class.parentLinkOn",
       entity: "Class",
       entityId: cls._id,
       entityLabel: cls.name,
     });
 
-    // ⚠️ TO'LIQ HAVOLA BACKENDDAN. Bot nomini frontendga yozib
-    //    qo'ysak, botni almashtirgan kunda hamma sinf havolasi
-    //    jimgina o'lik bo'lib qolardi (platforma kartasi bilan
-    //    bir xil qoida — yagona manba).
-    const uname = await botUsername();
     return res.json({
       success: true,
       token: cls.parentToken,
-      link: uname ? `https://t.me/${uname}?start=cls_${cls.parentToken}` : "",
+      link: await linkOf(cls.parentToken),
+      rotated: wasSet,
     });
   } catch (err) {
     return res

@@ -99,7 +99,13 @@ test("bog'lanish yo'q bo'lsa hech narsa ochilmaydi", () => {
 });
 
 test("visibleSections ruxsat darajasiga mos keladi", () => {
-  assert.deepEqual(visibleSections(link("legacy")), ["payments"]);
+  // ⚠️ `legacy` — ISBOTLANMAGAN bog'lanish. Unga faqat SHAXSIY
+  //    ma'lumot bo'lmagan bo'limlar ochiq: to'lov eslatmasi
+  //    (eski bot shu asosda ishlagan) va sinf fondi hisoboti
+  //    (javobda ism umuman yo'q, ochiq havoladagi bilan bir xil).
+  //    Ro'yxatga yangi bo'lim qo'shishdan oldin o'ylang: baho,
+  //    davomat va uy vazifasi BU YERGA TUSHMAYDI.
+  assert.deepEqual(visibleSections(link("legacy")).sort(), ["fund", "payments"]);
 
   const full = visibleSections(link("phone"));
   assert.ok(full.includes("grades"));
