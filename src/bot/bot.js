@@ -168,20 +168,8 @@ const _attachHandlers = () => {
     handleContact,
     handleMessage,
     handleCallbackQuery,
-    handleGroupStart,
-    handleGroupJoined,
   } = require("./handlers");
   const { langOf } = require("./texts");
-
-  // ⚠️ GURUH HIMOYASI. Bot endi ota-onalar GURUHLARIGA ham qo'shiladi.
-  //    Quyidagi hamma buyruqlar (/grades, /payments, /start ...) javobni
-  //    `msg.chat.id` ga yozadi — guruhda bu "hamma ko'radigan joy" degani:
-  //    bitta ota-ona /baholar yozsa, farzandining baholari butun guruhga
-  //    chiqib ketardi, /start esa boshqa bolalarning ismini ochardi.
-  //    Shuning uchun guruhda FAQAT guruhni ulash buyrug'i ishlaydi,
-  //    qolganlari jim o'tkazib yuboriladi (shaxsiy chat o'zgarmaydi).
-  //    `type` yo'q bo'lsa shaxsiy deb olinadi (eski xabar shakllari).
-  const inPrivate = (chat) => (chat?.type || "private") === "private";
 
   console.log("✅ Handlerlari o'rnatilmoqda...");
 
@@ -189,27 +177,17 @@ const _attachHandlers = () => {
   //    ISTALGAN joyidan mos kelardi: "kecha /start bosdim, ishlamadi"
   //    deb yozgan odamga bot boshlang'ich ekranni qaytarardi.
   bot.onText(/^\/start(?:@\w+)?(?:\s|$)/, (msg) => {
-    if (!inPrivate(msg.chat)) return handleGroupStart(bot, msg);
     console.log(`📨 /start — chatId: ${msg.chat.id}`);
     handleStart(bot, msg);
   });
 
-  // Guruhni sinfga ulash — bot guruhda allaqachon bo'lsa, `startgroup`
-  // havolasi o'rniga shu buyruq yetadi: `/link grp_<token>`.
-  bot.onText(/^\/link(?:@\w+)?\s+grp_\S+/, (msg) => {
-    if (inPrivate(msg.chat)) return;
-    handleGroupStart(bot, msg);
-  });
-
   bot.onText(/^\/help(?:@\w+)?(?:\s|$)/, (msg) => {
-    if (!inPrivate(msg.chat)) return;
     handleHelp(bot, msg.chat.id, langOf(msg.from));
   });
 
   // ⚠️ YANGI. Ilgari bog'langan odam uchun orqaga yo'l umuman
   //    yo'q edi — /start faqat "siz bog'langansiz" deb qaytarardi.
   bot.onText(/^\/reset(?:@\w+)?(?:\s|$)/, (msg) => {
-    if (!inPrivate(msg.chat)) return;
     console.log(`📨 /reset — chatId: ${msg.chat.id}`);
     handleReset(bot, msg);
   });
@@ -231,7 +209,6 @@ const _attachHandlers = () => {
   for (const [section, ...aliases] of DIGEST) {
     const names = [section, ...aliases].join("|");
     bot.onText(new RegExp(`^\\/(?:${names})(?:@\\w+)?(?:\\s|$)`), (msg) => {
-      if (!inPrivate(msg.chat)) return;
       handleDigest(bot, msg, section);
     });
   }
@@ -239,31 +216,20 @@ const _attachHandlers = () => {
   // ⚠️ Raqam MATNDAN OLDIN tekshiriladi: kontakt xabarida `text`
   //    bo'lmaydi, lekin tartib chalkashsa oson yo'qolib qoladi.
   bot.on("contact", (msg) => {
-    if (!inPrivate(msg.chat)) return;
     console.log(`📱 Raqam keldi — chatId: ${msg.chat.id}`);
     handleContact(bot, msg);
   });
 
   // Oddiy xabarlar (text) — taklif kodi shu yerdan o'tadi
   bot.on("message", (msg) => {
-    if (!inPrivate(msg.chat)) return; // guruh suhbati taklif kodi emas
     if (msg.contact) return; // yuqoridagi handler ushlaydi
     if (msg.text && !msg.text.startsWith("/")) {
       handleMessage(bot, msg);
     }
   });
 
-  // Bot guruhga qo'shilganda — guruh hali sinfga ulanmagan bo'lsa,
-  // qanday ulashni bir marta aytib qo'yadi.
-  bot.on("new_chat_members", (msg) => {
-    handleGroupJoined(bot, msg).catch((e) =>
-      console.error("handleGroupJoined xato:", e.message),
-    );
-  });
-
   // Tugma click'lari
   bot.on("callback_query", (query) => {
-    if (!inPrivate(query.message?.chat)) return;
     console.log(`🔘 Callback: ${query.data} (chatId: ${query.message.chat.id})`);
     handleCallbackQuery(bot, query);
   });

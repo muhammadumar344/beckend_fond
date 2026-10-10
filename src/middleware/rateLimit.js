@@ -170,26 +170,8 @@ const uploadLimiter = rateLimit({
   message: "Juda ko'p fayl yuborildi. Birozdan keyin urinib ko'ring.",
 });
 
-/**
- * Ota-onalar guruhiga ommiy xabar.
- *
- * ⚠️ Tugmani ikki marta bosish yoki xato tufayli qayta-qayta yuborish
- *    butun guruhni bezovta qiladi, hamma ovozini o'chiradi (mute) va
- *    keyingi, rostdan kerakli xabar o'qilmay qoladi. Kalit — IP emas,
- *    FOYDALANUVCHI: bir maktab ichidagi turli direktorlar bir-birini
- *    cheklab qo'ymasin.
- */
-const groupMessageLimiter = rateLimit({
-  name: "tg-group-send",
-  windowMs: 10 * 60 * 1000,
-  max: 5,
-  keyBy: (req) => (req.user?.id ? String(req.user.id) : undefined),
-  message: "Guruhga juda ko'p xabar yuborildi. Birozdan keyin urinib ko'ring.",
-});
-
 module.exports = {
   rateLimit,
-  groupMessageLimiter,
   clearKey,
   hit,
   loginLimiter,

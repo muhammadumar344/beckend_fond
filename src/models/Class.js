@@ -1,6 +1,5 @@
 // backend/src/models/Class.js
 const mongoose = require("mongoose");
-const telegramGroupField = require("./telegramGroupField");
 
 const classSchema = new mongoose.Schema({
   name: {
@@ -73,11 +72,6 @@ const classSchema = new mongoose.Schema({
     min: 1,
   },
 
-  // ✅ YANGI — shu sinf/guruh ota-onalarining Telegram guruhi.
-  // Ta'rif va XAVFSIZLIK izohi: ./telegramGroupField.js (Group modeli
-  // bilan umumiy — ikkalasi bitta kolleksiyani o'qiydi).
-  telegramGroup: telegramGroupField,
-
   createdAt: {
     type: Date,
     default: Date.now,
@@ -88,27 +82,5 @@ const classSchema = new mongoose.Schema({
 // ustiga branch qo'shiladi — bitta compound indeks ikkalasini qoplaydi
 // (teacher prefiks sifatida ham ishlaydi).
 classSchema.index({ teacher: 1, branch: 1 });
-
-// ⚠️ Bitta Telegram guruh FAQAT BITTA sinfga ulanadi.
-//
-//    `partialFilterExpression: { $lt: 0 }` — ataylab: Telegram guruh/
-//    supergroup ID'lari doim MANFIY (shaxsiy chat ID'lari musbat, ularni
-//    hech qachon ulamaymiz). `$lt` — har qanday MongoDB versiyasida
-//    qisman indeksda ishlaydigan eng oddiy shart va null/yo'q qiymatni
-//    avtomatik chiqarib tashlaydi: `default: null` tufayli hujjatlarda
-//    maydon null bo'lib turadi, oddiy unique/sparse indeks esa ikkinchi
-//    sinfda "duplicate key" berardi.
-//
-//    ⚠️ Indeks serverni ishga tushirishda quriladi; qurilmay qolsa
-//    Mongoose xatosi butun jarayonni yiqitishi mumkin — shuning uchun
-//    bu yerda FAQAT bitta, eng sodda indeks. Token bo'yicha qidiruvga
-//    indeks yo'q: bu kamdan-kam so'rov, `classes` esa kichik kolleksiya.
-classSchema.index(
-  { "telegramGroup.chatId": 1 },
-  {
-    unique: true,
-    partialFilterExpression: { "telegramGroup.chatId": { $lt: 0 } },
-  },
-);
 
 module.exports = mongoose.model("Class", classSchema);

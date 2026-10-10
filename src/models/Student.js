@@ -26,27 +26,6 @@ const studentSchema = new mongoose.Schema({
   //    oltinchisini ham ko'rmaydi.
   riskContactedAt: { type: Date, default: null },
 
-  // ⚠️ SHU O'QUVCHI UCHUN INDIVIDUAL NARX (chegirma, aka-uka
-  //    chegirmasi, shartnoma narxi). `null` bo'lsa guruhning
-  //    umumiy narxi olinadi.
-  //
-  //    Bu ASOSIY guruh uchun. Qo'shimcha guruhlarda narx
-  //    `Enrollment.priceOverride` da — chunki bitta o'quvchi
-  //    ikki guruhda ikki xil chegirma bilan o'qishi mumkin.
-  //    Asosiy guruhga `Enrollment` yozuvi YARATILMAYDI (takror
-  //    bo'lardi), shuning uchun narx shu yerda turadi.
-  //
-  //    ⚠️ Narx `utils/pricing.js` orqali hisoblanadi — uni
-  //    qo'lda o'qimang, aks holda chegirma bir joyda ishlab,
-  //    boshqasida ishlamay qoladi.
-  priceOverride: { type: Number, default: null, min: 0 },
-
-  // Xodim uchun qisqa izoh ("onasi bilan bog'laning", "shartnoma
-  // bor"). Ilgari `updateStudent` buni yozishga urinardi, lekin
-  // sxemada maydon YO'Q edi — Mongoose uni jimgina tashlab
-  // yuborardi va izoh hech qachon saqlanmasdi.
-  note: { type: String, default: "", trim: true },
-
   createdAt: { type: Date, default: Date.now }
 });
 

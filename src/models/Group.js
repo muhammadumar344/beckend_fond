@@ -43,7 +43,6 @@
 // xatoni ushlab qoladigan himoya sifatida turadi.
 // ════════════════════════════════════════════════════════════
 const mongoose = require("mongoose");
-const telegramGroupField = require("./telegramGroupField");
 
 const groupSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
@@ -96,11 +95,6 @@ const groupSchema = new mongoose.Schema({
     default: null,
   },
   capacity: { type: Number, default: null, min: 1 },
-
-  // Ota-onalar Telegram guruhi. ⚠️ Class bilan UMUMIY ta'rif: aks holda
-  // bu model guruh ID'si va token hash'ini `select: false`siz qaytarib,
-  // LC javoblari orqali frontendga sizdirardi (./telegramGroupField.js).
-  telegramGroup: telegramGroupField,
 
   // `Class` dagi bilan bir xil bo'lishi shart — bitta kolleksiya.
   // `timestamps: true` ATAYLAB ishlatilmadi: u `updatedAt` qo'shib,

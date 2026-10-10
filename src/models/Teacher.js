@@ -30,11 +30,6 @@ const teacherSchema = new mongoose.Schema({
   freezeRemainingMs: { type: Number, default: 0 },
 
   onboardingCompleted: { type: Boolean, default: false },
-  // ✅ YANGI — mahsulot bo'yicha qisqa yo'l ko'rsatma (tour) shu bilan
-  // belgilanadi. `onboardingCompleted`dan ATAYLAB alohida: u rejim
-  // (Fond/LC) tanlovini qulflaydi va bir martalik, buni esa foydalanuvchi
-  // Yordam bo'limidan istagancha qayta boshlashi mumkin.
-  tourCompleted:       { type: Boolean, default: false },
   institutionType:     { type: String, enum: ['school','learning_center', null], default: null },
   institutionName:     { type: String, default: '' },
   city:                { type: String, default: '' },

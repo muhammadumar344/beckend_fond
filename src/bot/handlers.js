@@ -169,84 +169,6 @@ const handleDirectorLink = async (bot, msg, token) => {
   }
 }
 
-// ── Guruhni sinfga ulash ──────────────────────────────────────
-//
-// ⚠️ Bu — botning GURUHDA ishlaydigan YAGONA qismi (bot.js dagi
-//    `inPrivate` himoyasiga qarang). Boshqa hamma buyruqlar guruhda
-//    jim: ular bolaning bahosi/to'lovini `msg.chat.id` ga yozadi, guruhda
-//    esa buni hamma o'qiydi.
-//
-// ⚠️ Isbot — bir martalik token (direktor ulanishidagi kabi). Uni faqat
-//    Lumo'ga kirgan direktor ola oladi. Xato token uchun SABAB aytiladi,
-//    lekin hech qanday ma'lumot (qaysi sinf, qaysi markaz) berilmaydi.
-//
-// `/start grp_<token>` (startgroup havolasi) va `/link grp_<token>`
-// (bot guruhda allaqachon bo'lsa) — ikkalasi ham shu yerga tushadi.
-const handleGroupStart = async (bot, msg) => {
-  const chatId = msg.chat.id
-  const m = /(?:^|\s)grp_(\S+)/.exec(msg.text || '')
-  if (!m) return // tokensiz /start guruhda — jim (shovqin qilmaymiz)
-
-  try {
-    const { consumeGroupToken, escapeMd } = require('../services/groupTelegram')
-    const out = await consumeGroupToken(m[1], {
-      chatId,
-      title: msg.chat.title || '',
-    })
-
-    if (out.status === 'ok') {
-      await bot.sendMessage(
-        chatId,
-        `✅ Guruh *${escapeMd(out.className)}* sinfiga ulandi.\n\n` +
-          "Endi ustoz Lumo orqali shu guruhga to'lov eslatmasini yuborishi mumkin.",
-        { parse_mode: 'Markdown' },
-      )
-    } else if (out.status === 'taken') {
-      await bot.sendMessage(
-        chatId,
-        "Bu guruh allaqachon boshqa sinfga ulangan.\n\n" +
-          "Avval Lumo'da eski ulanishni uzing, so'ng qayta urinib ko'ring.",
-      )
-    } else {
-      await bot.sendMessage(
-        chatId,
-        "Havola eskirgan yoki allaqachon ishlatilgan.\n\n" +
-          "Lumo'ga kiring → Telegram sahifasi → \"Guruhni ulash\" tugmasini qayta bosing.",
-      )
-    }
-  } catch (err) {
-    console.error('handleGroupStart xatosi:', err.message)
-    try {
-      await bot.sendMessage(chatId, "Xatolik yuz berdi. Birozdan keyin urinib ko'ring.")
-    } catch {}
-  }
-}
-
-// Bot guruhga qo'shilganda: guruh hali hech qaysi sinfga ulanmagan bo'lsa,
-// qanday ulashni BIR MARTA aytadi. Ulangan guruhga qayta qo'shilsa — jim.
-//
-// ⚠️ Kechikish sababi: `startgroup` havolasi bilan qo'shilganda Telegram avval
-//    "bot qo'shildi" xabarini, ARDIDAN `/start grp_<token>` ni yuboradi. Darrov
-//    tekshirsak guruh hali ulanmagan bo'lib, "ulang" deyilgan zahoti
-//    "ulandi" degan xabar chiqardi. Bir necha soniya kutib, so'ng tekshiramiz.
-let _me = null
-const handleGroupJoined = async (bot, msg, { delayMs = 4000 } = {}) => {
-  if (!_me) _me = await bot.getMe()
-  const joined = (msg.new_chat_members || []).some((u) => u.id === _me.id)
-  if (!joined) return
-
-  if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs))
-  const { isChatLinked } = require('../services/groupTelegram')
-  if (await isChatLinked(msg.chat.id)) return
-
-  await bot.sendMessage(
-    msg.chat.id,
-    "Salom! Men Lumo botiman 👋\n\n" +
-      "Bu guruhga to'lov eslatmalarini yuborish uchun ustoz Lumo'ga kirib, " +
-      "Telegram sahifasida sinfni tanlab \"Guruhni ulash\" tugmasini bosishi kerak.",
-  )
-}
-
 // ── /start ────────────────────────────────────────────────────
 //
 // ⚠️ /start HECH QACHON BOSHI BERK KO'CHA BO'LMASLIGI KERAK.
@@ -613,7 +535,5 @@ module.exports = {
   handleContact,
   handleMessage,
   handleCallbackQuery,
-  handleGroupStart,
-  handleGroupJoined,
   appUrl,
 }

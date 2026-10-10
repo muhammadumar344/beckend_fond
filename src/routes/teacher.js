@@ -13,7 +13,7 @@ const auth = require("../middleware/auth");
 const { onlyTeacher, allowTeacherOrStaff } = require("../middleware/roles"); // ✅ TUZATILDI: destructure
 const { requireLCMode } = require("../middleware/mode"); // ✅ YANGI
 // Rasm yuboriladigan manzillar — katta tana bilan serverni bo'g'ishga qarshi
-const { uploadLimiter, groupMessageLimiter } = require("../middleware/rateLimit");
+const { uploadLimiter } = require("../middleware/rateLimit");
 
 const {
   exportPreviousYear,
@@ -38,7 +38,6 @@ router.post("/account/delete", onlyTeacher, accountCtrl.requestDeletion);
 router.get("/dashboard", onlyTeacher, ctrl.getDashboard);
 router.get("/subscription", onlyTeacher, ctrl.getSubscriptionInfo);
 router.put("/onboarding", onlyTeacher, ctrl.completeOnboarding);
-router.put("/tour", onlyTeacher, ctrl.completeTour);
 
 // ══ REJIM — xato tanlaganlar uchun chiqish yo'li ═════════════
 // Faqat hisob bo'sh bo'lsa ishlaydi (controller izohiga qarang)
@@ -202,20 +201,6 @@ router.get(
 );
 router.post("/telegram/send-reminders", onlyTeacher, tgCtrl.sendRemindersNow);
 router.post("/telegram/send-to-students", onlyTeacher, tgCtrl.sendToStudents);
-
-// ── Sinf ota-onalarining Telegram GURUHI ─────────────────────
-// ⚠️ `onlyTeacher`: ota-onalar guruhiga markaz nomidan yozish va guruhni
-//    ulash faqat direktorga. Hammasi `classId` bo'yicha — servis har
-//    safar sinf shu direktorniki ekanini tekshiradi.
-router.get("/telegram/groups", onlyTeacher, tgCtrl.getGroups);
-router.post("/telegram/group/link", onlyTeacher, tgCtrl.createGroupLink);
-router.delete("/telegram/group", onlyTeacher, tgCtrl.unlinkGroup);
-router.post(
-  "/telegram/group/send",
-  onlyTeacher,
-  groupMessageLimiter,
-  tgCtrl.sendGroupMessage,
-);
 
 // ══ REFERRAL — faqat Director ════════════════════════════════
 router.get("/referral", onlyTeacher, refCtrl.getMyReferral);

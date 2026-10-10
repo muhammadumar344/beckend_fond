@@ -8,8 +8,6 @@ const {
   getGroupStudents,
   countGroupStudents,
 } = require("../utils/enrollment");
-const Enrollment = require("../models/Enrollment");
-const { priceMap } = require("../utils/pricing");
 const TelegramParent = require("../models/TelegramParent");
 const Staff = require("../models/Staff");
 const Branch = require("../models/Branch");
@@ -211,30 +209,6 @@ const completeOnboarding = async (req, res) => {
     });
   } catch (err) {
     console.error("completeOnboarding error:", err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-// ============================================================
-//  TOUR — mahsulot bo'yicha qisqa yo'l ko'rsatma
-//  `completeOnboarding`dan ALOHIDA: bu qulflanmaydi, Yordam
-//  bo'limidan istagancha qayta boshlash mumkin (frontend shunchaki
-//  bu flagga qaramay tourStore.start() chaqiradi).
-// ============================================================
-const completeTour = async (req, res) => {
-  try {
-    const teacherId = req.user.id;
-    const teacher = await Teacher.findByIdAndUpdate(
-      teacherId,
-      { tourCompleted: true },
-      { new: true, select: "tourCompleted" },
-    );
-    if (!teacher) {
-      return res.status(404).json({ success: false, error: "Teacher topilmadi" });
-    }
-    return res.json({ success: true, user: { tourCompleted: true } });
-  } catch (err) {
-    console.error("completeTour error:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 };
@@ -1043,38 +1017,15 @@ const createMonthlyPayments = async (req, res) => {
         .json({ success: false, error: "Bu sinf sizning filialingizga tegishli emas" });
     }
 
-    // ⚠️ `Student.find({ class })` EMAS — u YETARLI EMAS va
-    //    ilgari aynan shunday yozilgan edi. Qo'shimcha guruhga
-    //    `Enrollment` orqali yozilgan o'quvchiga hisob UMUMAN
-    //    chiqmasdi: markaz o'sha pulni jimgina yo'qotardi va
-    //    hech qayerda xato ko'rinmasdi, chunki to'lov yozuvi
-    //    shunchaki mavjud bo'lmasdi.
-    //
-    //    Yon foydasi: `getGroupStudents` o'chirilgan
-    //    o'quvchilarni ham chetlab o'tadi — eski kod ularga ham
-    //    hisob yozardi.
-    const students = await getGroupStudents(classId);
+    const students = await Student.find({ class: classId });
     if (students.length === 0) {
       return res
         .status(400)
         .json({ success: false, error: "Bu sinfda o'quvchi yo'q" });
     }
 
-    // ⚠️ NARX HAR BIR O'QUVCHIDA BOSHQACHA BO'LISHI MUMKIN.
-    //    Ilgari hammaga `cls.defaultAmount` yozilardi va
-    //    chegirma (`priceOverride`) hech qachon ishlamasdi.
-    //    `utils/pricing.js` dagi izohga qarang.
-    const enrollments = await Enrollment.find({
-      class: classId,
-      status: "active",
-    })
-      .select("student priceOverride")
-      .lean();
-    const prices = priceMap(students, cls, enrollments);
-
     let createdCount = 0;
     let alreadyExisted = 0;
-    let discounted = 0;
 
     for (const student of students) {
       try {
@@ -1085,18 +1036,16 @@ const createMonthlyPayments = async (req, res) => {
           year: Number(year),
         });
         if (!existing) {
-          const price = prices.get(String(student._id));
           await MonthlyPayment.create({
             student: student._id,
             class: classId,
             teacher: teacherId,
-            amount: price.amount,
+            amount: cls.defaultAmount,
             month: Number(month),
             year: Number(year),
             status: "not_paid",
           });
           createdCount++;
-          if (price.source !== "group") discounted++;
         } else {
           alreadyExisted++;
         }
@@ -1112,10 +1061,6 @@ const createMonthlyPayments = async (req, res) => {
         created: createdCount,
         alreadyExisted,
         total: students.length,
-        // Nechtasiga individual narx qo'llangani — direktor
-        // chegirma haqiqatan ishlaganini KO'RSIN, taxmin
-        // qilmasin.
-        discounted,
       },
     });
   } catch (err) {
@@ -2456,7 +2401,6 @@ const getSubscriptionInfo = async (req, res) => {
 // ============================================================
 module.exports = {
   completeOnboarding,
-  completeTour,
   getProfile,
   getModeStatus,
   switchMode,
