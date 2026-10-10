@@ -179,4 +179,5 @@ module.exports = {
   sendUnfreezeNotification,
   sendHomeworkReport,
   sendMessage,
+  MONTHS, // services/groupTelegram.js ham shu ro'yxatdan foydalanadi
 }

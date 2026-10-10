@@ -354,6 +354,41 @@ const MESSAGES = {
   "So'rov formati noto'g'ri": { ru: "Неверный формат запроса", en: "Malformed request" },
   // ── Telegram / SMS ──────────────────────────────────────
   "Bot ishlamayapti": { ru: "Бот не работает", en: "The bot is not running" },
+
+  // ── Ota-onalar Telegram guruhi (services/groupTelegram.js) ──
+  "Bu sinf uchun Telegram guruh ulanmagan. Avval guruhni ulang.": {
+    ru: "Для этого класса не подключена группа Telegram. Сначала подключите группу.",
+    en: "No Telegram group is connected to this class. Connect a group first.",
+  },
+  "Guruh supergroup'ga aylangan. Guruhni qayta ulang.": {
+    ru: "Группа стала супергруппой. Подключите группу заново.",
+    en: "The group was upgraded to a supergroup. Please connect it again.",
+  },
+  "Telegram vaqtincha cheklov qo'ydi. Birozdan keyin qayta urinib ko'ring.": {
+    ru: "Telegram временно ограничил отправку. Попробуйте чуть позже.",
+    en: "Telegram has temporarily rate-limited sending. Please try again shortly.",
+  },
+  "Bot guruhda yo'q. Botni guruhga qayta qo'shib, guruhni qayta ulang.": {
+    ru: "Бота нет в группе. Добавьте бота в группу снова и заново подключите группу.",
+    en: "The bot is not in the group. Add the bot to the group again and reconnect the group.",
+  },
+  "Botda guruhga xabar yuborish huquqi yo'q. Guruh sozlamalarida botga xabar yuborishga ruxsat bering.": {
+    ru: "У бота нет права писать в группу. В настройках группы разрешите боту отправлять сообщения.",
+    en: "The bot has no permission to post in the group. Allow the bot to send messages in the group settings.",
+  },
+  "Telegram xabarni yubora olmadi. Birozdan keyin qayta urinib ko'ring.": {
+    ru: "Telegram не смог отправить сообщение. Попробуйте чуть позже.",
+    en: "Telegram could not send the message. Please try again shortly.",
+  },
+  "Guruhga xabar yuborildi": { ru: "Сообщение отправлено в группу", en: "Message sent to the group" },
+  "Guruhga xabar yuborildi: hamma to'lagan": {
+    ru: "Сообщение отправлено в группу: все оплатили",
+    en: "Message sent to the group: everyone has paid",
+  },
+  "Guruhga juda ko'p xabar yuborildi. Birozdan keyin urinib ko'ring.": {
+    ru: "В группу отправлено слишком много сообщений. Попробуйте чуть позже.",
+    en: "Too many messages were sent to the group. Please try again shortly.",
+  },
   "Eslatmalar yuborildi": { ru: "Напоминания отправлены", en: "Reminders sent" },
   "SMS yuborilmaydigan o'quvchi yo'q": { ru: "Нет учеников для отправки SMS", en: "There are no students to send SMS to" },
   "SMS reminder yuborildi": { ru: "SMS-напоминание отправлено", en: "SMS reminder sent" },

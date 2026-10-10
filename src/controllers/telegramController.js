@@ -222,3 +222,99 @@ exports.setCashReportMode = async (req, res) => {
     res.status(500).json({ success: false, error: e.message })
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+//  OTA-ONALAR TELEGRAM GURUHI
+//  Barcha mantiq services/groupTelegram.js da — bu yerda faqat
+//  HTTP javobiga o'girish. Guruh SINFGA bog'lanadi, ma'lumotni
+//  server o'zi bazadan oladi (frontend ro'yxat yubormaydi).
+// ═══════════════════════════════════════════════════════════
+const groupTg = require('../services/groupTelegram')
+const { resolveContext } = require('../utils/resolveContext')
+const { audit } = require('../services/audit')
+
+// GroupError → { success:false, error, code } (frontend `code` bo'yicha
+// tugmalarni boshqaradi, `error` esa foydalanuvchi tiliga o'giriladi).
+const groupFail = (res, e, where) => {
+  if (e instanceof groupTg.GroupError) {
+    return res.status(e.status).json({
+      success: false,
+      error: e.message,
+      code: e.code,
+      ...(e.requiresUpgrade ? { requiresUpgrade: true } : {}),
+      ...(e.retryAfter ? { retryAfter: e.retryAfter } : {}),
+    })
+  }
+  console.error(`${where} error:`, e)
+  return res.status(500).json({ success: false, error: e.message })
+}
+
+// GET /api/teacher/telegram/groups
+// Barcha sinflar uchun ulanish holati. ⚠️ Guruh ID'si chiqmaydi.
+exports.getGroups = async (req, res) => {
+  try {
+    const groups = await groupTg.listGroups(req.user.id)
+    res.json({ success: true, groups })
+  } catch (e) {
+    groupFail(res, e, 'getGroups')
+  }
+}
+
+// POST /api/teacher/telegram/group/link   { classId }
+// Bir martalik ulash havolasi (15 daqiqa). Ochiq token faqat shu javobda.
+exports.createGroupLink = async (req, res) => {
+  try {
+    const { classId } = req.body
+    const out = await groupTg.createGroupLink({ directorId: req.user.id, classId })
+    res.json({ success: true, ...out })
+  } catch (e) {
+    groupFail(res, e, 'createGroupLink')
+  }
+}
+
+// DELETE /api/teacher/telegram/group   { classId }
+exports.unlinkGroup = async (req, res) => {
+  try {
+    const { classId } = req.body
+    await groupTg.unlinkGroup({ directorId: req.user.id, classId })
+    audit(req, await resolveContext(req), {
+      action: 'telegram.group_unlinked',
+      entity: 'Class',
+      entityId: classId,
+    })
+    res.json({ success: true, message: 'Ulanish uzildi' })
+  } catch (e) {
+    groupFail(res, e, 'unlinkGroup')
+  }
+}
+
+// POST /api/teacher/telegram/group/send   { classId, month?, year? }
+// To'lamaganlar ro'yxatini sinf guruhiga yuboradi.
+exports.sendGroupMessage = async (req, res) => {
+  try {
+    const { classId, month, year } = req.body
+    const out = await groupTg.sendUnpaidReport({
+      directorId: req.user.id,
+      classId,
+      month,
+      year,
+    })
+    // Ota-onalar guruhiga ommaviy xabar — kim, qachon yuborganini
+    // jurnalda qoldiramiz (ismlar jurnalga yozilmaydi, faqat son).
+    audit(req, await resolveContext(req), {
+      action: 'telegram.group_message_sent',
+      entity: 'Class',
+      entityId: classId,
+      entityLabel: out.className,
+    })
+    res.json({
+      success: true,
+      message: out.unpaidCount
+        ? "Guruhga xabar yuborildi"
+        : "Guruhga xabar yuborildi: hamma to'lagan",
+      ...out,
+    })
+  } catch (e) {
+    groupFail(res, e, 'sendGroupMessage')
+  }
+}

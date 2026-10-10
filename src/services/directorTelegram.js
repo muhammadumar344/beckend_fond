@@ -126,4 +126,5 @@ module.exports = {
   unlink,
   findByChat,
   TOKEN_TTL_MS,
+  hash, // services/groupTelegram.js ham shu qoidadan foydalanadi
 };
