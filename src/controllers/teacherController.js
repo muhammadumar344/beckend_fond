@@ -11,6 +11,9 @@ const {
   buildGroupStudentMap,
 } = require("../utils/enrollment");
 const { collectTargets, markNotified } = require("../utils/notifyTargets");
+const Enrollment = require("../models/Enrollment");
+const { priceMap } = require("../utils/pricing");
+const TelegramParent = require("../models/TelegramParent");
 const Staff = require("../models/Staff");
 const Branch = require("../models/Branch");
 // Tarif katalogidagi "ochiq lidlar" hisobi uchun
@@ -1363,26 +1366,17 @@ const createMonthlyPayments = async (req, res) => {
         .json({ success: false, error: "Bu sinf sizning filialingizga tegishli emas" });
     }
 
-    // ⚠️ Mantiq `services/billing.js` da: "hammasiga yaratish"
-    //    tugmasi ham aynan shuni chaqiradi va qoida ikki joyda
-    //    bo'lib qolmasin.
-    const summary = await billing.ensureBillsForClass({
-      cls,
-      teacherId,
-      month: Number(month),
-      year: Number(year),
-    });
-
-    if (!summary.total) {
+if (!summary.total) {
       return res
         .status(400)
         .json({ success: false, error: "Bu sinfda o'quvchi yo'q" });
     }
 
-    return res.json({
+return res.json({
       success: true,
       message: `${summary.created} ta to'lov yaratildi`,
       summary,
+    });
     });
   } catch (err) {
     console.error("createMonthlyPayments error:", err);

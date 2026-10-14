@@ -54,8 +54,14 @@ const ROUTES = fs.readFileSync(
 );
 
 test("⚠️ ARXIVDAGI o'quvchiga varaqa yaratilmaydi", () => {
-  // Aks holda ketgan bolaga har oy yangi qarz yozilib borardi.
-  assert.ok(SVC.includes("isActive: { $ne: false }"));
+  // Faol o'quvchilar filtri yagona guruh ro'yxati utilitasida.
+  const enrollmentUtils = fs.readFileSync(
+    path.join(__dirname, "../src/utils/enrollment.js"),
+    "utf8",
+  );
+
+  assert.ok(SVC.includes("getGroupStudents(cls._id)"));
+  assert.ok(enrollmentUtils.includes("isActive: { $ne: false }"));
 });
 
 test("mavjud varaqalar BITTA so'rov bilan olinadi", () => {
