@@ -1372,11 +1372,14 @@ if (!summary.total) {
         .json({ success: false, error: "Bu sinfda o'quvchi yo'q" });
     }
 
+
+
+
+    
 return res.json({
       success: true,
       message: `${summary.created} ta to'lov yaratildi`,
       summary,
-    });
     });
   } catch (err) {
     console.error("createMonthlyPayments error:", err);
