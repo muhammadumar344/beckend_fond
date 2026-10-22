@@ -263,6 +263,7 @@ router.delete("/expenses/:expenseId", allowTeacherOrStaff, ctrl.deleteExpense);
 
 // ══ TELEGRAM — faqat Director ════════════════════════════════
 router.get("/telegram/bot-link", onlyTeacher, tgCtrl.getBotLink);
+router.post("/telegram/group/link", onlyTeacher, tgCtrl.createGroupLink);
 
 // ── Direktorning O'Z Telegram ulanishi ───────────────────────
 // ⚠️ Ota-onalar oqimidan BUTUNLAY ALOHIDA. Bu — markazga

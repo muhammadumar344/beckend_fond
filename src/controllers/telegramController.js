@@ -13,6 +13,31 @@ const { sendPaymentReminder } = require('../services/telegramService')
 //    o'ylardi; "tanlanganlarga yuborish" esa o'sha odamlarni
 //    jimgina `failed` deb sanardi.
 const { collectTargets, groupByStudent, markNotified } = require('../utils/notifyTargets')
+const groupLinkService = require('../services/telegramGroupLink')
+
+// Sinf ota-onalar guruhini Telegram botga ulash uchun bir martalik havola.
+exports.createGroupLink = async (req, res) => {
+  try {
+    const bot = getBot()
+    if (!bot) {
+      return res.status(503).json({ success: false, error: "Telegram bot hozir ishlamayapti" })
+    }
+
+    const info = await bot.getMe()
+    const result = await groupLinkService.createGroupLink({
+      teacherId: req.user.id,
+      classId: req.body?.classId,
+      botUsername: info.username,
+    })
+    return res.json(result)
+  } catch (e) {
+    const status = e.status || 500
+    return res.status(status).json({
+      success: false,
+      error: status === 500 ? "Telegram guruhini ulash havolasini yaratib bo'lmadi" : e.message,
+    })
+  }
+}
 
 // Bot havolasi
 exports.getBotLink = async (req, res) => {

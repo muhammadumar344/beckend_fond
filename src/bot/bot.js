@@ -187,8 +187,28 @@ const _attachHandlers = () => {
   // ⚠️ `^` MUHIM. Ilgari shablon `/\/start/` edi va u matnning
   //    ISTALGAN joyidan mos kelardi: "kecha /start bosdim, ishlamadi"
   //    deb yozgan odamga bot boshlang'ich ekranni qaytarardi.
-  bot.onText(/^\/start(?:@\w+)?(?:\s|$)/, (msg) => {
+  bot.onText(/^\/start(?:@\w+)?(?:\s|$)/, async (msg) => {
     console.log(`📨 /start — chatId: ${msg.chat.id}`);
+    const groupMatch = String(msg.text || "").match(
+      /^\/start(?:@\w+)?\s+grp_([a-f0-9]{48})\s*$/i,
+    );
+
+    if (groupMatch) {
+      try {
+        const { bindGroupFromStart } = require("../services/telegramGroupLink");
+        await bindGroupFromStart(bot, msg, groupMatch[1]);
+      } catch (error) {
+        console.error("Telegram guruhini ulash xatosi:", error.message);
+        try {
+          await bot.sendMessage(
+            msg.chat.id,
+            "Guruhni ulashda xatolik yuz berdi. Lumo saytidan yangi havola olib qayta urinib ko'ring.",
+          );
+        } catch {}
+      }
+      return;
+    }
+
     handleStart(bot, msg);
   });
 

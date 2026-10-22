@@ -143,6 +143,28 @@ const classSchema = new mongoose.Schema({
     index: { unique: true, sparse: true },
   },
 
+
+  // Telegram ota-onalar guruhi bilan bog'lanish.
+  // Token hash ko'rinishida saqlanadi va faqat 15 daqiqa amal qiladi.
+  telegramGroupChatId: {
+    type: String,
+    default: undefined,
+    index: { unique: true, sparse: true },
+  },
+  telegramGroupTitle: {
+    type: String,
+    default: undefined,
+    trim: true,
+  },
+  telegramGroupLinkTokenHash: {
+    type: String,
+    default: undefined,
+  },
+  telegramGroupLinkExpiresAt: {
+    type: Date,
+    default: undefined,
+  },
+
   createdAt: {
     type: Date,
     default: Date.now,
