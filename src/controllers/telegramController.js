@@ -39,6 +39,89 @@ exports.createGroupLink = async (req, res) => {
   }
 }
 
+// Ustoz sinfi uchun Telegram guruhining haqiqiy ulanish holati.
+exports.getGroupStatus = async (req, res) => {
+  try {
+    const classId = req.query.classId
+    if (!classId || !require('mongoose').Types.ObjectId.isValid(classId)) {
+      return res.status(400).json({ success: false, error: "Sinfni tanlang" })
+    }
+
+    const cls = await Class.findOne({
+      _id: classId,
+      teacher: req.user.id,
+      archivedAt: null,
+    }).select('_id name telegramGroupChatId telegramGroupTitle')
+
+    if (!cls) {
+      return res.status(404).json({ success: false, error: "Sinf topilmadi yoki sizga tegishli emas" })
+    }
+
+    return res.json({
+      success: true,
+      classId: String(cls._id),
+      className: cls.name,
+      linked: Boolean(cls.telegramGroupChatId),
+      groupTitle: cls.telegramGroupTitle || null,
+    })
+  } catch (e) {
+    return res.status(500).json({ success: false, error: "Guruh holatini olishda xatolik yuz berdi" })
+  }
+}
+
+// Lumo saytidan tanlangan sinfning Telegram guruhiga xabar yuborish.
+exports.sendGroupMessage = async (req, res) => {
+  try {
+    const classId = req.body?.classId
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim() : ''
+
+    if (!classId || !require('mongoose').Types.ObjectId.isValid(classId)) {
+      return res.status(400).json({ success: false, error: "Sinfni tanlang" })
+    }
+    if (!message) {
+      return res.status(400).json({ success: false, error: "Xabar matnini kiriting" })
+    }
+    if (message.length > 4000) {
+      return res.status(400).json({ success: false, error: "Xabar 4000 belgidan oshmasligi kerak" })
+    }
+
+    const cls = await Class.findOne({
+      _id: classId,
+      teacher: req.user.id,
+      archivedAt: null,
+    }).select('_id name telegramGroupChatId telegramGroupTitle')
+
+    if (!cls) {
+      return res.status(404).json({ success: false, error: "Sinf topilmadi yoki sizga tegishli emas" })
+    }
+    if (!cls.telegramGroupChatId) {
+      return res.status(409).json({ success: false, error: "Bu sinfning Telegram guruhi ulanmagan" })
+    }
+
+    const bot = getBot()
+    if (!bot) {
+      return res.status(503).json({ success: false, error: "Telegram bot hozir ishlamayapti" })
+    }
+
+    await bot.sendMessage(cls.telegramGroupChatId, message, { disable_web_page_preview: true })
+    return res.json({
+      success: true,
+      message: "Xabar guruhga yuborildi",
+      className: cls.name,
+      groupTitle: cls.telegramGroupTitle || null,
+    })
+  } catch (e) {
+    const telegramCode = e.response?.body?.error_code
+    if (telegramCode === 403 || telegramCode === 400) {
+      return res.status(502).json({
+        success: false,
+        error: "Telegram xabarni yubora olmadi. Bot guruhda borligini va xabar yuborish huquqini tekshiring.",
+      })
+    }
+    return res.status(500).json({ success: false, error: "Xabar yuborishda server xatosi yuz berdi" })
+  }
+}
+
 // Bot havolasi
 exports.getBotLink = async (req, res) => {
   try {
